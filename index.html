@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BK Saint Clément — Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -287,6 +288,10 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-dir-only" style="display:none" onclick="nav('saisie')"><span>📥</span><span>Importer PDF</span></div>
     <div class="nav-section role-mgr-only" style="display:none">Journée</div>
     <div class="nav-item role-mgr-only" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
+    <div class="nav-section role-full-only" style="display:none">Analyse</div>
+    <div class="nav-item role-full-only" style="display:none" onclick="nav('managers')"><span>👥</span><span>Suivi managers</span></div>
+    <div class="nav-item role-full-only" style="display:none" onclick="nav('ventes')"><span>⏱️</span><span>Ventes demi-heure</span></div>
+    <div class="nav-item role-dir-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
     <div class="nav-section role-full-only" style="display:none">Config</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
@@ -563,61 +568,63 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 
     <!-- MANAGER -->
     <section class="section" id="sec-manager">
-      <div style="max-width:560px">
+      <div style="max-width:580px">
 
-        <!-- ÉTAPE 1 : Dépôt PDF -->
+        <!-- ÉTAPE 1 : Dépôt TOUS les PDF -->
         <div class="mgr-card" id="mgr-step1">
-          <div class="mgr-title">📄 Déposer le PDF de la journée</div>
-          <div class="mgr-sub">L'IA lit le PDF, extrait la date et toutes les données automatiquement</div>
+          <div class="mgr-title">📂 Déposer les PDF de la journée</div>
+          <div class="mgr-sub">Glissez tous vos PDF en même temps — Synthèse CA, ventes horaire, etc. L'IA lit et extrait tout automatiquement.</div>
+
           <div class="drop-zone" id="drop-zone"
                onclick="document.getElementById('file-input').click()"
                ondragover="event.preventDefault();this.classList.add('drag-over')"
                ondragleave="this.classList.remove('drag-over')"
-               ondrop="handleDrop(event)">
-            <div class="drop-zone-icon">📄</div>
-            <div class="drop-zone-text">Cliquez ou <span>glissez le PDF ici</span></div>
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Synthèse CA journalière · PDF uniquement</div>
+               ondrop="handleMgrDrop(event)"
+               style="min-height:120px">
+            <div class="drop-zone-icon">📂</div>
+            <div class="drop-zone-text">Cliquez ou <span>glissez vos PDF ici</span></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">Plusieurs PDF acceptés · Synthèse CA + Ventes horaire + autres</div>
           </div>
           <input type="file" id="file-input" multiple accept=".pdf" style="display:none" onchange="handleMgrFiles(this.files)">
-          <div class="file-list" id="file-list"></div>
+
+          <!-- Liste des fichiers avec statut -->
+          <div id="file-list" style="margin-bottom:12px"></div>
+
           <div id="mgr-loading" style="display:none;text-align:center;padding:16px;color:var(--muted2);font-size:12px">
             <div style="font-size:22px;margin-bottom:6px;animation:pulse 1.5s infinite">⏳</div>
-            Lecture du PDF en cours…
+            <span id="mgr-loading-text">Lecture des PDF en cours…</span>
           </div>
-          <div class="mgr-alert-ok" id="mgr-pdf-err" style="background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:var(--red);display:none"></div>
+          <div id="mgr-pdf-err" style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);padding:10px 14px;border-radius:var(--radius-sm);font-size:11px;display:none;margin-top:8px"></div>
         </div>
 
-        <!-- ÉTAPE 2 : Équipe + validation (visible après lecture PDF) -->
+        <!-- ÉTAPE 2 : Résumé extraction + Équipe -->
         <div class="mgr-card" id="mgr-step2" style="display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-            <div class="mgr-title" style="margin-bottom:0">✅ <span id="mgr-date-label">—</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <div>
+              <div class="mgr-title" style="margin-bottom:2px">✅ <span id="mgr-date-label">—</span></div>
+              <div style="font-size:11px;color:var(--muted2)" id="mgr-ca-label"></div>
+            </div>
             <button class="btn" style="font-size:10px;padding:4px 10px" onclick="resetMgrFlow()">✕ Recommencer</button>
           </div>
-          <div class="mgr-sub" id="mgr-ca-label" style="margin-bottom:20px"></div>
+
+          <!-- Résumé des PDF lus -->
+          <div id="mgr-pdf-summary" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px"></div>
 
           <!-- Équipe -->
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
             <div>
               <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Ouverture (8h → 19h)</div>
               <label class="form-label">Manager ouverture</label>
-              <select class="form-input" id="mgr-ouv" style="margin-bottom:10px">
-                <option value="">— sélectionner —</option>
-              </select>
+              <select class="form-input" id="mgr-ouv" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
               <label class="form-label">Leader ouverture</label>
-              <select class="form-input" id="mgr-leader-ouv">
-                <option value="">— sélectionner —</option>
-              </select>
+              <select class="form-input" id="mgr-leader-ouv"><option value="">— sélectionner —</option></select>
             </div>
             <div>
               <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Fermeture (19h → 2h)</div>
               <label class="form-label">Manager fermeture</label>
-              <select class="form-input" id="mgr-fer" style="margin-bottom:10px">
-                <option value="">— sélectionner —</option>
-              </select>
+              <select class="form-input" id="mgr-fer" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
               <label class="form-label">Leader fermeture</label>
-              <select class="form-input" id="mgr-leader-fer">
-                <option value="">— sélectionner —</option>
-              </select>
+              <select class="form-input" id="mgr-leader-fer"><option value="">— sélectionner —</option></select>
             </div>
           </div>
 
@@ -628,18 +635,12 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border2);border-radius:var(--radius-sm);flex:1;transition:all .15s" id="lbl-dir-midi">
                 <input type="checkbox" id="mgr-dir-midi" onchange="toggleDirStyle('midi')">
                 <span style="font-size:16px">☀️</span>
-                <div>
-                  <div style="font-size:11px;font-weight:600">Rush midi</div>
-                  <div style="font-size:10px;color:var(--muted)">Déjeuner</div>
-                </div>
+                <div><div style="font-size:11px;font-weight:600">Rush midi</div><div style="font-size:10px;color:var(--muted)">Déjeuner</div></div>
               </label>
               <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border2);border-radius:var(--radius-sm);flex:1;transition:all .15s" id="lbl-dir-soir">
                 <input type="checkbox" id="mgr-dir-soir" onchange="toggleDirStyle('soir')">
                 <span style="font-size:16px">🌙</span>
-                <div>
-                  <div style="font-size:11px;font-weight:600">Rush soir</div>
-                  <div style="font-size:10px;color:var(--muted)">Dîner</div>
-                </div>
+                <div><div style="font-size:11px;font-weight:600">Rush soir</div><div style="font-size:10px;color:var(--muted)">Dîner</div></div>
               </label>
             </div>
           </div>
@@ -655,6 +656,105 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
           <div class="mgr-alert-ok" id="mgr-save-ok">✓ Journée enregistrée !</div>
         </div>
 
+      </div>
+    </section>
+
+    <!-- SUIVI MANAGERS -->
+    <section class="section" id="sec-managers">
+      <div id="managers-content">
+        <div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Suivi managers</div><div class="empty-sub">Chargement des données…</div></div>
+      </div>
+    </section>
+
+    <!-- VENTES DEMI-HEURE -->
+    <section class="section" id="sec-ventes">
+      <div style="max-width:800px">
+        <div class="mgr-card">
+          <div class="mgr-title">⏱️ Ventes par demi-heure</div>
+          <div class="mgr-sub">Déposez le PDF "Rapport des ventes horaire par demi-heure"</div>
+          <div class="drop-zone" id="ventes-drop-zone"
+               onclick="document.getElementById('ventes-file-input').click()"
+               ondragover="event.preventDefault();this.classList.add('drag-over')"
+               ondragleave="this.classList.remove('drag-over')"
+               ondrop="handleVentesDrop(event)">
+            <div class="drop-zone-icon">📊</div>
+            <div class="drop-zone-text">Cliquez ou <span>glissez le PDF ici</span></div>
+          </div>
+          <input type="file" id="ventes-file-input" accept=".pdf" style="display:none" onchange="handleVentesFile(this.files[0])">
+          <div id="ventes-loading" style="display:none;text-align:center;padding:14px;color:var(--muted2);font-size:12px">
+            <div style="font-size:22px;margin-bottom:6px;animation:pulse 1.5s infinite">⏳</div>Lecture en cours…
+          </div>
+        </div>
+        <div id="ventes-content"></div>
+      </div>
+    </section>
+
+    <!-- ANNULATIONS -->
+    <section class="section" id="sec-annulations">
+      <div style="max-width:640px">
+        <div class="mgr-card">
+          <div class="mgr-title">🚫 Saisir une annulation</div>
+          <div class="mgr-sub">Déposez les photos des tickets (mauvais ticket + ticket annulé + bon ticket)</div>
+
+          <div class="form-row" style="margin-bottom:14px">
+            <div class="form-group"><label class="form-label">📅 Date</label><input type="date" class="form-input" id="ann-date"></div>
+            <div class="form-group"><label class="form-label">🕐 Heure</label><input type="time" class="form-input" id="ann-heure"></div>
+          </div>
+          <div class="form-row" style="margin-bottom:14px">
+            <div class="form-group"><label class="form-label">💶 Montant annulé (€)</label><input type="number" step="0.01" class="form-input" id="ann-montant" placeholder="0.00"></div>
+            <div class="form-group"><label class="form-label">👤 Manager responsable</label><select class="form-input" id="ann-manager"><option value="">— sélectionner —</option></select></div>
+          </div>
+          <div class="form-group" style="margin-bottom:14px">
+            <label class="form-label">📝 Motif</label>
+            <select class="form-input" id="ann-motif">
+              <option value="">— sélectionner —</option>
+              <option>Erreur de saisie</option>
+              <option>Produit indisponible</option>
+              <option>Réclamation client</option>
+              <option>Problème technique</option>
+              <option>Autre</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:14px">
+            <label class="form-label">💬 Commentaire</label>
+            <input type="text" class="form-input" id="ann-comment" placeholder="Détails de l'annulation…">
+          </div>
+
+          <!-- Photos tickets -->
+          <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px">Photos des tickets</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+            <div>
+              <label class="form-label" style="text-align:center;display:block">❌ Mauvais ticket</label>
+              <div class="drop-zone" style="padding:16px;min-height:80px" onclick="document.getElementById('ann-photo-bad').click()">
+                <div id="prev-bad" style="font-size:10px;color:var(--muted);text-align:center">Photo</div>
+              </div>
+              <input type="file" id="ann-photo-bad" accept="image/*" style="display:none" onchange="previewTicket(this,'prev-bad')">
+            </div>
+            <div>
+              <label class="form-label" style="text-align:center;display:block">🔄 Ticket annulé</label>
+              <div class="drop-zone" style="padding:16px;min-height:80px" onclick="document.getElementById('ann-photo-annul').click()">
+                <div id="prev-annul" style="font-size:10px;color:var(--muted);text-align:center">Photo</div>
+              </div>
+              <input type="file" id="ann-photo-annul" accept="image/*" style="display:none" onchange="previewTicket(this,'prev-annul')">
+            </div>
+            <div>
+              <label class="form-label" style="text-align:center;display:block">✅ Bon ticket</label>
+              <div class="drop-zone" style="padding:16px;min-height:80px" onclick="document.getElementById('ann-photo-good').click()">
+                <div id="prev-good" style="font-size:10px;color:var(--muted);text-align:center">Photo</div>
+              </div>
+              <input type="file" id="ann-photo-good" accept="image/*" style="display:none" onchange="previewTicket(this,'prev-good')">
+            </div>
+          </div>
+
+          <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px" onclick="sauvegarderAnnulation()">💾 Enregistrer l'annulation</button>
+          <div class="mgr-alert-ok" id="ann-ok">✓ Annulation enregistrée !</div>
+        </div>
+
+        <!-- Historique annulations -->
+        <div class="table-card" id="ann-historique-card" style="margin-top:16px">
+          <div class="table-header"><span class="table-title">Historique des annulations</span></div>
+          <div id="ann-historique-content" style="padding:12px"></div>
+        </div>
       </div>
     </section>
 
@@ -1347,10 +1447,518 @@ const SEED_2026 = [
   {restaurant:'BK526',date:'2026-05-16',ca_ttc:18741.14,ca_ht:16990.19,ca_n1:20278.95,tickets_nb:910,ticket_moyen_ttc:20.59,kiosk_ttc:8372.20,kiosk_tickets:436,drive_ttc:4515.83,drive_voitures:214,drive_n1:null,drive_ticket_moyen:21.10,livraison_ttc:3183.05,livraison_commandes:122,livraison_n1:null,livraison_ticket_moyen:26.09,comptoir_ttc:1745.35,comptoir_tickets:98,cc_ttc:924.71,cc_tickets:40,sur_place_tickets:347,emporter_tickets:563,cb:12560.58,especes:1665.45,uber_eats:2436.90,deliveroo:548.70,bk_livraison:197.45,trd:339.80,ancv:67.55,erreur_caisse:8.01,corrections_nb:224,corrections_montant:1293.15,corrections_pct:6.90,remises_nb:247,remises_montant:1441.86,remises_pct:7.69,sauces_nb:1431,sauces_montant:450.50,sauces_pct:2.40,annulations_nb:0,annulations_montant:0,commandes_ouvertes_nb:5,commandes_ouvertes_montant:112.70,repas_employes_nb:23,repas_employes_montant:285.30,repas_employes_pct:1.52,ventes_annexes_ttc:136.02,commentaire:'Mugs Grogu+Mandalorian'},
 ];
 
+
+const SEED_BK509_2025 = [
+  {restaurant:'BK509',date:'2025-01-01',ca_ttc:23461.4,ca_ht:20438.62,tickets_nb:971,drive_ttc:5859.5,kiosk_ttc:9634.0,livraison_ttc:3985.3,comptoir_ttc:2562.7,corrections_montant:610.5,corrections_pct:4.42,annulations_montant:0.0,remises_montant:836.35,remises_pct:3.56},
+  {restaurant:'BK509',date:'2025-01-02',ca_ttc:15661.9,ca_ht:13545.69,tickets_nb:745,drive_ttc:3962.5,kiosk_ttc:7879.5,livraison_ttc:1102.6,comptoir_ttc:1729.9,corrections_montant:412.6,corrections_pct:5.3,annulations_montant:-30.1,remises_montant:716.28,remises_pct:4.57},
+  {restaurant:'BK509',date:'2025-01-03',ca_ttc:18975.5,ca_ht:16273.64,tickets_nb:870,drive_ttc:4869.7,kiosk_ttc:9134.7,livraison_ttc:1703.4,comptoir_ttc:2422.4,corrections_montant:538.8,corrections_pct:5.48,annulations_montant:0.0,remises_montant:977.34,remises_pct:5.15},
+  {restaurant:'BK509',date:'2025-01-04',ca_ttc:18993.1,ca_ht:16648.26,tickets_nb:830,drive_ttc:4979.8,kiosk_ttc:9154.2,livraison_ttc:1349.9,comptoir_ttc:2628.8,corrections_montant:511.6,corrections_pct:5.2,annulations_montant:-29.4,remises_montant:578.5,remises_pct:3.05},
+  {restaurant:'BK509',date:'2025-01-05',ca_ttc:16282.8,ca_ht:14075.66,tickets_nb:682,drive_ttc:4724.8,kiosk_ttc:6172.2,livraison_ttc:2349.0,comptoir_ttc:1953.6,corrections_montant:441.3,corrections_pct:4.36,annulations_montant:0.0,remises_montant:708.15,remises_pct:4.35},
+  {restaurant:'BK509',date:'2025-01-06',ca_ttc:9617.3,ca_ht:8324.56,tickets_nb:528,drive_ttc:2923.8,kiosk_ttc:4509.7,livraison_ttc:988.8,comptoir_ttc:858.8,corrections_montant:413.7,corrections_pct:8.1,annulations_montant:-26.5,remises_montant:436.68,remises_pct:4.54},
+  {restaurant:'BK509',date:'2025-01-07',ca_ttc:10912.1,ca_ht:9469.55,tickets_nb:559,drive_ttc:3207.6,kiosk_ttc:4889.9,livraison_ttc:1136.3,comptoir_ttc:1096.6,corrections_montant:515.9,corrections_pct:8.57,annulations_montant:0.0,remises_montant:455.5,remises_pct:4.17},
+  {restaurant:'BK509',date:'2025-01-08',ca_ttc:14087.4,ca_ht:12314.44,tickets_nb:725,drive_ttc:4157.4,kiosk_ttc:6378.8,livraison_ttc:1194.8,comptoir_ttc:1634.2,corrections_montant:472.2,corrections_pct:6.13,annulations_montant:-26.2,remises_montant:478.62,remises_pct:3.4},
+  {restaurant:'BK509',date:'2025-01-09',ca_ttc:13039.4,ca_ht:11475.79,tickets_nb:663,drive_ttc:4204.3,kiosk_ttc:5675.5,livraison_ttc:1184.9,comptoir_ttc:1578.3,corrections_montant:318.7,corrections_pct:4.33,annulations_montant:0.0,remises_montant:380.33,remises_pct:2.92},
+  {restaurant:'BK509',date:'2025-01-10',ca_ttc:17179.2,ca_ht:14727.94,tickets_nb:815,drive_ttc:5090.8,kiosk_ttc:7396.5,livraison_ttc:1465.4,comptoir_ttc:2118.3,corrections_montant:613.4,corrections_pct:6.27,annulations_montant:0.0,remises_montant:906.92,remises_pct:5.28},
+  {restaurant:'BK509',date:'2025-01-11',ca_ttc:20899.9,ca_ht:18156.28,tickets_nb:933,drive_ttc:5175.9,kiosk_ttc:10447.2,livraison_ttc:1406.8,comptoir_ttc:3110.9,corrections_montant:546.8,corrections_pct:5.23,annulations_montant:-106.6,remises_montant:862.19,remises_pct:4.13},
+  {restaurant:'BK509',date:'2025-01-12',ca_ttc:15693.2,ca_ht:13548.17,tickets_nb:667,drive_ttc:4977.4,kiosk_ttc:6587.8,livraison_ttc:1648.3,comptoir_ttc:1728.4,corrections_montant:426.8,corrections_pct:4.69,annulations_montant:0.0,remises_montant:734.56,remises_pct:4.68},
+  {restaurant:'BK509',date:'2025-01-13',ca_ttc:10139.4,ca_ht:8796.26,tickets_nb:577,drive_ttc:2692.4,kiosk_ttc:4993.2,livraison_ttc:827.6,comptoir_ttc:1337.1,corrections_montant:282.9,corrections_pct:5.5,annulations_montant:0.0,remises_montant:440.95,remises_pct:4.35},
+  {restaurant:'BK509',date:'2025-01-14',ca_ttc:11925.2,ca_ht:10343.55,tickets_nb:596,drive_ttc:3896.2,kiosk_ttc:4659.4,livraison_ttc:1609.7,comptoir_ttc:1240.2,corrections_montant:444.5,corrections_pct:6.12,annulations_montant:-32.8,remises_montant:460.77,remises_pct:3.86},
+  {restaurant:'BK509',date:'2025-01-15',ca_ttc:15088.4,ca_ht:13140.05,tickets_nb:718,drive_ttc:3928.1,kiosk_ttc:6360.8,livraison_ttc:1834.1,comptoir_ttc:2043.9,corrections_montant:461.9,corrections_pct:5.29,annulations_montant:0.0,remises_montant:516.69,remises_pct:3.42},
+  {restaurant:'BK509',date:'2025-01-16',ca_ttc:13142.6,ca_ht:11415.97,tickets_nb:666,drive_ttc:3859.8,kiosk_ttc:5819.5,livraison_ttc:1259.4,comptoir_ttc:1458.2,corrections_montant:668.0,corrections_pct:9.12,annulations_montant:0.0,remises_montant:507.12,remises_pct:3.86},
+  {restaurant:'BK509',date:'2025-01-17',ca_ttc:19636.0,ca_ht:17095.78,tickets_nb:899,drive_ttc:5873.0,kiosk_ttc:8523.8,livraison_ttc:1448.1,comptoir_ttc:3030.9,corrections_montant:553.7,corrections_pct:4.98,annulations_montant:0.0,remises_montant:731.33,remises_pct:3.72},
+  {restaurant:'BK509',date:'2025-01-18',ca_ttc:23001.2,ca_ht:20073.84,tickets_nb:983,drive_ttc:5565.7,kiosk_ttc:10962.9,livraison_ttc:2123.8,comptoir_ttc:3199.0,corrections_montant:730.7,corrections_pct:6.07,annulations_montant:-51.8,remises_montant:793.91,remises_pct:3.45},
+  {restaurant:'BK509',date:'2025-01-19',ca_ttc:18153.9,ca_ht:15815.64,tickets_nb:728,drive_ttc:5010.6,kiosk_ttc:8268.1,livraison_ttc:2101.6,comptoir_ttc:1983.9,corrections_montant:553.9,corrections_pct:5.6,annulations_montant:0.0,remises_montant:651.09,remises_pct:3.59},
+  {restaurant:'BK509',date:'2025-01-20',ca_ttc:9743.5,ca_ht:8573.98,tickets_nb:528,drive_ttc:2703.7,kiosk_ttc:4602.5,livraison_ttc:1057.7,comptoir_ttc:1194.3,corrections_montant:195.5,corrections_pct:3.8,annulations_montant:0.0,remises_montant:272.41,remises_pct:2.8},
+  {restaurant:'BK509',date:'2025-01-21',ca_ttc:11149.1,ca_ht:9625.72,tickets_nb:582,drive_ttc:3234.1,kiosk_ttc:5150.2,livraison_ttc:1066.0,comptoir_ttc:1227.4,corrections_montant:376.8,corrections_pct:6.28,annulations_montant:-18.5,remises_montant:513.4,remises_pct:4.6},
+  {restaurant:'BK509',date:'2025-01-22',ca_ttc:13240.1,ca_ht:11502.94,tickets_nb:656,drive_ttc:4123.3,kiosk_ttc:6075.8,livraison_ttc:1117.5,comptoir_ttc:1100.4,corrections_montant:257.1,corrections_pct:3.59,annulations_montant:0.0,remises_montant:513.18,remises_pct:3.88},
+  {restaurant:'BK509',date:'2025-01-23',ca_ttc:11751.6,ca_ht:10178.49,tickets_nb:598,drive_ttc:3838.5,kiosk_ttc:4900.5,livraison_ttc:1215.3,comptoir_ttc:1239.4,corrections_montant:346.8,corrections_pct:5.06,annulations_montant:0.0,remises_montant:499.39,remises_pct:4.25},
+  {restaurant:'BK509',date:'2025-01-24',ca_ttc:16776.85,ca_ht:14549.87,tickets_nb:777,drive_ttc:4584.85,kiosk_ttc:7222.1,livraison_ttc:1913.8,comptoir_ttc:1997.6,corrections_montant:387.3,corrections_pct:4.05,annulations_montant:0.0,remises_montant:686.71,remises_pct:4.09},
+  {restaurant:'BK509',date:'2025-01-25',ca_ttc:20371.55,ca_ht:17743.31,tickets_nb:846,drive_ttc:5353.85,kiosk_ttc:10336.1,livraison_ttc:1550.4,comptoir_ttc:2236.9,corrections_montant:503.0,corrections_pct:5.01,annulations_montant:0.0,remises_montant:751.44,remises_pct:3.69},
+  {restaurant:'BK509',date:'2025-01-26',ca_ttc:14865.15,ca_ht:12885.44,tickets_nb:618,drive_ttc:4173.75,kiosk_ttc:6593.2,livraison_ttc:1574.0,comptoir_ttc:1433.8,corrections_montant:331.5,corrections_pct:4.01,annulations_montant:0.0,remises_montant:605.65,remises_pct:4.07},
+  {restaurant:'BK509',date:'2025-01-27',ca_ttc:9814.85,ca_ht:8417.79,tickets_nb:512,drive_ttc:3001.35,kiosk_ttc:4106.3,livraison_ttc:1126.4,comptoir_ttc:1081.4,corrections_montant:254.9,corrections_pct:4.47,annulations_montant:0.0,remises_montant:511.89,remises_pct:5.22},
+  {restaurant:'BK509',date:'2025-01-28',ca_ttc:10283.3,ca_ht:8936.03,tickets_nb:575,drive_ttc:2730.7,kiosk_ttc:5015.0,livraison_ttc:1195.8,comptoir_ttc:947.8,corrections_montant:385.2,corrections_pct:7.31,annulations_montant:0.0,remises_montant:411.59,remises_pct:4.0},
+  {restaurant:'BK509',date:'2025-01-29',ca_ttc:14061.9,ca_ht:12259.07,tickets_nb:711,drive_ttc:4234.2,kiosk_ttc:6338.8,livraison_ttc:1185.3,comptoir_ttc:1579.9,corrections_montant:485.0,corrections_pct:6.28,annulations_montant:0.0,remises_montant:515.8,remises_pct:3.67},
+  {restaurant:'BK509',date:'2025-01-30',ca_ttc:12653.1,ca_ht:11024.72,tickets_nb:648,drive_ttc:4019.8,kiosk_ttc:5081.4,livraison_ttc:1714.6,comptoir_ttc:1158.0,corrections_montant:242.1,corrections_pct:3.2,annulations_montant:-47.5,remises_montant:474.28,remises_pct:3.75},
+  {restaurant:'BK509',date:'2025-01-31',ca_ttc:19203.2,ca_ht:16582.53,tickets_nb:916,drive_ttc:5616.7,kiosk_ttc:8532.4,livraison_ttc:1989.3,comptoir_ttc:1847.6,corrections_montant:403.3,corrections_pct:3.78,annulations_montant:0.0,remises_montant:875.14,remises_pct:4.56},
+  {restaurant:'BK509',date:'2025-02-01',ca_ttc:21422.5,ca_ht:18598.79,tickets_nb:942,drive_ttc:5424.8,kiosk_ttc:9503.7,livraison_ttc:2277.8,comptoir_ttc:2983.3,corrections_montant:634.4,corrections_pct:5.32,annulations_montant:0.0,remises_montant:878.85,remises_pct:4.1},
+  {restaurant:'BK509',date:'2025-02-02',ca_ttc:17519.9,ca_ht:15304.07,tickets_nb:761,drive_ttc:4643.9,kiosk_ttc:8178.9,livraison_ttc:2226.0,comptoir_ttc:1680.8,corrections_montant:452.2,corrections_pct:4.84,annulations_montant:0.0,remises_montant:618.53,remises_pct:3.53},
+  {restaurant:'BK509',date:'2025-02-03',ca_ttc:9977.4,ca_ht:8679.92,tickets_nb:549,drive_ttc:2849.5,kiosk_ttc:4628.7,livraison_ttc:893.9,comptoir_ttc:1054.5,corrections_montant:259.8,corrections_pct:4.86,annulations_montant:0.0,remises_montant:387.48,remises_pct:3.88},
+  {restaurant:'BK509',date:'2025-02-04',ca_ttc:10835.1,ca_ht:9462.37,tickets_nb:601,drive_ttc:3366.0,kiosk_ttc:4706.5,livraison_ttc:1079.7,comptoir_ttc:1202.2,corrections_montant:319.0,corrections_pct:5.21,annulations_montant:0.0,remises_montant:378.38,remises_pct:3.49},
+  {restaurant:'BK509',date:'2025-02-05',ca_ttc:15745.65,ca_ht:13690.5,tickets_nb:776,drive_ttc:4288.05,kiosk_ttc:6737.4,livraison_ttc:1930.0,comptoir_ttc:1896.9,corrections_montant:459.2,corrections_pct:5.1,annulations_montant:0.0,remises_montant:611.09,remises_pct:3.88},
+  {restaurant:'BK509',date:'2025-02-06',ca_ttc:12170.7,ca_ht:10607.05,tickets_nb:652,drive_ttc:3468.1,kiosk_ttc:5167.8,livraison_ttc:1553.6,comptoir_ttc:1225.8,corrections_montant:347.1,corrections_pct:4.96,annulations_montant:0.0,remises_montant:438.68,remises_pct:3.6},
+  {restaurant:'BK509',date:'2025-02-07',ca_ttc:18527.9,ca_ht:16183.27,tickets_nb:858,drive_ttc:5357.7,kiosk_ttc:7919.7,livraison_ttc:2255.7,comptoir_ttc:1899.5,corrections_montant:443.4,corrections_pct:4.18,annulations_montant:0.0,remises_montant:660.39,remises_pct:3.56},
+  {restaurant:'BK509',date:'2025-02-08',ca_ttc:22304.5,ca_ht:19385.33,tickets_nb:915,drive_ttc:5753.0,kiosk_ttc:10121.4,livraison_ttc:2104.0,comptoir_ttc:2598.5,corrections_montant:574.2,corrections_pct:4.71,annulations_montant:0.0,remises_montant:882.16,remises_pct:3.96},
+  {restaurant:'BK509',date:'2025-02-09',ca_ttc:18807.8,ca_ht:16250.54,tickets_nb:780,drive_ttc:4767.6,kiosk_ttc:7570.2,livraison_ttc:2881.6,comptoir_ttc:1775.4,corrections_montant:323.4,corrections_pct:2.88,annulations_montant:0.0,remises_montant:820.24,remises_pct:4.36},
+  {restaurant:'BK509',date:'2025-02-10',ca_ttc:10836.1,ca_ht:9478.1,tickets_nb:583,drive_ttc:3295.7,kiosk_ttc:4833.5,livraison_ttc:1143.0,comptoir_ttc:1128.5,corrections_montant:358.3,corrections_pct:5.97,annulations_montant:0.0,remises_montant:370.92,remises_pct:3.42},
+  {restaurant:'BK509',date:'2025-02-11',ca_ttc:12292.7,ca_ht:10775.36,tickets_nb:653,drive_ttc:3659.7,kiosk_ttc:5122.7,livraison_ttc:1499.5,comptoir_ttc:1325.8,corrections_montant:416.9,corrections_pct:5.81,annulations_montant:0.0,remises_montant:384.07,remises_pct:3.12},
+  {restaurant:'BK509',date:'2025-02-12',ca_ttc:15640.4,ca_ht:13634.67,tickets_nb:807,drive_ttc:3903.1,kiosk_ttc:7336.3,livraison_ttc:1807.0,comptoir_ttc:1848.9,corrections_montant:260.8,corrections_pct:3.14,annulations_montant:0.0,remises_montant:591.16,remises_pct:3.78},
+  {restaurant:'BK509',date:'2025-02-13',ca_ttc:12426.6,ca_ht:10928.91,tickets_nb:644,drive_ttc:3715.6,kiosk_ttc:4932.9,livraison_ttc:1424.4,comptoir_ttc:1647.1,corrections_montant:423.1,corrections_pct:5.65,annulations_montant:0.0,remises_montant:350.58,remises_pct:2.82},
+  {restaurant:'BK509',date:'2025-02-14',ca_ttc:19216.7,ca_ht:16700.0,tickets_nb:898,drive_ttc:5753.5,kiosk_ttc:8359.1,livraison_ttc:1201.9,comptoir_ttc:2828.6,corrections_montant:511.5,corrections_pct:4.71,annulations_montant:0.0,remises_montant:784.47,remises_pct:4.08},
+  {restaurant:'BK509',date:'2025-02-15',ca_ttc:19482.4,ca_ht:16920.24,tickets_nb:844,drive_ttc:4887.7,kiosk_ttc:10233.2,livraison_ttc:1174.9,comptoir_ttc:2352.9,corrections_montant:542.8,corrections_pct:5.87,annulations_montant:0.0,remises_montant:807.48,remises_pct:4.14},
+  {restaurant:'BK509',date:'2025-02-16',ca_ttc:16834.4,ca_ht:14577.09,tickets_nb:715,drive_ttc:4427.9,kiosk_ttc:7749.4,livraison_ttc:1867.3,comptoir_ttc:2053.1,corrections_montant:363.8,corrections_pct:4.0,annulations_montant:0.0,remises_montant:739.68,remises_pct:4.39},
+  {restaurant:'BK509',date:'2025-02-17',ca_ttc:11874.2,ca_ht:10259.08,tickets_nb:632,drive_ttc:3219.8,kiosk_ttc:5973.2,livraison_ttc:816.9,comptoir_ttc:1382.3,corrections_montant:306.0,corrections_pct:5.19,annulations_montant:0.0,remises_montant:570.3,remises_pct:4.8},
+  {restaurant:'BK509',date:'2025-02-18',ca_ttc:14420.8,ca_ht:12510.74,tickets_nb:707,drive_ttc:3598.8,kiosk_ttc:6625.2,livraison_ttc:1410.9,comptoir_ttc:1967.0,corrections_montant:692.3,corrections_pct:8.88,annulations_montant:0.0,remises_montant:596.75,remises_pct:4.14},
+  {restaurant:'BK509',date:'2025-02-19',ca_ttc:17349.7,ca_ht:15176.74,tickets_nb:828,drive_ttc:4182.5,kiosk_ttc:8083.6,livraison_ttc:1966.0,comptoir_ttc:2136.8,corrections_montant:380.7,corrections_pct:4.11,annulations_montant:0.0,remises_montant:577.48,remises_pct:3.33},
+  {restaurant:'BK509',date:'2025-02-20',ca_ttc:16563.4,ca_ht:14339.0,tickets_nb:800,drive_ttc:4308.8,kiosk_ttc:7872.7,livraison_ttc:1682.3,comptoir_ttc:1969.6,corrections_montant:563.0,corrections_pct:6.48,annulations_montant:-44.6,remises_montant:733.62,remises_pct:4.43},
+  {restaurant:'BK509',date:'2025-02-21',ca_ttc:21040.2,ca_ht:18315.11,tickets_nb:960,drive_ttc:5078.1,kiosk_ttc:9628.3,livraison_ttc:2116.4,comptoir_ttc:2630.4,corrections_montant:658.1,corrections_pct:5.77,annulations_montant:-4.0,remises_montant:798.51,remises_pct:3.8},
+  {restaurant:'BK509',date:'2025-02-22',ca_ttc:22735.7,ca_ht:19792.75,tickets_nb:956,drive_ttc:5415.7,kiosk_ttc:10442.1,livraison_ttc:2529.4,comptoir_ttc:3076.1,corrections_montant:611.5,corrections_pct:4.97,annulations_montant:0.0,remises_montant:886.42,remises_pct:3.9},
+  {restaurant:'BK509',date:'2025-02-23',ca_ttc:19711.9,ca_ht:17205.6,tickets_nb:795,drive_ttc:5196.7,kiosk_ttc:8715.0,livraison_ttc:2495.8,comptoir_ttc:1872.6,corrections_montant:398.0,corrections_pct:3.62,annulations_montant:-82.1,remises_montant:696.0,remises_pct:3.53},
+  {restaurant:'BK509',date:'2025-02-24',ca_ttc:14694.35,ca_ht:12805.73,tickets_nb:731,drive_ttc:3791.85,kiosk_ttc:6984.0,livraison_ttc:1249.7,comptoir_ttc:1914.7,corrections_montant:605.0,corrections_pct:7.85,annulations_montant:-28.4,remises_montant:545.92,remises_pct:3.72},
+  {restaurant:'BK509',date:'2025-02-25',ca_ttc:14688.7,ca_ht:12809.26,tickets_nb:714,drive_ttc:3802.4,kiosk_ttc:6300.9,livraison_ttc:1373.5,comptoir_ttc:2291.9,corrections_montant:489.8,corrections_pct:5.84,annulations_montant:-50.5,remises_montant:546.41,remises_pct:3.72},
+  {restaurant:'BK509',date:'2025-02-26',ca_ttc:16019.4,ca_ht:14019.05,tickets_nb:784,drive_ttc:3352.0,kiosk_ttc:7962.2,livraison_ttc:1630.6,comptoir_ttc:2376.3,corrections_montant:667.5,corrections_pct:8.28,annulations_montant:-10.0,remises_montant:550.13,remises_pct:3.43},
+  {restaurant:'BK509',date:'2025-02-27',ca_ttc:14376.3,ca_ht:12475.47,tickets_nb:713,drive_ttc:3996.3,kiosk_ttc:6732.6,livraison_ttc:1181.2,comptoir_ttc:1671.2,corrections_montant:370.2,corrections_pct:4.84,annulations_montant:-2.2,remises_montant:600.96,remises_pct:4.18},
+  {restaurant:'BK509',date:'2025-02-28',ca_ttc:20260.2,ca_ht:17372.64,tickets_nb:904,drive_ttc:5265.0,kiosk_ttc:9330.3,livraison_ttc:2113.6,comptoir_ttc:2323.7,corrections_montant:476.0,corrections_pct:4.36,annulations_montant:0.0,remises_montant:1067.05,remises_pct:5.27},
+  {restaurant:'BK509',date:'2025-03-01',ca_ttc:19869.0,ca_ht:17203.48,tickets_nb:867,drive_ttc:5281.5,kiosk_ttc:9729.1,livraison_ttc:1681.1,comptoir_ttc:2248.8,corrections_montant:496.9,corrections_pct:4.9,annulations_montant:0.0,remises_montant:893.05,remises_pct:4.49},
+  {restaurant:'BK509',date:'2025-03-02',ca_ttc:18486.0,ca_ht:15866.18,tickets_nb:769,drive_ttc:4433.6,kiosk_ttc:8573.0,livraison_ttc:2201.3,comptoir_ttc:1828.9,corrections_montant:421.2,corrections_pct:4.25,annulations_montant:0.0,remises_montant:936.03,remises_pct:5.06},
+  {restaurant:'BK509',date:'2025-03-03',ca_ttc:10660.8,ca_ht:9260.18,tickets_nb:586,drive_ttc:2941.2,kiosk_ttc:4770.4,livraison_ttc:1481.5,comptoir_ttc:1133.7,corrections_montant:336.1,corrections_pct:5.71,annulations_montant:0.0,remises_montant:433.66,remises_pct:4.07},
+  {restaurant:'BK509',date:'2025-03-04',ca_ttc:12973.5,ca_ht:11238.02,tickets_nb:667,drive_ttc:4092.2,kiosk_ttc:5090.7,livraison_ttc:1730.1,comptoir_ttc:1277.2,corrections_montant:402.8,corrections_pct:5.11,annulations_montant:-2.9,remises_montant:552.7,remises_pct:4.26},
+  {restaurant:'BK509',date:'2025-03-05',ca_ttc:14947.0,ca_ht:12882.87,tickets_nb:792,drive_ttc:3583.2,kiosk_ttc:6618.3,livraison_ttc:2062.2,comptoir_ttc:1548.0,corrections_montant:425.9,corrections_pct:5.11,annulations_montant:0.0,remises_montant:700.66,remises_pct:4.69},
+  {restaurant:'BK509',date:'2025-03-06',ca_ttc:12960.3,ca_ht:11287.86,tickets_nb:705,drive_ttc:3431.9,kiosk_ttc:6448.3,livraison_ttc:1475.2,comptoir_ttc:998.6,corrections_montant:226.2,corrections_pct:3.47,annulations_montant:-8.2,remises_montant:503.13,remises_pct:3.88},
+  {restaurant:'BK509',date:'2025-03-07',ca_ttc:18808.85,ca_ht:16242.02,tickets_nb:912,drive_ttc:4928.15,kiosk_ttc:8869.3,livraison_ttc:2044.1,comptoir_ttc:1577.1,corrections_montant:456.2,corrections_pct:4.59,annulations_montant:0.0,remises_montant:850.84,remises_pct:4.52},
+  {restaurant:'BK509',date:'2025-03-08',ca_ttc:21849.4,ca_ht:19001.51,tickets_nb:973,drive_ttc:5251.9,kiosk_ttc:10686.7,livraison_ttc:2000.6,comptoir_ttc:2689.9,corrections_montant:858.8,corrections_pct:7.69,annulations_montant:0.0,remises_montant:853.13,remises_pct:3.9},
+  {restaurant:'BK509',date:'2025-03-09',ca_ttc:17047.6,ca_ht:14736.87,tickets_nb:753,drive_ttc:4729.3,kiosk_ttc:7000.0,livraison_ttc:2232.4,comptoir_ttc:1605.7,corrections_montant:681.4,corrections_pct:6.78,annulations_montant:0.0,remises_montant:729.76,remises_pct:4.28},
+  {restaurant:'BK509',date:'2025-03-10',ca_ttc:10060.7,ca_ht:8751.61,tickets_nb:560,drive_ttc:2605.7,kiosk_ttc:4874.1,livraison_ttc:940.4,comptoir_ttc:1096.5,corrections_montant:313.2,corrections_pct:6.04,annulations_montant:0.0,remises_montant:399.7,remises_pct:3.97},
+  {restaurant:'BK509',date:'2025-03-11',ca_ttc:10764.4,ca_ht:9363.21,tickets_nb:606,drive_ttc:3147.1,kiosk_ttc:4568.6,livraison_ttc:1467.0,comptoir_ttc:988.6,corrections_montant:291.4,corrections_pct:4.7,annulations_montant:0.0,remises_montant:420.29,remises_pct:3.9},
+  {restaurant:'BK509',date:'2025-03-12',ca_ttc:13508.0,ca_ht:11807.28,tickets_nb:730,drive_ttc:3603.3,kiosk_ttc:6367.3,livraison_ttc:1339.0,comptoir_ttc:1363.5,corrections_montant:485.8,corrections_pct:6.8,annulations_montant:-29.9,remises_montant:459.41,remises_pct:3.4},
+  {restaurant:'BK509',date:'2025-03-13',ca_ttc:12855.8,ca_ht:11216.46,tickets_nb:705,drive_ttc:3988.3,kiosk_ttc:5238.7,livraison_ttc:1103.0,comptoir_ttc:1670.3,corrections_montant:398.7,corrections_pct:5.23,annulations_montant:0.0,remises_montant:465.3,remises_pct:3.62},
+  {restaurant:'BK509',date:'2025-03-14',ca_ttc:17800.3,ca_ht:15417.53,tickets_nb:893,drive_ttc:5044.3,kiosk_ttc:7786.5,livraison_ttc:1802.8,comptoir_ttc:2153.3,corrections_montant:572.1,corrections_pct:5.71,annulations_montant:0.0,remises_montant:771.52,remises_pct:4.33},
+  {restaurant:'BK509',date:'2025-03-15',ca_ttc:19183.6,ca_ht:16644.99,tickets_nb:917,drive_ttc:4439.2,kiosk_ttc:9748.9,livraison_ttc:1986.9,comptoir_ttc:2035.2,corrections_montant:389.3,corrections_pct:4.13,annulations_montant:-13.8,remises_montant:799.13,remises_pct:4.17},
+  {restaurant:'BK509',date:'2025-03-16',ca_ttc:18509.4,ca_ht:15849.03,tickets_nb:822,drive_ttc:4329.6,kiosk_ttc:8652.7,livraison_ttc:2569.4,comptoir_ttc:1930.7,corrections_montant:409.9,corrections_pct:4.16,annulations_montant:-5.0,remises_montant:994.66,remises_pct:5.37},
+  {restaurant:'BK509',date:'2025-03-17',ca_ttc:9475.6,ca_ht:8223.88,tickets_nb:540,drive_ttc:2743.8,kiosk_ttc:4543.9,livraison_ttc:687.1,comptoir_ttc:906.9,corrections_montant:237.1,corrections_pct:4.81,annulations_montant:0.0,remises_montant:402.32,remises_pct:4.25},
+  {restaurant:'BK509',date:'2025-03-18',ca_ttc:11278.5,ca_ht:9769.44,tickets_nb:637,drive_ttc:3299.6,kiosk_ttc:5190.2,livraison_ttc:1124.7,comptoir_ttc:768.6,corrections_montant:92.5,corrections_pct:1.52,annulations_montant:0.0,remises_montant:472.31,remises_pct:4.19},
+  {restaurant:'BK509',date:'2025-03-19',ca_ttc:12727.2,ca_ht:11110.54,tickets_nb:702,drive_ttc:3471.3,kiosk_ttc:5781.6,livraison_ttc:1657.8,comptoir_ttc:1139.1,corrections_montant:204.9,corrections_pct:2.95,annulations_montant:0.0,remises_montant:444.44,remises_pct:3.49},
+  {restaurant:'BK509',date:'2025-03-20',ca_ttc:11288.5,ca_ht:9891.43,tickets_nb:620,drive_ttc:3332.1,kiosk_ttc:4704.5,livraison_ttc:1529.5,comptoir_ttc:1187.6,corrections_montant:350.7,corrections_pct:5.33,annulations_montant:0.0,remises_montant:364.98,remises_pct:3.23},
+  {restaurant:'BK509',date:'2025-03-21',ca_ttc:17775.8,ca_ht:15239.3,tickets_nb:890,drive_ttc:4405.7,kiosk_ttc:7630.7,livraison_ttc:2189.3,comptoir_ttc:1936.5,corrections_montant:289.2,corrections_pct:2.85,annulations_montant:0.0,remises_montant:921.12,remises_pct:5.18},
+  {restaurant:'BK509',date:'2025-03-22',ca_ttc:20139.6,ca_ht:17501.91,tickets_nb:946,drive_ttc:5170.9,kiosk_ttc:9970.3,livraison_ttc:1410.0,comptoir_ttc:2362.9,corrections_montant:786.9,corrections_pct:7.74,annulations_montant:0.0,remises_montant:820.04,remises_pct:4.07},
+  {restaurant:'BK509',date:'2025-03-23',ca_ttc:16070.7,ca_ht:13938.86,tickets_nb:752,drive_ttc:4018.2,kiosk_ttc:7521.1,livraison_ttc:2060.0,comptoir_ttc:1371.7,corrections_montant:291.2,corrections_pct:3.41,annulations_montant:-36.2,remises_montant:669.79,remises_pct:4.17},
+  {restaurant:'BK509',date:'2025-03-24',ca_ttc:10046.3,ca_ht:8763.42,tickets_nb:567,drive_ttc:3300.1,kiosk_ttc:4769.8,livraison_ttc:683.9,comptoir_ttc:765.4,corrections_montant:254.5,corrections_pct:4.82,annulations_montant:0.0,remises_montant:378.16,remises_pct:3.76},
+  {restaurant:'BK509',date:'2025-03-25',ca_ttc:10147.3,ca_ht:8782.7,tickets_nb:576,drive_ttc:2934.1,kiosk_ttc:4418.9,livraison_ttc:1136.8,comptoir_ttc:1156.6,corrections_montant:246.5,corrections_pct:4.3,annulations_montant:0.0,remises_montant:451.45,remises_pct:4.45},
+  {restaurant:'BK509',date:'2025-03-26',ca_ttc:12910.8,ca_ht:11317.78,tickets_nb:704,drive_ttc:3556.6,kiosk_ttc:6279.1,livraison_ttc:1282.5,comptoir_ttc:1193.5,corrections_montant:411.0,corrections_pct:6.2,annulations_montant:0.0,remises_montant:411.66,remises_pct:3.19},
+  {restaurant:'BK509',date:'2025-03-27',ca_ttc:11366.5,ca_ht:9790.25,tickets_nb:634,drive_ttc:3642.6,kiosk_ttc:4939.3,livraison_ttc:1410.9,comptoir_ttc:849.6,corrections_montant:248.0,corrections_pct:3.86,annulations_montant:0.0,remises_montant:563.07,remises_pct:4.95},
+  {restaurant:'BK509',date:'2025-03-28',ca_ttc:17908.2,ca_ht:15588.34,tickets_nb:856,drive_ttc:5208.4,kiosk_ttc:7768.8,livraison_ttc:1592.5,comptoir_ttc:2162.3,corrections_montant:474.5,corrections_pct:4.68,annulations_montant:0.0,remises_montant:691.16,remises_pct:3.86},
+  {restaurant:'BK509',date:'2025-03-29',ca_ttc:20263.9,ca_ht:17670.63,tickets_nb:998,drive_ttc:5006.4,kiosk_ttc:10412.8,livraison_ttc:1483.9,comptoir_ttc:2424.8,corrections_montant:607.3,corrections_pct:6.16,annulations_montant:0.0,remises_montant:759.48,remises_pct:3.75},
+  {restaurant:'BK509',date:'2025-03-30',ca_ttc:18404.3,ca_ht:15952.97,tickets_nb:828,drive_ttc:4720.0,kiosk_ttc:8337.7,livraison_ttc:2063.0,comptoir_ttc:2148.7,corrections_montant:606.5,corrections_pct:6.02,annulations_montant:0.0,remises_montant:772.98,remises_pct:4.2},
+  {restaurant:'BK509',date:'2025-03-31',ca_ttc:10070.2,ca_ht:8764.56,tickets_nb:558,drive_ttc:2695.8,kiosk_ttc:4862.7,livraison_ttc:1086.4,comptoir_ttc:1049.2,corrections_montant:220.9,corrections_pct:4.24,annulations_montant:0.0,remises_montant:396.97,remises_pct:3.94},
+  {restaurant:'BK509',date:'2025-04-01',ca_ttc:13790.9,ca_ht:12071.61,tickets_nb:711,drive_ttc:3445.2,kiosk_ttc:6260.4,livraison_ttc:1656.4,comptoir_ttc:1451.7,corrections_montant:392.2,corrections_pct:5.21,annulations_montant:-19.9,remises_montant:455.05,remises_pct:3.3},
+  {restaurant:'BK509',date:'2025-04-02',ca_ttc:15832.3,ca_ht:13878.43,tickets_nb:767,drive_ttc:4595.7,kiosk_ttc:7300.4,livraison_ttc:1475.5,comptoir_ttc:1517.3,corrections_montant:390.4,corrections_pct:4.58,annulations_montant:-52.1,remises_montant:506.44,remises_pct:3.2},
+  {restaurant:'BK509',date:'2025-04-03',ca_ttc:13784.3,ca_ht:12006.51,tickets_nb:711,drive_ttc:4027.7,kiosk_ttc:5682.2,livraison_ttc:2071.3,comptoir_ttc:1261.0,corrections_montant:260.5,corrections_pct:3.22,annulations_montant:0.0,remises_montant:512.21,remises_pct:3.72},
+  {restaurant:'BK509',date:'2025-04-04',ca_ttc:20192.2,ca_ht:17525.23,tickets_nb:952,drive_ttc:6059.5,kiosk_ttc:9068.2,livraison_ttc:1922.9,comptoir_ttc:1748.9,corrections_montant:384.2,corrections_pct:3.45,annulations_montant:0.0,remises_montant:829.38,remises_pct:4.11},
+  {restaurant:'BK509',date:'2025-04-05',ca_ttc:21883.4,ca_ht:19138.64,tickets_nb:982,drive_ttc:5183.1,kiosk_ttc:10406.1,livraison_ttc:1746.9,comptoir_ttc:3275.9,corrections_montant:719.6,corrections_pct:6.27,annulations_montant:-23.5,remises_montant:755.29,remises_pct:3.45},
+  {restaurant:'BK509',date:'2025-04-06',ca_ttc:18913.2,ca_ht:16395.86,tickets_nb:828,drive_ttc:4479.7,kiosk_ttc:9137.8,livraison_ttc:2455.5,comptoir_ttc:1523.8,corrections_montant:348.6,corrections_pct:3.57,annulations_montant:-29.0,remises_montant:797.52,remises_pct:4.22},
+  {restaurant:'BK509',date:'2025-04-07',ca_ttc:10320.7,ca_ht:8981.07,tickets_nb:582,drive_ttc:2895.9,kiosk_ttc:5107.5,livraison_ttc:766.6,comptoir_ttc:1341.3,corrections_montant:259.9,corrections_pct:4.99,annulations_montant:0.0,remises_montant:415.2,remises_pct:4.02},
+  {restaurant:'BK509',date:'2025-04-08',ca_ttc:11750.8,ca_ht:10200.85,tickets_nb:620,drive_ttc:3034.8,kiosk_ttc:5383.6,livraison_ttc:1128.4,comptoir_ttc:1436.5,corrections_montant:402.3,corrections_pct:6.32,annulations_montant:0.0,remises_montant:483.46,remises_pct:4.11},
+  {restaurant:'BK509',date:'2025-04-09',ca_ttc:14736.6,ca_ht:12768.09,tickets_nb:757,drive_ttc:3696.9,kiosk_ttc:7375.4,livraison_ttc:1216.3,comptoir_ttc:1633.1,corrections_montant:371.1,corrections_pct:5.04,annulations_montant:0.0,remises_montant:639.4,remises_pct:4.34},
+  {restaurant:'BK509',date:'2025-04-10',ca_ttc:12963.7,ca_ht:11264.15,tickets_nb:697,drive_ttc:3479.3,kiosk_ttc:6308.8,livraison_ttc:1489.4,comptoir_ttc:1052.4,corrections_montant:211.5,corrections_pct:3.18,annulations_montant:0.0,remises_montant:522.05,remises_pct:4.03},
+  {restaurant:'BK509',date:'2025-04-11',ca_ttc:18749.4,ca_ht:16117.81,tickets_nb:934,drive_ttc:5133.8,kiosk_ttc:8503.4,livraison_ttc:1597.4,comptoir_ttc:2045.3,corrections_montant:372.3,corrections_pct:3.63,annulations_montant:0.0,remises_montant:934.36,remises_pct:4.98},
+  {restaurant:'BK509',date:'2025-04-12',ca_ttc:19386.7,ca_ht:16885.05,tickets_nb:872,drive_ttc:5143.6,kiosk_ttc:9539.4,livraison_ttc:1554.7,comptoir_ttc:2382.6,corrections_montant:852.6,corrections_pct:8.66,annulations_montant:0.0,remises_montant:756.75,remises_pct:3.9},
+  {restaurant:'BK509',date:'2025-04-13',ca_ttc:19092.7,ca_ht:16506.14,tickets_nb:843,drive_ttc:5196.2,kiosk_ttc:8761.6,livraison_ttc:2077.9,comptoir_ttc:1700.6,corrections_montant:449.6,corrections_pct:4.35,annulations_montant:0.0,remises_montant:857.73,remises_pct:4.49},
+  {restaurant:'BK509',date:'2025-04-14',ca_ttc:13763.6,ca_ht:11928.3,tickets_nb:684,drive_ttc:3289.9,kiosk_ttc:7134.4,livraison_ttc:1260.2,comptoir_ttc:1477.0,corrections_montant:311.6,corrections_pct:4.7,annulations_montant:-10.9,remises_montant:580.17,remises_pct:4.22},
+  {restaurant:'BK509',date:'2025-04-15',ca_ttc:13842.4,ca_ht:12035.29,tickets_nb:683,drive_ttc:3352.0,kiosk_ttc:6797.0,livraison_ttc:1457.1,comptoir_ttc:1623.8,corrections_montant:344.8,corrections_pct:4.89,annulations_montant:0.0,remises_montant:546.94,remises_pct:3.95},
+  {restaurant:'BK509',date:'2025-04-16',ca_ttc:14683.8,ca_ht:12952.84,tickets_nb:767,drive_ttc:3832.4,kiosk_ttc:7078.4,livraison_ttc:1216.9,comptoir_ttc:1933.4,corrections_montant:544.0,corrections_pct:7.15,annulations_montant:0.0,remises_montant:390.22,remises_pct:2.66},
+  {restaurant:'BK509',date:'2025-04-17',ca_ttc:14423.8,ca_ht:12543.17,tickets_nb:707,drive_ttc:3613.6,kiosk_ttc:6619.3,livraison_ttc:1434.9,comptoir_ttc:1784.2,corrections_montant:488.9,corrections_pct:6.26,annulations_montant:0.0,remises_montant:567.68,remises_pct:3.94},
+  {restaurant:'BK509',date:'2025-04-18',ca_ttc:18268.15,ca_ht:16013.72,tickets_nb:826,drive_ttc:4972.1,kiosk_ttc:8927.3,livraison_ttc:1526.55,comptoir_ttc:1771.8,corrections_montant:615.8,corrections_pct:6.59,annulations_montant:-47.4,remises_montant:588.8,remises_pct:3.22},
+  {restaurant:'BK509',date:'2025-04-19',ca_ttc:19058.4,ca_ht:16586.14,tickets_nb:838,drive_ttc:4804.3,kiosk_ttc:9278.1,livraison_ttc:1712.9,comptoir_ttc:2089.7,corrections_montant:537.6,corrections_pct:5.5,annulations_montant:0.0,remises_montant:740.14,remises_pct:3.88},
+  {restaurant:'BK509',date:'2025-04-20',ca_ttc:13873.15,ca_ht:12047.57,tickets_nb:642,drive_ttc:3638.3,kiosk_ttc:6495.1,livraison_ttc:1510.15,comptoir_ttc:1436.6,corrections_montant:310.3,corrections_pct:4.21,annulations_montant:-3.2,remises_montant:567.85,remises_pct:4.09},
+  {restaurant:'BK509',date:'2025-04-21',ca_ttc:17120.2,ca_ht:14944.11,tickets_nb:758,drive_ttc:4477.2,kiosk_ttc:8443.6,livraison_ttc:1620.5,comptoir_ttc:1860.7,corrections_montant:582.4,corrections_pct:6.71,annulations_montant:-13.2,remises_montant:634.53,remises_pct:3.71},
+  {restaurant:'BK509',date:'2025-04-22',ca_ttc:12743.95,ca_ht:11219.22,tickets_nb:617,drive_ttc:2959.3,kiosk_ttc:6396.1,livraison_ttc:1042.45,comptoir_ttc:1652.4,corrections_montant:541.9,corrections_pct:8.54,annulations_montant:-12.3,remises_montant:354.76,remises_pct:2.78},
+  {restaurant:'BK509',date:'2025-04-23',ca_ttc:13702.85,ca_ht:11957.44,tickets_nb:687,drive_ttc:3489.3,kiosk_ttc:6281.6,livraison_ttc:1336.35,comptoir_ttc:2022.9,corrections_montant:489.0,corrections_pct:6.59,annulations_montant:0.0,remises_montant:492.28,remises_pct:3.59},
+  {restaurant:'BK509',date:'2025-04-24',ca_ttc:12823.25,ca_ht:11172.27,tickets_nb:663,drive_ttc:3353.8,kiosk_ttc:6247.5,livraison_ttc:1174.65,comptoir_ttc:1361.1,corrections_montant:345.4,corrections_pct:5.25,annulations_montant:-9.0,remises_montant:486.57,remises_pct:3.79},
+  {restaurant:'BK509',date:'2025-04-25',ca_ttc:16790.9,ca_ht:14649.94,tickets_nb:792,drive_ttc:4228.2,kiosk_ttc:7898.7,livraison_ttc:1543.4,comptoir_ttc:2332.3,corrections_montant:612.4,corrections_pct:6.89,annulations_montant:-23.9,remises_montant:617.44,remises_pct:3.68},
+  {restaurant:'BK509',date:'2025-04-26',ca_ttc:19577.7,ca_ht:17235.02,tickets_nb:870,drive_ttc:4926.7,kiosk_ttc:9466.6,livraison_ttc:1742.0,comptoir_ttc:2501.9,corrections_montant:574.9,corrections_pct:5.69,annulations_montant:-13.2,remises_montant:554.06,remises_pct:2.83},
+  {restaurant:'BK509',date:'2025-04-27',ca_ttc:19245.1,ca_ht:16750.56,tickets_nb:815,drive_ttc:4480.0,kiosk_ttc:9597.7,livraison_ttc:1910.9,comptoir_ttc:1990.0,corrections_montant:353.1,corrections_pct:3.66,annulations_montant:-29.7,remises_montant:740.99,remises_pct:3.85},
+  {restaurant:'BK509',date:'2025-04-28',ca_ttc:11908.1,ca_ht:10308.99,tickets_nb:602,drive_ttc:2969.8,kiosk_ttc:5811.8,livraison_ttc:1081.9,comptoir_ttc:1341.6,corrections_montant:395.0,corrections_pct:6.48,annulations_montant:0.0,remises_montant:521.14,remises_pct:4.38},
+  {restaurant:'BK509',date:'2025-04-29',ca_ttc:11133.1,ca_ht:9660.99,tickets_nb:575,drive_ttc:3409.1,kiosk_ttc:4511.9,livraison_ttc:1416.8,comptoir_ttc:1132.1,corrections_montant:329.7,corrections_pct:4.98,annulations_montant:0.0,remises_montant:454.61,remises_pct:4.08},
+  {restaurant:'BK509',date:'2025-04-30',ca_ttc:17665.85,ca_ht:15390.54,tickets_nb:853,drive_ttc:4121.4,kiosk_ttc:8442.8,livraison_ttc:1720.25,comptoir_ttc:2100.6,corrections_montant:596.0,corrections_pct:6.46,annulations_montant:0.0,remises_montant:651.56,remises_pct:3.69},
+  {restaurant:'BK509',date:'2025-05-01',ca_ttc:17353.05,ca_ht:15050.22,tickets_nb:774,drive_ttc:4615.9,kiosk_ttc:8413.2,livraison_ttc:1890.75,comptoir_ttc:1377.6,corrections_montant:685.5,corrections_pct:7.67,annulations_montant:-9.7,remises_montant:706.33,remises_pct:4.07},
+  {restaurant:'BK509',date:'2025-05-02',ca_ttc:16185.85,ca_ht:14085.23,tickets_nb:796,drive_ttc:4408.9,kiosk_ttc:7507.2,livraison_ttc:1413.65,comptoir_ttc:1631.2,corrections_montant:394.9,corrections_pct:4.55,annulations_montant:-10.3,remises_montant:620.45,remises_pct:3.83},
+  {restaurant:'BK509',date:'2025-05-03',ca_ttc:18692.1,ca_ht:16390.71,tickets_nb:855,drive_ttc:4834.0,kiosk_ttc:9168.2,livraison_ttc:1601.3,comptoir_ttc:2111.8,corrections_montant:602.7,corrections_pct:6.33,annulations_montant:-4.1,remises_montant:598.5,remises_pct:3.2},
+  {restaurant:'BK509',date:'2025-05-04',ca_ttc:20284.6,ca_ht:17773.82,tickets_nb:849,drive_ttc:5893.5,kiosk_ttc:8918.7,livraison_ttc:2478.2,comptoir_ttc:1801.7,corrections_montant:366.5,corrections_pct:3.22,annulations_montant:0.0,remises_montant:653.26,remises_pct:3.22},
+  {restaurant:'BK509',date:'2025-05-05',ca_ttc:11771.85,ca_ht:10254.59,tickets_nb:635,drive_ttc:3156.0,kiosk_ttc:6169.4,livraison_ttc:771.45,comptoir_ttc:1226.9,corrections_montant:348.8,corrections_pct:6.23,annulations_montant:0.0,remises_montant:467.9,remises_pct:3.97},
+  {restaurant:'BK509',date:'2025-05-06',ca_ttc:13148.45,ca_ht:11616.47,tickets_nb:679,drive_ttc:3983.3,kiosk_ttc:5983.8,livraison_ttc:1178.55,comptoir_ttc:1529.9,corrections_montant:523.2,corrections_pct:7.3,annulations_montant:0.0,remises_montant:329.19,remises_pct:2.5},
+  {restaurant:'BK509',date:'2025-05-07',ca_ttc:17678.35,ca_ht:15561.48,tickets_nb:874,drive_ttc:4057.9,kiosk_ttc:8796.7,livraison_ttc:1677.75,comptoir_ttc:1958.7,corrections_montant:369.8,corrections_pct:4.16,annulations_montant:-9.7,remises_montant:482.74,remises_pct:2.73},
+  {restaurant:'BK509',date:'2025-05-08',ca_ttc:16254.55,ca_ht:14263.28,tickets_nb:751,drive_ttc:4218.9,kiosk_ttc:7687.5,livraison_ttc:1647.25,comptoir_ttc:1775.0,corrections_montant:420.7,corrections_pct:4.91,annulations_montant:-19.7,remises_montant:493.0,remises_pct:3.03},
+  {restaurant:'BK509',date:'2025-05-09',ca_ttc:15782.8,ca_ht:13715.76,tickets_nb:797,drive_ttc:4537.3,kiosk_ttc:7525.4,livraison_ttc:1473.5,comptoir_ttc:1567.2,corrections_montant:409.2,corrections_pct:4.96,annulations_montant:0.0,remises_montant:649.91,remises_pct:4.12},
+  {restaurant:'BK509',date:'2025-05-10',ca_ttc:17332.65,ca_ht:15204.06,tickets_nb:822,drive_ttc:4569.0,kiosk_ttc:8281.7,livraison_ttc:1558.95,comptoir_ttc:1930.1,corrections_montant:250.7,corrections_pct:2.77,annulations_montant:-65.2,remises_montant:547.73,remises_pct:3.16},
+  {restaurant:'BK509',date:'2025-05-11',ca_ttc:17745.6,ca_ht:15505.34,tickets_nb:791,drive_ttc:4833.1,kiosk_ttc:8917.0,livraison_ttc:1436.1,comptoir_ttc:1260.2,corrections_montant:395.9,corrections_pct:4.48,annulations_montant:0.0,remises_montant:621.77,remises_pct:3.5},
+  {restaurant:'BK509',date:'2025-05-12',ca_ttc:9739.5,ca_ht:8571.02,tickets_nb:524,drive_ttc:2951.3,kiosk_ttc:4858.3,livraison_ttc:1035.2,comptoir_ttc:660.2,corrections_montant:213.5,corrections_pct:4.37,annulations_montant:0.0,remises_montant:282.15,remises_pct:2.9},
+  {restaurant:'BK509',date:'2025-05-13',ca_ttc:11335.9,ca_ht:9878.88,tickets_nb:619,drive_ttc:2956.9,kiosk_ttc:5094.5,livraison_ttc:1318.5,comptoir_ttc:1394.2,corrections_montant:430.8,corrections_pct:6.9,annulations_montant:-30.3,remises_montant:422.24,remises_pct:3.72},
+  {restaurant:'BK509',date:'2025-05-14',ca_ttc:13082.35,ca_ht:11347.27,tickets_nb:708,drive_ttc:3578.6,kiosk_ttc:6406.5,livraison_ttc:1290.85,comptoir_ttc:1274.7,corrections_montant:280.9,corrections_pct:4.21,annulations_montant:0.0,remises_montant:546.47,remises_pct:4.18},
+  {restaurant:'BK509',date:'2025-05-15',ca_ttc:11035.45,ca_ht:9566.6,tickets_nb:608,drive_ttc:3099.0,kiosk_ttc:5450.3,livraison_ttc:753.15,comptoir_ttc:1010.9,corrections_montant:242.3,corrections_pct:4.34,annulations_montant:0.0,remises_montant:466.83,remises_pct:4.23},
+  {restaurant:'BK509',date:'2025-05-16',ca_ttc:17576.7,ca_ht:15361.21,tickets_nb:907,drive_ttc:4722.4,kiosk_ttc:8191.7,livraison_ttc:1225.7,comptoir_ttc:2086.1,corrections_montant:469.8,corrections_pct:5.01,annulations_montant:-66.9,remises_montant:612.45,remises_pct:3.48},
+  {restaurant:'BK509',date:'2025-05-17',ca_ttc:16473.55,ca_ht:14315.77,tickets_nb:805,drive_ttc:3725.65,kiosk_ttc:8466.5,livraison_ttc:1323.8,comptoir_ttc:1797.5,corrections_montant:441.5,corrections_pct:5.51,annulations_montant:0.0,remises_montant:656.39,remises_pct:3.98},
+  {restaurant:'BK509',date:'2025-05-18',ca_ttc:18226.8,ca_ht:15834.11,tickets_nb:785,drive_ttc:5380.4,kiosk_ttc:7151.2,livraison_ttc:2764.4,comptoir_ttc:1558.1,corrections_montant:351.9,corrections_pct:3.18,annulations_montant:-28.1,remises_montant:713.96,remises_pct:3.92},
+  {restaurant:'BK509',date:'2025-05-19',ca_ttc:10642.8,ca_ht:9282.21,tickets_nb:606,drive_ttc:2749.4,kiosk_ttc:5369.6,livraison_ttc:951.4,comptoir_ttc:1011.1,corrections_montant:291.2,corrections_pct:5.52,annulations_montant:0.0,remises_montant:393.61,remises_pct:3.7},
+  {restaurant:'BK509',date:'2025-05-20',ca_ttc:11419.45,ca_ht:10017.09,tickets_nb:589,drive_ttc:2870.9,kiosk_ttc:5541.8,livraison_ttc:1141.35,comptoir_ttc:1295.1,corrections_montant:420.5,corrections_pct:7.15,annulations_montant:0.0,remises_montant:357.63,remises_pct:3.13},
+  {restaurant:'BK509',date:'2025-05-21',ca_ttc:12545.25,ca_ht:10946.22,tickets_nb:687,drive_ttc:3405.7,kiosk_ttc:5509.0,livraison_ttc:1343.35,comptoir_ttc:1502.2,corrections_montant:277.6,corrections_pct:3.95,annulations_montant:-23.1,remises_montant:435.05,remises_pct:3.47},
+  {restaurant:'BK509',date:'2025-05-22',ca_ttc:13205.55,ca_ht:11470.84,tickets_nb:727,drive_ttc:3604.0,kiosk_ttc:6067.9,livraison_ttc:1497.95,comptoir_ttc:1314.6,corrections_montant:565.4,corrections_pct:7.92,annulations_montant:-16.6,remises_montant:529.98,remises_pct:4.01},
+  {restaurant:'BK509',date:'2025-05-23',ca_ttc:18786.9,ca_ht:16224.46,tickets_nb:961,drive_ttc:4550.8,kiosk_ttc:8977.2,livraison_ttc:1740.3,comptoir_ttc:2267.9,corrections_montant:425.9,corrections_pct:4.34,annulations_montant:0.0,remises_montant:859.98,remises_pct:4.58},
+  {restaurant:'BK509',date:'2025-05-24',ca_ttc:16899.5,ca_ht:14773.56,tickets_nb:813,drive_ttc:4255.0,kiosk_ttc:7398.2,livraison_ttc:1479.7,comptoir_ttc:2892.0,corrections_montant:824.5,corrections_pct:8.68,annulations_montant:-11.0,remises_montant:590.75,remises_pct:3.5},
+  {restaurant:'BK509',date:'2025-05-25',ca_ttc:14161.4,ca_ht:12274.86,tickets_nb:635,drive_ttc:3641.9,kiosk_ttc:5746.0,livraison_ttc:1522.1,comptoir_ttc:2442.5,corrections_montant:611.6,corrections_pct:7.27,annulations_montant:0.0,remises_montant:596.5,remises_pct:4.21},
+  {restaurant:'BK509',date:'2025-05-26',ca_ttc:10290.25,ca_ht:8978.09,tickets_nb:593,drive_ttc:3099.0,kiosk_ttc:4538.8,livraison_ttc:860.55,comptoir_ttc:1126.2,corrections_montant:300.6,corrections_pct:5.23,annulations_montant:0.0,remises_montant:371.58,remises_pct:3.61},
+  {restaurant:'BK509',date:'2025-05-27',ca_ttc:11933.9,ca_ht:10462.12,tickets_nb:639,drive_ttc:3067.6,kiosk_ttc:5681.4,livraison_ttc:1410.7,comptoir_ttc:1230.0,corrections_montant:238.2,corrections_pct:3.81,annulations_montant:0.0,remises_montant:380.54,remises_pct:3.19},
+  {restaurant:'BK509',date:'2025-05-28',ca_ttc:16915.6,ca_ht:14784.55,tickets_nb:868,drive_ttc:3881.1,kiosk_ttc:8962.2,livraison_ttc:1241.4,comptoir_ttc:1925.1,corrections_montant:506.3,corrections_pct:6.37,annulations_montant:-9.7,remises_montant:586.79,remises_pct:3.47},
+  {restaurant:'BK509',date:'2025-05-29',ca_ttc:15975.25,ca_ht:13965.55,tickets_nb:771,drive_ttc:4352.9,kiosk_ttc:7671.1,livraison_ttc:1650.15,comptoir_ttc:1629.3,corrections_montant:537.8,corrections_pct:6.48,annulations_montant:0.0,remises_montant:558.41,remises_pct:3.5},
+  {restaurant:'BK509',date:'2025-05-30',ca_ttc:16409.0,ca_ht:14352.53,tickets_nb:822,drive_ttc:4136.6,kiosk_ttc:7466.6,livraison_ttc:1444.4,comptoir_ttc:2512.7,corrections_montant:339.6,corrections_pct:3.8,annulations_montant:0.0,remises_montant:564.66,remises_pct:3.44},
+  {restaurant:'BK509',date:'2025-05-31',ca_ttc:13393.35,ca_ht:11699.22,tickets_nb:649,drive_ttc:3528.4,kiosk_ttc:6237.8,livraison_ttc:1119.65,comptoir_ttc:1837.1,corrections_montant:398.8,corrections_pct:5.57,annulations_montant:0.0,remises_montant:469.2,remises_pct:3.5},
+  {restaurant:'BK509',date:'2025-06-01',ca_ttc:21149.25,ca_ht:18617.29,tickets_nb:960,drive_ttc:5001.7,kiosk_ttc:10671.2,livraison_ttc:1835.85,comptoir_ttc:2163.2,corrections_montant:447.3,corrections_pct:4.27,annulations_montant:-12.0,remises_montant:567.72,remises_pct:2.68},
+  {restaurant:'BK509',date:'2025-06-02',ca_ttc:11292.7,ca_ht:9833.11,tickets_nb:627,drive_ttc:2889.4,kiosk_ttc:5045.6,livraison_ttc:1480.2,comptoir_ttc:1344.1,corrections_montant:274.9,corrections_pct:4.4,annulations_montant:0.0,remises_montant:426.49,remises_pct:3.78},
+  {restaurant:'BK509',date:'2025-06-03',ca_ttc:11567.1,ca_ht:10063.89,tickets_nb:626,drive_ttc:3333.15,kiosk_ttc:5227.6,livraison_ttc:1288.2,comptoir_ttc:1053.7,corrections_montant:870.95,corrections_pct:13.74,annulations_montant:-17.0,remises_montant:436.24,remises_pct:3.77},
+  {restaurant:'BK509',date:'2025-06-04',ca_ttc:16399.1,ca_ht:14274.56,tickets_nb:830,drive_ttc:4578.6,kiosk_ttc:7499.05,livraison_ttc:1578.0,comptoir_ttc:1787.55,corrections_montant:423.1,corrections_pct:4.75,annulations_montant:0.0,remises_montant:605.33,remises_pct:3.69},
+  {restaurant:'BK509',date:'2025-06-05',ca_ttc:13481.0,ca_ht:11796.75,tickets_nb:686,drive_ttc:3787.5,kiosk_ttc:6337.0,livraison_ttc:1404.5,comptoir_ttc:1311.6,corrections_montant:310.95,corrections_pct:4.35,annulations_montant:-22.2,remises_montant:429.02,remises_pct:3.18},
+  {restaurant:'BK509',date:'2025-06-06',ca_ttc:20387.7,ca_ht:17938.98,tickets_nb:959,drive_ttc:5646.75,kiosk_ttc:9142.95,livraison_ttc:2131.1,comptoir_ttc:2268.9,corrections_montant:553.45,corrections_pct:4.92,annulations_montant:-23.0,remises_montant:545.96,remises_pct:2.68},
+  {restaurant:'BK509',date:'2025-06-07',ca_ttc:20819.6,ca_ht:18151.71,tickets_nb:978,drive_ttc:5282.05,kiosk_ttc:10195.55,livraison_ttc:1778.7,comptoir_ttc:2481.6,corrections_montant:604.8,corrections_pct:5.69,annulations_montant:-9.1,remises_montant:733.29,remises_pct:3.52},
+  {restaurant:'BK509',date:'2025-06-08',ca_ttc:18404.8,ca_ht:16110.64,tickets_nb:803,drive_ttc:5129.7,kiosk_ttc:8250.1,livraison_ttc:2108.6,comptoir_ttc:1793.0,corrections_montant:681.65,corrections_pct:6.71,annulations_montant:0.0,remises_montant:566.75,remises_pct:3.08},
+  {restaurant:'BK509',date:'2025-06-09',ca_ttc:19249.15,ca_ht:16833.52,tickets_nb:867,drive_ttc:4788.7,kiosk_ttc:9200.85,livraison_ttc:1949.7,comptoir_ttc:1722.7,corrections_montant:539.0,corrections_pct:5.36,annulations_montant:0.0,remises_montant:610.36,remises_pct:3.17},
+  {restaurant:'BK509',date:'2025-06-10',ca_ttc:11242.15,ca_ht:9847.44,tickets_nb:629,drive_ttc:3180.15,kiosk_ttc:4958.85,livraison_ttc:1332.3,comptoir_ttc:1294.5,corrections_montant:353.25,corrections_pct:5.62,annulations_montant:-31.1,remises_montant:354.04,remises_pct:3.15},
+  {restaurant:'BK509',date:'2025-06-11',ca_ttc:14380.4,ca_ht:12619.36,tickets_nb:757,drive_ttc:4016.0,kiosk_ttc:6698.6,livraison_ttc:1322.8,comptoir_ttc:1651.6,corrections_montant:503.0,corrections_pct:6.55,annulations_montant:0.0,remises_montant:412.61,remises_pct:2.87},
+  {restaurant:'BK509',date:'2025-06-12',ca_ttc:12382.35,ca_ht:10711.32,tickets_nb:672,drive_ttc:3509.7,kiosk_ttc:5780.15,livraison_ttc:1280.6,comptoir_ttc:1205.35,corrections_montant:467.8,corrections_pct:7.09,annulations_montant:0.0,remises_montant:537.5,remises_pct:4.34},
+  {restaurant:'BK509',date:'2025-06-13',ca_ttc:17557.75,ca_ht:15289.83,tickets_nb:849,drive_ttc:4960.15,kiosk_ttc:7721.35,livraison_ttc:1855.5,comptoir_ttc:1819.65,corrections_montant:544.7,corrections_pct:5.54,annulations_montant:-76.2,remises_montant:633.86,remises_pct:3.61},
+  {restaurant:'BK509',date:'2025-06-14',ca_ttc:15335.8,ca_ht:13300.93,tickets_nb:730,drive_ttc:4167.2,kiosk_ttc:7255.05,livraison_ttc:1268.6,comptoir_ttc:1615.25,corrections_montant:444.15,corrections_pct:5.5,annulations_montant:-58.6,remises_montant:625.06,remises_pct:4.08},
+  {restaurant:'BK509',date:'2025-06-15',ca_ttc:17077.35,ca_ht:14644.42,tickets_nb:777,drive_ttc:4277.7,kiosk_ttc:7887.6,livraison_ttc:2139.3,comptoir_ttc:1432.65,corrections_montant:449.6,corrections_pct:4.89,annulations_montant:0.0,remises_montant:845.31,remises_pct:4.95},
+  {restaurant:'BK509',date:'2025-06-16',ca_ttc:11187.1,ca_ht:9740.83,tickets_nb:592,drive_ttc:3187.7,kiosk_ttc:5568.4,livraison_ttc:1127.1,comptoir_ttc:906.95,corrections_montant:309.8,corrections_pct:5.51,annulations_montant:0.0,remises_montant:408.53,remises_pct:3.65},
+  {restaurant:'BK509',date:'2025-06-17',ca_ttc:12948.95,ca_ht:11266.43,tickets_nb:645,drive_ttc:3147.1,kiosk_ttc:6016.95,livraison_ttc:1456.0,comptoir_ttc:1532.05,corrections_montant:590.95,corrections_pct:8.52,annulations_montant:-46.5,remises_montant:464.3,remises_pct:3.59},
+  {restaurant:'BK509',date:'2025-06-18',ca_ttc:14987.4,ca_ht:13073.74,tickets_nb:751,drive_ttc:4244.15,kiosk_ttc:6398.85,livraison_ttc:1617.6,comptoir_ttc:1678.4,corrections_montant:432.45,corrections_pct:5.04,annulations_montant:0.0,remises_montant:504.98,remises_pct:3.37},
+  {restaurant:'BK509',date:'2025-06-19',ca_ttc:11903.9,ca_ht:10339.93,tickets_nb:663,drive_ttc:3331.65,kiosk_ttc:5641.15,livraison_ttc:1373.7,comptoir_ttc:1006.35,corrections_montant:362.8,corrections_pct:5.79,annulations_montant:-12.4,remises_montant:458.65,remises_pct:3.85},
+  {restaurant:'BK509',date:'2025-06-20',ca_ttc:17340.9,ca_ht:15084.95,tickets_nb:827,drive_ttc:5080.9,kiosk_ttc:7903.6,livraison_ttc:1522.8,comptoir_ttc:2039.4,corrections_montant:455.9,corrections_pct:4.83,annulations_montant:0.0,remises_montant:658.07,remises_pct:3.79},
+  {restaurant:'BK509',date:'2025-06-21',ca_ttc:15776.9,ca_ht:13767.88,tickets_nb:754,drive_ttc:4254.15,kiosk_ttc:7983.45,livraison_ttc:917.3,comptoir_ttc:1887.55,corrections_montant:378.05,corrections_pct:4.85,annulations_montant:-23.7,remises_montant:565.63,remises_pct:3.59},
+  {restaurant:'BK509',date:'2025-06-22',ca_ttc:18375.55,ca_ht:16002.52,tickets_nb:806,drive_ttc:5395.75,kiosk_ttc:7557.65,livraison_ttc:2257.4,comptoir_ttc:1903.3,corrections_montant:568.85,corrections_pct:5.26,annulations_montant:0.0,remises_montant:654.19,remises_pct:3.56},
+  {restaurant:'BK509',date:'2025-06-23',ca_ttc:12039.4,ca_ht:10259.44,tickets_nb:665,drive_ttc:3037.45,kiosk_ttc:5731.15,livraison_ttc:1122.3,comptoir_ttc:1634.9,corrections_montant:345.6,corrections_pct:5.48,annulations_montant:-18.9,remises_montant:688.39,remises_pct:5.72},
+  {restaurant:'BK509',date:'2025-06-24',ca_ttc:10864.55,ca_ht:9224.12,tickets_nb:620,drive_ttc:3244.0,kiosk_ttc:4888.6,livraison_ttc:1156.7,comptoir_ttc:1019.95,corrections_montant:395.3,corrections_pct:6.61,annulations_montant:-1.8,remises_montant:656.09,remises_pct:6.04},
+  {restaurant:'BK509',date:'2025-06-25',ca_ttc:15343.7,ca_ht:13232.86,tickets_nb:766,drive_ttc:3936.5,kiosk_ttc:7333.2,livraison_ttc:1156.9,comptoir_ttc:1823.4,corrections_montant:302.7,corrections_pct:3.78,annulations_montant:0.0,remises_montant:693.04,remises_pct:4.52},
+  {restaurant:'BK509',date:'2025-06-26',ca_ttc:14163.9,ca_ht:12047.97,tickets_nb:731,drive_ttc:3608.35,kiosk_ttc:7111.45,livraison_ttc:1243.8,comptoir_ttc:1376.4,corrections_montant:412.75,corrections_pct:5.85,annulations_montant:0.0,remises_montant:839.59,remises_pct:5.93},
+  {restaurant:'BK509',date:'2025-06-27',ca_ttc:17636.1,ca_ht:15228.73,tickets_nb:895,drive_ttc:4964.25,kiosk_ttc:8153.25,livraison_ttc:1559.4,comptoir_ttc:2099.3,corrections_montant:485.9,corrections_pct:5.12,annulations_montant:-44.7,remises_montant:799.96,remises_pct:4.54},
+  {restaurant:'BK509',date:'2025-06-28',ca_ttc:17761.3,ca_ht:15236.44,tickets_nb:854,drive_ttc:4675.8,kiosk_ttc:8584.6,livraison_ttc:1313.4,comptoir_ttc:1977.35,corrections_montant:596.95,corrections_pct:6.51,annulations_montant:-37.3,remises_montant:904.73,remises_pct:5.09},
+  {restaurant:'BK509',date:'2025-06-29',ca_ttc:19824.55,ca_ht:17038.39,tickets_nb:926,drive_ttc:5188.0,kiosk_ttc:9461.35,livraison_ttc:2013.2,comptoir_ttc:1853.7,corrections_montant:493.05,corrections_pct:4.76,annulations_montant:-57.4,remises_montant:1000.36,remises_pct:5.05},
+  {restaurant:'BK509',date:'2025-06-30',ca_ttc:13438.95,ca_ht:11537.51,tickets_nb:700,drive_ttc:3338.8,kiosk_ttc:6014.15,livraison_ttc:1610.9,comptoir_ttc:1873.1,corrections_montant:674.15,corrections_pct:9.08,annulations_montant:-16.5,remises_montant:677.32,remises_pct:5.04},
+  {restaurant:'BK509',date:'2025-07-01',ca_ttc:14796.6,ca_ht:12847.31,tickets_nb:801,drive_ttc:4122.65,kiosk_ttc:6757.9,livraison_ttc:1605.7,comptoir_ttc:1626.05,corrections_montant:311.2,corrections_pct:3.87,annulations_montant:-32.9,remises_montant:589.28,remises_pct:3.98},
+  {restaurant:'BK509',date:'2025-07-02',ca_ttc:17298.35,ca_ht:15128.21,tickets_nb:839,drive_ttc:4045.65,kiosk_ttc:8989.15,livraison_ttc:1745.1,comptoir_ttc:1604.3,corrections_montant:310.2,corrections_pct:3.73,annulations_montant:-2.2,remises_montant:560.4,remises_pct:3.24},
+  {restaurant:'BK509',date:'2025-07-03',ca_ttc:13906.75,ca_ht:12266.82,tickets_nb:718,drive_ttc:3670.45,kiosk_ttc:6419.65,livraison_ttc:1284.8,comptoir_ttc:1809.5,corrections_montant:518.9,corrections_pct:6.93,annulations_montant:0.0,remises_montant:345.3,remises_pct:2.48},
+  {restaurant:'BK509',date:'2025-07-04',ca_ttc:17492.2,ca_ht:15358.95,tickets_nb:881,drive_ttc:5163.0,kiosk_ttc:8402.3,livraison_ttc:1663.6,comptoir_ttc:1694.3,corrections_montant:475.35,corrections_pct:5.23,annulations_montant:-21.5,remises_montant:516.68,remises_pct:2.95},
+  {restaurant:'BK509',date:'2025-07-05',ca_ttc:17523.5,ca_ht:15391.64,tickets_nb:843,drive_ttc:3825.2,kiosk_ttc:9514.35,livraison_ttc:1387.5,comptoir_ttc:2149.55,corrections_montant:559.6,corrections_pct:6.99,annulations_montant:0.0,remises_montant:521.17,remises_pct:2.97},
+  {restaurant:'BK509',date:'2025-07-06',ca_ttc:20568.45,ca_ht:18003.24,tickets_nb:882,drive_ttc:5543.3,kiosk_ttc:9446.0,livraison_ttc:2296.8,comptoir_ttc:2078.05,corrections_montant:581.25,corrections_pct:5.23,annulations_montant:0.0,remises_montant:647.13,remises_pct:3.15},
+  {restaurant:'BK509',date:'2025-07-07',ca_ttc:13180.5,ca_ht:11609.01,tickets_nb:668,drive_ttc:3574.8,kiosk_ttc:6322.5,livraison_ttc:1335.2,comptoir_ttc:1504.7,corrections_montant:405.85,corrections_pct:5.92,annulations_montant:-43.2,remises_montant:377.58,remises_pct:2.86},
+  {restaurant:'BK509',date:'2025-07-08',ca_ttc:14997.2,ca_ht:13160.96,tickets_nb:739,drive_ttc:3424.95,kiosk_ttc:7871.7,livraison_ttc:1299.1,comptoir_ttc:1766.15,corrections_montant:692.6,corrections_pct:9.72,annulations_montant:-108.6,remises_montant:451.72,remises_pct:3.01},
+  {restaurant:'BK509',date:'2025-07-09',ca_ttc:16910.15,ca_ht:14835.54,tickets_nb:848,drive_ttc:4216.1,kiosk_ttc:8049.6,livraison_ttc:1801.9,comptoir_ttc:2074.75,corrections_montant:482.8,corrections_pct:5.45,annulations_montant:0.0,remises_montant:495.72,remises_pct:2.93},
+  {restaurant:'BK509',date:'2025-07-10',ca_ttc:17137.95,ca_ht:15115.03,tickets_nb:796,drive_ttc:4600.75,kiosk_ttc:9171.4,livraison_ttc:1480.7,comptoir_ttc:1201.35,corrections_montant:578.0,corrections_pct:7.26,annulations_montant:-211.7,remises_montant:463.62,remises_pct:2.71},
+  {restaurant:'BK509',date:'2025-07-11',ca_ttc:18217.4,ca_ht:16092.29,tickets_nb:859,drive_ttc:4459.85,kiosk_ttc:8669.8,livraison_ttc:1785.5,comptoir_ttc:2303.05,corrections_montant:801.9,corrections_pct:8.4,annulations_montant:-57.3,remises_montant:460.88,remises_pct:2.53},
+  {restaurant:'BK509',date:'2025-07-12',ca_ttc:20892.95,ca_ht:18348.98,tickets_nb:876,drive_ttc:4652.3,kiosk_ttc:10787.0,livraison_ttc:1813.7,comptoir_ttc:2798.45,corrections_montant:918.3,corrections_pct:9.09,annulations_montant:-50.2,remises_montant:653.97,remises_pct:3.13},
+  {restaurant:'BK509',date:'2025-07-13',ca_ttc:18329.3,ca_ht:16103.4,tickets_nb:785,drive_ttc:4436.2,kiosk_ttc:8487.9,livraison_ttc:2089.3,comptoir_ttc:2030.35,corrections_montant:500.2,corrections_pct:5.08,annulations_montant:0.0,remises_montant:544.72,remises_pct:2.97},
+  {restaurant:'BK509',date:'2025-07-14',ca_ttc:19302.5,ca_ht:16925.58,tickets_nb:843,drive_ttc:4459.0,kiosk_ttc:9220.8,livraison_ttc:2414.5,comptoir_ttc:2483.1,corrections_montant:639.05,corrections_pct:6.34,annulations_montant:-6.0,remises_montant:619.63,remises_pct:3.21},
+  {restaurant:'BK509',date:'2025-07-15',ca_ttc:14405.15,ca_ht:12668.29,tickets_nb:692,drive_ttc:3640.15,kiosk_ttc:6624.0,livraison_ttc:1713.5,comptoir_ttc:1582.65,corrections_montant:504.2,corrections_pct:6.48,annulations_montant:0.0,remises_montant:407.75,remises_pct:2.83},
+  {restaurant:'BK509',date:'2025-07-16',ca_ttc:15754.8,ca_ht:13891.02,tickets_nb:788,drive_ttc:4304.7,kiosk_ttc:7407.6,livraison_ttc:1253.5,comptoir_ttc:2071.4,corrections_montant:571.5,corrections_pct:6.85,annulations_montant:-23.0,remises_montant:389.97,remises_pct:2.48},
+  {restaurant:'BK509',date:'2025-07-17',ca_ttc:14780.5,ca_ht:12982.9,tickets_nb:725,drive_ttc:3701.05,kiosk_ttc:6837.15,livraison_ttc:1730.0,comptoir_ttc:1510.3,corrections_montant:465.7,corrections_pct:5.86,annulations_montant:0.0,remises_montant:436.64,remises_pct:2.95},
+  {restaurant:'BK509',date:'2025-07-18',ca_ttc:17699.9,ca_ht:15540.7,tickets_nb:826,drive_ttc:4402.55,kiosk_ttc:8584.1,livraison_ttc:1396.5,comptoir_ttc:2344.6,corrections_montant:811.95,corrections_pct:8.91,annulations_montant:0.0,remises_montant:551.27,remises_pct:3.11},
+  {restaurant:'BK509',date:'2025-07-19',ca_ttc:19703.2,ca_ht:17312.28,tickets_nb:845,drive_ttc:4496.2,kiosk_ttc:9908.2,livraison_ttc:2016.8,comptoir_ttc:2602.5,corrections_montant:714.25,corrections_pct:7.29,annulations_montant:-9.7,remises_montant:608.55,remises_pct:3.09},
+  {restaurant:'BK509',date:'2025-07-20',ca_ttc:18426.5,ca_ht:16081.75,tickets_nb:799,drive_ttc:4188.95,kiosk_ttc:8666.65,livraison_ttc:2099.5,comptoir_ttc:2305.8,corrections_montant:409.55,corrections_pct:4.2,annulations_montant:0.0,remises_montant:667.63,remises_pct:3.62},
+  {restaurant:'BK509',date:'2025-07-21',ca_ttc:13713.75,ca_ht:12065.67,tickets_nb:709,drive_ttc:3395.75,kiosk_ttc:7028.95,livraison_ttc:1038.0,comptoir_ttc:1572.95,corrections_montant:517.45,corrections_pct:7.74,annulations_montant:-28.9,remises_montant:397.06,remises_pct:2.9},
+  {restaurant:'BK509',date:'2025-07-22',ca_ttc:13638.4,ca_ht:11973.11,tickets_nb:670,drive_ttc:3980.55,kiosk_ttc:6263.4,livraison_ttc:1437.1,comptoir_ttc:1347.75,corrections_montant:690.8,corrections_pct:9.37,annulations_montant:-36.2,remises_montant:430.95,remises_pct:3.16},
+  {restaurant:'BK509',date:'2025-07-23',ca_ttc:14519.5,ca_ht:12720.43,tickets_nb:716,drive_ttc:3744.6,kiosk_ttc:7052.55,livraison_ttc:1105.7,comptoir_ttc:1820.8,corrections_montant:415.55,corrections_pct:5.57,annulations_montant:-31.0,remises_montant:482.29,remises_pct:3.32},
+  {restaurant:'BK509',date:'2025-07-24',ca_ttc:14230.8,ca_ht:12497.66,tickets_nb:715,drive_ttc:3525.2,kiosk_ttc:7295.3,livraison_ttc:1173.1,comptoir_ttc:1622.5,corrections_montant:434.1,corrections_pct:6.26,annulations_montant:-8.5,remises_montant:442.42,remises_pct:3.11},
+  {restaurant:'BK509',date:'2025-07-25',ca_ttc:17077.7,ca_ht:15044.72,tickets_nb:791,drive_ttc:4761.2,kiosk_ttc:7931.55,livraison_ttc:1452.9,comptoir_ttc:2303.35,corrections_montant:496.25,corrections_pct:5.43,annulations_montant:0.0,remises_montant:478.26,remises_pct:2.8},
+  {restaurant:'BK509',date:'2025-07-26',ca_ttc:18145.1,ca_ht:15896.53,tickets_nb:821,drive_ttc:3193.25,kiosk_ttc:10157.5,livraison_ttc:1861.1,comptoir_ttc:2246.75,corrections_montant:652.5,corrections_pct:8.17,annulations_montant:-30.0,remises_montant:600.93,remises_pct:3.31},
+  {restaurant:'BK509',date:'2025-07-27',ca_ttc:18286.8,ca_ht:15963.76,tickets_nb:796,drive_ttc:4689.2,kiosk_ttc:7936.4,livraison_ttc:2036.8,comptoir_ttc:2260.7,corrections_montant:729.1,corrections_pct:7.04,annulations_montant:0.0,remises_montant:647.99,remises_pct:3.54},
+  {restaurant:'BK509',date:'2025-07-28',ca_ttc:14415.5,ca_ht:12688.02,tickets_nb:702,drive_ttc:3181.4,kiosk_ttc:6980.3,livraison_ttc:1374.1,comptoir_ttc:2083.45,corrections_montant:525.5,corrections_pct:7.07,annulations_montant:-6.0,remises_montant:416.37,remises_pct:2.89},
+  {restaurant:'BK509',date:'2025-07-29',ca_ttc:13757.15,ca_ht:12113.29,tickets_nb:663,drive_ttc:3549.0,kiosk_ttc:6561.9,livraison_ttc:1430.7,comptoir_ttc:1346.1,corrections_montant:456.15,corrections_pct:6.34,annulations_montant:-13.9,remises_montant:381.61,remises_pct:2.77},
+  {restaurant:'BK509',date:'2025-07-30',ca_ttc:16318.95,ca_ht:14259.42,tickets_nb:771,drive_ttc:3768.65,kiosk_ttc:8130.5,livraison_ttc:1497.7,comptoir_ttc:1891.15,corrections_montant:363.0,corrections_pct:4.43,annulations_montant:-6.0,remises_montant:564.38,remises_pct:3.46},
+  {restaurant:'BK509',date:'2025-07-31',ca_ttc:15116.85,ca_ht:13218.95,tickets_nb:749,drive_ttc:3438.5,kiosk_ttc:7235.15,livraison_ttc:1597.2,comptoir_ttc:2301.1,corrections_montant:531.55,corrections_pct:6.74,annulations_montant:0.0,remises_montant:533.3,remises_pct:3.53},
+  {restaurant:'BK509',date:'2025-08-01',ca_ttc:18303.6,ca_ht:16065.15,tickets_nb:828,drive_ttc:4026.75,kiosk_ttc:9064.05,livraison_ttc:1522.4,comptoir_ttc:2507.7,corrections_montant:469.8,corrections_pct:5.08,annulations_montant:0.0,remises_montant:564.78,remises_pct:3.09},
+  {restaurant:'BK509',date:'2025-08-02',ca_ttc:19813.75,ca_ht:17461.42,tickets_nb:894,drive_ttc:4406.55,kiosk_ttc:10588.15,livraison_ttc:1490.9,comptoir_ttc:2465.85,corrections_montant:785.2,corrections_pct:8.51,annulations_montant:-5.5,remises_montant:545.96,remises_pct:2.76},
+  {restaurant:'BK509',date:'2025-08-03',ca_ttc:19332.6,ca_ht:16992.78,tickets_nb:845,drive_ttc:4279.15,kiosk_ttc:9674.1,livraison_ttc:2099.7,comptoir_ttc:2243.55,corrections_montant:629.75,corrections_pct:6.52,annulations_montant:0.0,remises_montant:578.61,remises_pct:2.99},
+  {restaurant:'BK509',date:'2025-08-04',ca_ttc:15122.0,ca_ht:13328.89,tickets_nb:701,drive_ttc:3354.0,kiosk_ttc:7575.55,livraison_ttc:1419.1,comptoir_ttc:2255.45,corrections_montant:479.95,corrections_pct:6.36,annulations_montant:0.0,remises_montant:418.23,remises_pct:2.77},
+  {restaurant:'BK509',date:'2025-08-05',ca_ttc:15787.7,ca_ht:13888.75,tickets_nb:747,drive_ttc:3844.05,kiosk_ttc:7789.6,livraison_ttc:1463.2,comptoir_ttc:2034.0,corrections_montant:400.6,corrections_pct:5.01,annulations_montant:0.0,remises_montant:470.88,remises_pct:2.98},
+  {restaurant:'BK509',date:'2025-08-06',ca_ttc:17757.6,ca_ht:15691.95,tickets_nb:834,drive_ttc:3757.0,kiosk_ttc:9588.05,livraison_ttc:1420.2,comptoir_ttc:1969.95,corrections_montant:424.85,corrections_pct:5.2,annulations_montant:0.0,remises_montant:434.8,remises_pct:2.45},
+  {restaurant:'BK509',date:'2025-08-07',ca_ttc:17070.1,ca_ht:14960.76,tickets_nb:801,drive_ttc:4286.4,kiosk_ttc:8370.8,livraison_ttc:1863.2,comptoir_ttc:1692.45,corrections_montant:560.2,corrections_pct:6.44,annulations_montant:-14.5,remises_montant:562.68,remises_pct:3.3},
+  {restaurant:'BK509',date:'2025-08-08',ca_ttc:19195.4,ca_ht:16921.88,tickets_nb:857,drive_ttc:4598.35,kiosk_ttc:9099.25,livraison_ttc:1856.2,comptoir_ttc:2258.2,corrections_montant:513.7,corrections_pct:5.09,annulations_montant:-38.6,remises_montant:512.21,remises_pct:2.67},
+  {restaurant:'BK509',date:'2025-08-09',ca_ttc:20246.6,ca_ht:17873.32,tickets_nb:897,drive_ttc:4824.35,kiosk_ttc:11030.35,livraison_ttc:1549.1,comptoir_ttc:2008.4,corrections_montant:716.65,corrections_pct:7.78,annulations_montant:0.0,remises_montant:529.9,remises_pct:2.62},
+  {restaurant:'BK509',date:'2025-08-10',ca_ttc:20267.65,ca_ht:17700.02,tickets_nb:901,drive_ttc:4495.65,kiosk_ttc:10447.45,livraison_ttc:2089.9,comptoir_ttc:1982.6,corrections_montant:589.05,corrections_pct:6.0,annulations_montant:-26.5,remises_montant:712.72,remises_pct:3.52},
+  {restaurant:'BK509',date:'2025-08-11',ca_ttc:16557.0,ca_ht:14504.83,tickets_nb:779,drive_ttc:3545.4,kiosk_ttc:8754.45,livraison_ttc:1362.0,comptoir_ttc:1966.95,corrections_montant:574.25,corrections_pct:7.36,annulations_montant:0.0,remises_montant:546.45,remises_pct:3.3},
+  {restaurant:'BK509',date:'2025-08-12',ca_ttc:14395.35,ca_ht:12677.46,tickets_nb:674,drive_ttc:3448.9,kiosk_ttc:7400.45,livraison_ttc:1050.7,comptoir_ttc:1624.4,corrections_montant:467.1,corrections_pct:6.68,annulations_montant:-75.6,remises_montant:401.3,remises_pct:2.79},
+  {restaurant:'BK509',date:'2025-08-13',ca_ttc:17023.6,ca_ht:15006.99,tickets_nb:808,drive_ttc:3746.15,kiosk_ttc:8363.45,livraison_ttc:1476.35,comptoir_ttc:2486.1,corrections_montant:483.15,corrections_pct:5.58,annulations_montant:-32.7,remises_montant:446.71,remises_pct:2.62},
+  {restaurant:'BK509',date:'2025-08-14',ca_ttc:17336.5,ca_ht:15157.81,tickets_nb:825,drive_ttc:4224.5,kiosk_ttc:8408.15,livraison_ttc:1626.2,comptoir_ttc:2005.95,corrections_montant:660.4,corrections_pct:7.4,annulations_montant:-48.05,remises_montant:605.89,remises_pct:3.49},
+  {restaurant:'BK509',date:'2025-08-15',ca_ttc:15723.95,ca_ht:13646.31,tickets_nb:671,drive_ttc:3295.55,kiosk_ttc:8289.8,livraison_ttc:1398.1,comptoir_ttc:2087.85,corrections_montant:459.5,corrections_pct:6.18,annulations_montant:-9.1,remises_montant:661.26,remises_pct:4.21},
+  {restaurant:'BK509',date:'2025-08-16',ca_ttc:19455.3,ca_ht:17244.67,tickets_nb:866,drive_ttc:4238.7,kiosk_ttc:8922.2,livraison_ttc:1318.9,comptoir_ttc:4131.9,corrections_montant:1082.5,corrections_pct:10.28,annulations_montant:-39.7,remises_montant:444.67,remises_pct:2.29},
+  {restaurant:'BK509',date:'2025-08-17',ca_ttc:20285.15,ca_ht:17802.18,tickets_nb:887,drive_ttc:4447.3,kiosk_ttc:10058.95,livraison_ttc:1704.5,comptoir_ttc:2812.35,corrections_montant:711.35,corrections_pct:6.96,annulations_montant:0.0,remises_montant:623.76,remises_pct:3.07},
+  {restaurant:'BK509',date:'2025-08-18',ca_ttc:15927.25,ca_ht:13987.29,tickets_nb:726,drive_ttc:3584.85,kiosk_ttc:8203.3,livraison_ttc:1582.4,comptoir_ttc:1828.7,corrections_montant:705.35,corrections_pct:9.13,annulations_montant:0.0,remises_montant:479.31,remises_pct:3.01},
+  {restaurant:'BK509',date:'2025-08-19',ca_ttc:17321.75,ca_ht:15212.16,tickets_nb:774,drive_ttc:3629.65,kiosk_ttc:8737.95,livraison_ttc:1686.6,comptoir_ttc:2465.8,corrections_montant:360.5,corrections_pct:4.2,annulations_montant:0.0,remises_montant:537.28,remises_pct:3.1},
+  {restaurant:'BK509',date:'2025-08-20',ca_ttc:16222.65,ca_ht:14310.68,tickets_nb:761,drive_ttc:3522.55,kiosk_ttc:8633.4,livraison_ttc:1030.6,comptoir_ttc:2176.3,corrections_montant:501.65,corrections_pct:6.61,annulations_montant:-34.6,remises_montant:430.58,remises_pct:2.65},
+  {restaurant:'BK509',date:'2025-08-21',ca_ttc:14248.6,ca_ht:12431.2,tickets_nb:693,drive_ttc:3409.7,kiosk_ttc:7601.75,livraison_ttc:1295.3,comptoir_ttc:1326.45,corrections_montant:416.85,corrections_pct:6.27,annulations_montant:0.0,remises_montant:526.49,remises_pct:3.7},
+  {restaurant:'BK509',date:'2025-08-22',ca_ttc:17482.45,ca_ht:15379.81,tickets_nb:830,drive_ttc:4129.85,kiosk_ttc:8723.9,livraison_ttc:1486.1,comptoir_ttc:2399.55,corrections_montant:648.4,corrections_pct:7.4,annulations_montant:-10.1,remises_montant:507.94,remises_pct:2.91},
+  {restaurant:'BK509',date:'2025-08-23',ca_ttc:17290.95,ca_ht:15154.57,tickets_nb:775,drive_ttc:4142.55,kiosk_ttc:8647.5,livraison_ttc:1276.4,comptoir_ttc:2560.1,corrections_montant:687.45,corrections_pct:7.95,annulations_montant:-92.4,remises_montant:574.68,remises_pct:3.32},
+  {restaurant:'BK509',date:'2025-08-24',ca_ttc:17180.1,ca_ht:14985.11,tickets_nb:749,drive_ttc:4294.95,kiosk_ttc:8038.9,livraison_ttc:1880.4,comptoir_ttc:2007.65,corrections_montant:492.05,corrections_pct:5.38,annulations_montant:0.0,remises_montant:636.21,remises_pct:3.7},
+  {restaurant:'BK509',date:'2025-08-25',ca_ttc:14870.6,ca_ht:12928.19,tickets_nb:712,drive_ttc:3828.55,kiosk_ttc:7429.85,livraison_ttc:1436.7,comptoir_ttc:1493.5,corrections_montant:1118.05,corrections_pct:15.03,annulations_montant:-9.9,remises_montant:597.38,remises_pct:4.02},
+  {restaurant:'BK509',date:'2025-08-26',ca_ttc:15264.1,ca_ht:13476.34,tickets_nb:699,drive_ttc:3905.45,kiosk_ttc:8189.15,livraison_ttc:1208.3,comptoir_ttc:1955.0,corrections_montant:896.15,corrections_pct:12.67,annulations_montant:0.0,remises_montant:418.33,remises_pct:2.74},
+  {restaurant:'BK509',date:'2025-08-27',ca_ttc:18464.1,ca_ht:16255.24,tickets_nb:822,drive_ttc:3792.45,kiosk_ttc:9517.85,livraison_ttc:1795.1,comptoir_ttc:2383.4,corrections_montant:669.3,corrections_pct:7.48,annulations_montant:-45.2,remises_montant:535.51,remises_pct:2.9},
+  {restaurant:'BK509',date:'2025-08-28',ca_ttc:19000.25,ca_ht:16725.43,tickets_nb:846,drive_ttc:4140.4,kiosk_ttc:9419.95,livraison_ttc:1758.5,comptoir_ttc:2348.7,corrections_montant:607.2,corrections_pct:6.34,annulations_montant:-19.9,remises_montant:544.39,remises_pct:2.87},
+  {restaurant:'BK509',date:'2025-08-29',ca_ttc:20494.45,ca_ht:17945.08,tickets_nb:886,drive_ttc:4609.05,kiosk_ttc:9508.0,livraison_ttc:2173.7,comptoir_ttc:2963.5,corrections_montant:1077.6,corrections_pct:9.81,annulations_montant:-13.9,remises_montant:664.22,remises_pct:3.24},
+  {restaurant:'BK509',date:'2025-08-30',ca_ttc:21256.2,ca_ht:18685.03,tickets_nb:887,drive_ttc:5435.75,kiosk_ttc:9919.55,livraison_ttc:1951.4,comptoir_ttc:2858.3,corrections_montant:1053.9,corrections_pct:9.3,annulations_montant:0.0,remises_montant:627.56,remises_pct:2.95},
+  {restaurant:'BK509',date:'2025-08-31',ca_ttc:18769.2,ca_ht:16313.48,tickets_nb:742,drive_ttc:4331.9,kiosk_ttc:8936.45,livraison_ttc:2376.9,comptoir_ttc:1506.3,corrections_montant:367.5,corrections_pct:3.74,annulations_montant:-97.3,remises_montant:760.19,remises_pct:4.05},
+  {restaurant:'BK509',date:'2025-09-01',ca_ttc:14931.8,ca_ht:13100.5,tickets_nb:712,drive_ttc:3586.6,kiosk_ttc:7384.35,livraison_ttc:1479.55,comptoir_ttc:1866.35,corrections_montant:687.2,corrections_pct:9.11,annulations_montant:-46.4,remises_montant:476.64,remises_pct:3.19},
+  {restaurant:'BK509',date:'2025-09-02',ca_ttc:13183.35,ca_ht:11610.5,tickets_nb:632,drive_ttc:3507.45,kiosk_ttc:6476.85,livraison_ttc:1291.6,comptoir_ttc:1163.65,corrections_montant:597.7,corrections_pct:8.91,annulations_montant:0.0,remises_montant:370.79,remises_pct:2.81},
+  {restaurant:'BK509',date:'2025-09-03',ca_ttc:14811.2,ca_ht:12814.07,tickets_nb:749,drive_ttc:3485.55,kiosk_ttc:7908.55,livraison_ttc:1182.7,comptoir_ttc:1435.55,corrections_montant:475.25,corrections_pct:6.89,annulations_montant:0.0,remises_montant:640.32,remises_pct:4.32},
+  {restaurant:'BK509',date:'2025-09-04',ca_ttc:12745.7,ca_ht:11086.92,tickets_nb:599,drive_ttc:3218.05,kiosk_ttc:5654.1,livraison_ttc:1705.4,comptoir_ttc:1418.65,corrections_montant:428.4,corrections_pct:6.04,annulations_montant:0.0,remises_montant:482.0,remises_pct:3.78},
+  {restaurant:'BK509',date:'2025-09-05',ca_ttc:16649.15,ca_ht:14549.52,tickets_nb:779,drive_ttc:4562.9,kiosk_ttc:8722.6,livraison_ttc:1307.0,comptoir_ttc:1891.65,corrections_montant:774.3,corrections_pct:9.77,annulations_montant:0.0,remises_montant:573.8,remises_pct:3.45},
+  {restaurant:'BK509',date:'2025-09-06',ca_ttc:21461.0,ca_ht:18816.46,tickets_nb:956,drive_ttc:5375.3,kiosk_ttc:11300.85,livraison_ttc:1215.5,comptoir_ttc:2499.25,corrections_montant:880.7,corrections_pct:8.67,annulations_montant:-25.2,remises_montant:675.82,remises_pct:3.15},
+  {restaurant:'BK509',date:'2025-09-07',ca_ttc:18062.7,ca_ht:15702.67,tickets_nb:754,drive_ttc:4869.4,kiosk_ttc:7983.25,livraison_ttc:2314.15,comptoir_ttc:1671.6,corrections_montant:575.15,corrections_pct:5.71,annulations_montant:0.0,remises_montant:672.63,remises_pct:3.72},
+  {restaurant:'BK509',date:'2025-09-08',ca_ttc:11040.95,ca_ht:9648.4,tickets_nb:566,drive_ttc:3157.05,kiosk_ttc:4950.1,livraison_ttc:1204.6,comptoir_ttc:1153.95,corrections_montant:406.45,corrections_pct:6.67,annulations_montant:-21.1,remises_montant:372.06,remises_pct:3.37},
+  {restaurant:'BK509',date:'2025-09-09',ca_ttc:12381.55,ca_ht:10670.39,tickets_nb:638,drive_ttc:3253.65,kiosk_ttc:6098.15,livraison_ttc:1102.75,comptoir_ttc:1213.1,corrections_montant:501.25,corrections_pct:7.98,annulations_montant:-25.5,remises_montant:579.39,remises_pct:4.68},
+  {restaurant:'BK509',date:'2025-09-10',ca_ttc:13634.5,ca_ht:11863.71,tickets_nb:673,drive_ttc:3800.35,kiosk_ttc:5800.2,livraison_ttc:1839.5,comptoir_ttc:1491.85,corrections_montant:307.4,corrections_pct:3.92,annulations_montant:-12.0,remises_montant:497.99,remises_pct:3.65},
+  {restaurant:'BK509',date:'2025-09-11',ca_ttc:13460.25,ca_ht:11747.74,tickets_nb:690,drive_ttc:3364.9,kiosk_ttc:6130.6,livraison_ttc:1542.9,comptoir_ttc:1529.55,corrections_montant:554.85,corrections_pct:7.57,annulations_montant:0.0,remises_montant:470.56,remises_pct:3.5},
+  {restaurant:'BK509',date:'2025-09-12',ca_ttc:18401.75,ca_ht:15976.44,tickets_nb:830,drive_ttc:5041.65,kiosk_ttc:8200.95,livraison_ttc:2025.35,comptoir_ttc:1744.5,corrections_montant:551.0,corrections_pct:5.4,annulations_montant:-46.8,remises_montant:730.33,remises_pct:3.97},
+  {restaurant:'BK509',date:'2025-09-13',ca_ttc:21038.5,ca_ht:18371.7,tickets_nb:917,drive_ttc:5193.2,kiosk_ttc:10662.75,livraison_ttc:1830.65,comptoir_ttc:2332.55,corrections_montant:599.35,corrections_pct:5.78,annulations_montant:0.0,remises_montant:737.68,remises_pct:3.51},
+  {restaurant:'BK509',date:'2025-09-14',ca_ttc:18198.65,ca_ht:15881.91,tickets_nb:733,drive_ttc:4857.85,kiosk_ttc:8267.5,livraison_ttc:1959.65,comptoir_ttc:1729.6,corrections_montant:440.7,corrections_pct:4.44,annulations_montant:0.0,remises_montant:621.02,remises_pct:3.41},
+  {restaurant:'BK509',date:'2025-09-15',ca_ttc:10848.0,ca_ht:9435.42,tickets_nb:537,drive_ttc:2837.85,kiosk_ttc:5059.85,livraison_ttc:1379.6,comptoir_ttc:1020.1,corrections_montant:196.2,corrections_pct:3.39,annulations_montant:0.0,remises_montant:403.97,remises_pct:3.72},
+  {restaurant:'BK509',date:'2025-09-16',ca_ttc:10872.2,ca_ht:9509.14,tickets_nb:571,drive_ttc:3211.65,kiosk_ttc:4847.85,livraison_ttc:1130.65,comptoir_ttc:1052.9,corrections_montant:330.0,corrections_pct:5.48,annulations_montant:0.0,remises_montant:344.89,remises_pct:3.17},
+  {restaurant:'BK509',date:'2025-09-17',ca_ttc:13411.35,ca_ht:11607.87,tickets_nb:686,drive_ttc:3296.95,kiosk_ttc:6277.15,livraison_ttc:1205.75,comptoir_ttc:1659.4,corrections_montant:437.5,corrections_pct:6.13,annulations_montant:0.0,remises_montant:542.5,remises_pct:4.05},
+  {restaurant:'BK509',date:'2025-09-18',ca_ttc:11966.8,ca_ht:10412.23,tickets_nb:592,drive_ttc:2875.7,kiosk_ttc:5386.6,livraison_ttc:1463.8,comptoir_ttc:1505.7,corrections_montant:427.5,corrections_pct:6.5,annulations_montant:0.0,remises_montant:446.22,remises_pct:3.73},
+  {restaurant:'BK509',date:'2025-09-19',ca_ttc:16773.0,ca_ht:14576.03,tickets_nb:765,drive_ttc:4806.45,kiosk_ttc:7527.6,livraison_ttc:1590.25,comptoir_ttc:2002.85,corrections_montant:836.7,corrections_pct:9.05,annulations_montant:-14.3,remises_montant:653.15,remises_pct:3.89},
+  {restaurant:'BK509',date:'2025-09-20',ca_ttc:17721.95,ca_ht:15427.18,tickets_nb:788,drive_ttc:4220.2,kiosk_ttc:8669.9,livraison_ttc:1744.55,comptoir_ttc:1918.95,corrections_montant:553.75,corrections_pct:6.12,annulations_montant:0.0,remises_montant:680.54,remises_pct:3.84},
+  {restaurant:'BK509',date:'2025-09-21',ca_ttc:19858.6,ca_ht:17156.51,tickets_nb:810,drive_ttc:5830.2,kiosk_ttc:8424.1,livraison_ttc:2644.05,comptoir_ttc:1542.4,corrections_montant:583.0,corrections_pct:5.1,annulations_montant:0.0,remises_montant:848.58,remises_pct:4.27},
+  {restaurant:'BK509',date:'2025-09-22',ca_ttc:9867.3,ca_ht:8579.85,tickets_nb:521,drive_ttc:3011.9,kiosk_ttc:4040.55,livraison_ttc:1247.7,comptoir_ttc:1033.85,corrections_montant:294.6,corrections_pct:5.06,annulations_montant:-41.0,remises_montant:375.54,remises_pct:3.81},
+  {restaurant:'BK509',date:'2025-09-23',ca_ttc:10826.6,ca_ht:9456.85,tickets_nb:566,drive_ttc:3184.5,kiosk_ttc:5227.45,livraison_ttc:690.3,comptoir_ttc:1055.1,corrections_montant:241.7,corrections_pct:4.32,annulations_montant:0.0,remises_montant:372.05,remises_pct:3.44},
+  {restaurant:'BK509',date:'2025-09-24',ca_ttc:14242.8,ca_ht:12255.28,tickets_nb:720,drive_ttc:4083.55,kiosk_ttc:6941.3,livraison_ttc:1181.45,comptoir_ttc:1306.35,corrections_montant:290.6,corrections_pct:3.98,annulations_montant:-29.9,remises_montant:683.25,remises_pct:4.8},
+  {restaurant:'BK509',date:'2025-09-25',ca_ttc:11123.05,ca_ht:9681.18,tickets_nb:583,drive_ttc:3547.85,kiosk_ttc:4859.05,livraison_ttc:1278.85,comptoir_ttc:935.0,corrections_montant:319.5,corrections_pct:5.1,annulations_montant:0.0,remises_montant:432.15,remises_pct:3.89},
+  {restaurant:'BK509',date:'2025-09-26',ca_ttc:17066.5,ca_ht:14876.25,tickets_nb:817,drive_ttc:5074.15,kiosk_ttc:8040.4,livraison_ttc:1438.85,comptoir_ttc:1757.0,corrections_montant:610.05,corrections_pct:6.76,annulations_montant:0.0,remises_montant:628.69,remises_pct:3.68},
+  {restaurant:'BK509',date:'2025-09-27',ca_ttc:18967.0,ca_ht:16455.21,tickets_nb:829,drive_ttc:4481.3,kiosk_ttc:9940.0,livraison_ttc:1338.15,comptoir_ttc:2444.85,corrections_montant:434.15,corrections_pct:4.81,annulations_montant:0.0,remises_montant:792.61,remises_pct:4.18},
+  {restaurant:'BK509',date:'2025-09-28',ca_ttc:18544.2,ca_ht:15961.75,tickets_nb:748,drive_ttc:5325.5,kiosk_ttc:8028.4,livraison_ttc:1913.75,comptoir_ttc:2065.85,corrections_montant:591.95,corrections_pct:5.63,annulations_montant:0.0,remises_montant:852.24,remises_pct:4.6},
+  {restaurant:'BK509',date:'2025-09-29',ca_ttc:10738.9,ca_ht:9341.15,tickets_nb:577,drive_ttc:2782.05,kiosk_ttc:5178.5,livraison_ttc:1289.8,comptoir_ttc:1141.65,corrections_montant:274.9,corrections_pct:4.94,annulations_montant:0.0,remises_montant:411.85,remises_pct:3.84},
+  {restaurant:'BK509',date:'2025-09-30',ca_ttc:12117.05,ca_ht:10604.65,tickets_nb:596,drive_ttc:3064.1,kiosk_ttc:5683.5,livraison_ttc:1565.4,comptoir_ttc:1070.1,corrections_montant:544.9,corrections_pct:8.47,annulations_montant:-10.3,remises_montant:372.35,remises_pct:3.07},
+  {restaurant:'BK509',date:'2025-10-01',ca_ttc:15430.2,ca_ht:13409.05,tickets_nb:734,drive_ttc:3897.7,kiosk_ttc:7183.45,livraison_ttc:1636.6,comptoir_ttc:1665.85,corrections_montant:383.0,corrections_pct:4.64,annulations_montant:0.0,remises_montant:586.37,remises_pct:3.8},
+  {restaurant:'BK509',date:'2025-10-02',ca_ttc:13862.2,ca_ht:12106.53,tickets_nb:695,drive_ttc:3547.3,kiosk_ttc:6161.75,livraison_ttc:2038.15,comptoir_ttc:1288.9,corrections_montant:449.4,corrections_pct:5.84,annulations_montant:-9.9,remises_montant:468.13,remises_pct:3.38},
+  {restaurant:'BK509',date:'2025-10-03',ca_ttc:17973.85,ca_ht:15694.25,tickets_nb:839,drive_ttc:4836.35,kiosk_ttc:8334.9,livraison_ttc:1972.1,comptoir_ttc:1234.0,corrections_montant:494.7,corrections_pct:5.13,annulations_montant:0.0,remises_montant:616.84,remises_pct:3.43},
+  {restaurant:'BK509',date:'2025-10-04',ca_ttc:21734.35,ca_ht:18987.15,tickets_nb:973,drive_ttc:5236.75,kiosk_ttc:11728.8,livraison_ttc:1437.65,comptoir_ttc:2419.9,corrections_montant:534.3,corrections_pct:5.34,annulations_montant:-33.5,remises_montant:764.98,remises_pct:3.52},
+  {restaurant:'BK509',date:'2025-10-05',ca_ttc:16799.75,ca_ht:14614.3,tickets_nb:739,drive_ttc:4314.35,kiosk_ttc:7771.4,livraison_ttc:1736.2,comptoir_ttc:1793.95,corrections_montant:767.15,corrections_pct:8.5,annulations_montant:-51.6,remises_montant:645.43,remises_pct:3.84},
+  {restaurant:'BK509',date:'2025-10-06',ca_ttc:9864.15,ca_ht:8611.83,tickets_nb:537,drive_ttc:3204.85,kiosk_ttc:4498.2,livraison_ttc:886.2,comptoir_ttc:946.05,corrections_montant:270.5,corrections_pct:5.04,annulations_montant:0.0,remises_montant:360.14,remises_pct:3.65},
+  {restaurant:'BK509',date:'2025-10-07',ca_ttc:11345.55,ca_ht:9914.05,tickets_nb:591,drive_ttc:3236.7,kiosk_ttc:5061.55,livraison_ttc:1315.95,comptoir_ttc:1314.8,corrections_montant:346.2,corrections_pct:5.51,annulations_montant:0.0,remises_montant:386.63,remises_pct:3.41},
+  {restaurant:'BK509',date:'2025-10-08',ca_ttc:15121.05,ca_ht:13353.56,tickets_nb:750,drive_ttc:4254.2,kiosk_ttc:7081.4,livraison_ttc:1116.7,comptoir_ttc:1985.3,corrections_montant:738.65,corrections_pct:9.19,annulations_montant:0.0,remises_montant:351.53,remises_pct:2.32},
+  {restaurant:'BK509',date:'2025-10-09',ca_ttc:12162.7,ca_ht:10631.62,tickets_nb:611,drive_ttc:3215.7,kiosk_ttc:5303.2,livraison_ttc:1821.7,comptoir_ttc:1162.15,corrections_montant:258.0,corrections_pct:3.76,annulations_montant:0.0,remises_montant:400.59,remises_pct:3.29},
+  {restaurant:'BK509',date:'2025-10-10',ca_ttc:16413.65,ca_ht:14269.17,tickets_nb:762,drive_ttc:4655.55,kiosk_ttc:7434.9,livraison_ttc:1845.6,comptoir_ttc:1537.8,corrections_montant:436.6,corrections_pct:4.86,annulations_montant:0.0,remises_montant:633.95,remises_pct:3.86},
+  {restaurant:'BK509',date:'2025-10-11',ca_ttc:18617.0,ca_ht:16271.63,tickets_nb:848,drive_ttc:5418.85,kiosk_ttc:8657.85,livraison_ttc:1402.75,comptoir_ttc:2075.05,corrections_montant:683.15,corrections_pct:6.86,annulations_montant:0.0,remises_montant:625.05,remises_pct:3.36},
+  {restaurant:'BK509',date:'2025-10-12',ca_ttc:16298.35,ca_ht:14096.86,tickets_nb:714,drive_ttc:3964.6,kiosk_ttc:7041.05,livraison_ttc:2271.1,comptoir_ttc:1721.45,corrections_montant:255.4,corrections_pct:2.76,annulations_montant:0.0,remises_montant:668.06,remises_pct:4.1},
+  {restaurant:'BK509',date:'2025-10-13',ca_ttc:10509.35,ca_ht:9016.56,tickets_nb:552,drive_ttc:2824.45,kiosk_ttc:4607.5,livraison_ttc:1355.8,comptoir_ttc:1178.3,corrections_montant:203.9,corrections_pct:3.45,annulations_montant:-25.9,remises_montant:534.15,remises_pct:5.08},
+  {restaurant:'BK509',date:'2025-10-14',ca_ttc:10103.8,ca_ht:8787.25,tickets_nb:534,drive_ttc:2799.5,kiosk_ttc:4755.15,livraison_ttc:956.1,comptoir_ttc:1081.45,corrections_montant:313.1,corrections_pct:5.85,annulations_montant:0.0,remises_montant:400.45,remises_pct:3.96},
+  {restaurant:'BK509',date:'2025-10-15',ca_ttc:13420.4,ca_ht:11599.32,tickets_nb:687,drive_ttc:3722.0,kiosk_ttc:6277.0,livraison_ttc:1132.15,comptoir_ttc:1255.5,corrections_montant:245.25,corrections_pct:3.43,annulations_montant:0.0,remises_montant:571.34,remises_pct:4.26},
+  {restaurant:'BK509',date:'2025-10-16',ca_ttc:12129.95,ca_ht:10617.93,tickets_nb:622,drive_ttc:3134.05,kiosk_ttc:5495.7,livraison_ttc:1244.7,comptoir_ttc:1594.25,corrections_montant:303.55,corrections_pct:4.58,annulations_montant:0.0,remises_montant:410.56,remises_pct:3.38},
+  {restaurant:'BK509',date:'2025-10-17',ca_ttc:16487.0,ca_ht:14254.88,tickets_nb:783,drive_ttc:4485.05,kiosk_ttc:7678.6,livraison_ttc:1754.8,comptoir_ttc:1468.7,corrections_montant:354.1,corrections_pct:4.02,annulations_montant:0.0,remises_montant:711.18,remises_pct:4.31},
+  {restaurant:'BK509',date:'2025-10-18',ca_ttc:19867.35,ca_ht:17275.07,tickets_nb:861,drive_ttc:4704.1,kiosk_ttc:9410.3,livraison_ttc:1934.0,comptoir_ttc:2750.55,corrections_montant:476.9,corrections_pct:4.56,annulations_montant:0.0,remises_montant:760.67,remises_pct:3.83},
+  {restaurant:'BK509',date:'2025-10-19',ca_ttc:16503.1,ca_ht:14216.81,tickets_nb:722,drive_ttc:4518.2,kiosk_ttc:6681.65,livraison_ttc:2272.7,comptoir_ttc:1393.2,corrections_montant:338.65,corrections_pct:3.45,annulations_montant:0.0,remises_montant:711.46,remises_pct:4.31},
+  {restaurant:'BK509',date:'2025-10-20',ca_ttc:12012.8,ca_ht:10564.36,tickets_nb:601,drive_ttc:2945.75,kiosk_ttc:6158.45,livraison_ttc:823.85,comptoir_ttc:1616.2,corrections_montant:312.7,corrections_pct:5.34,annulations_montant:-40.4,remises_montant:361.27,remises_pct:3.01},
+  {restaurant:'BK509',date:'2025-10-21',ca_ttc:13092.85,ca_ht:11453.63,tickets_nb:649,drive_ttc:2988.9,kiosk_ttc:6553.3,livraison_ttc:1614.25,comptoir_ttc:1177.4,corrections_montant:321.3,corrections_pct:4.91,annulations_montant:0.0,remises_montant:415.7,remises_pct:3.18},
+  {restaurant:'BK509',date:'2025-10-22',ca_ttc:13618.7,ca_ht:11877.91,tickets_nb:697,drive_ttc:3100.9,kiosk_ttc:6726.45,livraison_ttc:1353.0,comptoir_ttc:1512.95,corrections_montant:304.55,corrections_pct:4.42,annulations_montant:0.0,remises_montant:474.72,remises_pct:3.49},
+  {restaurant:'BK509',date:'2025-10-23',ca_ttc:14510.2,ca_ht:12780.44,tickets_nb:669,drive_ttc:3608.0,kiosk_ttc:6847.65,livraison_ttc:1269.35,comptoir_ttc:2104.9,corrections_montant:699.65,corrections_pct:9.13,annulations_montant:0.0,remises_montant:392.35,remises_pct:2.7},
+  {restaurant:'BK509',date:'2025-10-24',ca_ttc:16798.5,ca_ht:14556.73,tickets_nb:783,drive_ttc:4608.5,kiosk_ttc:7347.55,livraison_ttc:1779.0,comptoir_ttc:1912.75,corrections_montant:456.75,corrections_pct:4.83,annulations_montant:0.0,remises_montant:687.69,remises_pct:4.09},
+  {restaurant:'BK509',date:'2025-10-25',ca_ttc:17311.5,ca_ht:15163.65,tickets_nb:767,drive_ttc:4788.4,kiosk_ttc:7961.25,livraison_ttc:1257.85,comptoir_ttc:2405.25,corrections_montant:654.6,corrections_pct:7.0,annulations_montant:0.0,remises_montant:540.74,remises_pct:3.12},
+  {restaurant:'BK509',date:'2025-10-26',ca_ttc:17326.45,ca_ht:15031.05,tickets_nb:693,drive_ttc:4969.6,kiosk_ttc:7482.45,livraison_ttc:2087.55,comptoir_ttc:1348.2,corrections_montant:420.15,corrections_pct:4.27,annulations_montant:0.0,remises_montant:677.45,remises_pct:3.91},
+  {restaurant:'BK509',date:'2025-10-27',ca_ttc:12439.7,ca_ht:10905.67,tickets_nb:598,drive_ttc:3137.8,kiosk_ttc:6032.2,livraison_ttc:1236.35,comptoir_ttc:1367.85,corrections_montant:328.1,corrections_pct:5.12,annulations_montant:-19.9,remises_montant:394.59,remises_pct:3.17},
+  {restaurant:'BK509',date:'2025-10-28',ca_ttc:13220.7,ca_ht:11533.55,tickets_nb:622,drive_ttc:3217.1,kiosk_ttc:6636.7,livraison_ttc:1161.9,comptoir_ttc:1806.0,corrections_montant:436.9,corrections_pct:6.64,annulations_montant:0.0,remises_montant:481.71,remises_pct:3.64},
+  {restaurant:'BK509',date:'2025-10-29',ca_ttc:15101.95,ca_ht:13174.78,tickets_nb:721,drive_ttc:3570.3,kiosk_ttc:7902.2,livraison_ttc:1354.35,comptoir_ttc:1330.2,corrections_montant:354.85,corrections_pct:4.93,annulations_montant:0.0,remises_montant:526.0,remises_pct:3.48},
+  {restaurant:'BK509',date:'2025-10-30',ca_ttc:15420.15,ca_ht:13371.17,tickets_nb:720,drive_ttc:3946.5,kiosk_ttc:7203.2,livraison_ttc:1794.15,comptoir_ttc:1580.4,corrections_montant:526.8,corrections_pct:6.41,annulations_montant:-28.3,remises_montant:650.16,remises_pct:4.22},
+  {restaurant:'BK509',date:'2025-10-31',ca_ttc:20092.3,ca_ht:17513.99,tickets_nb:916,drive_ttc:5547.85,kiosk_ttc:9517.3,livraison_ttc:1991.55,comptoir_ttc:2029.7,corrections_montant:976.35,corrections_pct:9.23,annulations_montant:-10.9,remises_montant:746.24,remises_pct:3.71},
+  {restaurant:'BK509',date:'2025-11-01',ca_ttc:21357.8,ca_ht:18609.24,tickets_nb:894,drive_ttc:5334.85,kiosk_ttc:10729.75,livraison_ttc:2033.95,comptoir_ttc:1834.95,corrections_montant:397.85,corrections_pct:3.74,annulations_montant:-15.6,remises_montant:803.34,remises_pct:3.76},
+  {restaurant:'BK509',date:'2025-11-02',ca_ttc:19287.35,ca_ht:16815.84,tickets_nb:789,drive_ttc:4874.9,kiosk_ttc:8494.15,livraison_ttc:2274.65,comptoir_ttc:1943.5,corrections_montant:497.55,corrections_pct:4.61,annulations_montant:0.0,remises_montant:679.61,remises_pct:3.52},
+  {restaurant:'BK509',date:'2025-11-03',ca_ttc:11045.1,ca_ht:9683.35,tickets_nb:554,drive_ttc:2896.2,kiosk_ttc:4539.65,livraison_ttc:1473.1,comptoir_ttc:1447.4,corrections_montant:402.75,corrections_pct:6.19,annulations_montant:0.0,remises_montant:338.72,remises_pct:3.07},
+  {restaurant:'BK509',date:'2025-11-04',ca_ttc:12220.3,ca_ht:10661.78,tickets_nb:631,drive_ttc:2977.95,kiosk_ttc:5980.6,livraison_ttc:1491.95,comptoir_ttc:1051.3,corrections_montant:480.35,corrections_pct:7.7,annulations_montant:-36.8,remises_montant:428.12,remises_pct:3.5},
+  {restaurant:'BK509',date:'2025-11-05',ca_ttc:14200.3,ca_ht:12459.13,tickets_nb:712,drive_ttc:3245.25,kiosk_ttc:6939.65,livraison_ttc:1574.1,comptoir_ttc:1266.15,corrections_montant:434.6,corrections_pct:5.99,annulations_montant:0.0,remises_montant:401.72,remises_pct:2.83},
+  {restaurant:'BK509',date:'2025-11-06',ca_ttc:12799.65,ca_ht:11208.8,tickets_nb:653,drive_ttc:3508.2,kiosk_ttc:5844.0,livraison_ttc:1484.7,comptoir_ttc:1223.75,corrections_montant:647.6,corrections_pct:9.31,annulations_montant:0.0,remises_montant:429.56,remises_pct:3.36},
+  {restaurant:'BK509',date:'2025-11-07',ca_ttc:18822.05,ca_ht:16419.72,tickets_nb:871,drive_ttc:5306.7,kiosk_ttc:8209.4,livraison_ttc:2058.05,comptoir_ttc:1966.9,corrections_montant:676.25,corrections_pct:6.37,annulations_montant:-21.1,remises_montant:666.75,remises_pct:3.54},
+  {restaurant:'BK509',date:'2025-11-08',ca_ttc:20881.9,ca_ht:18184.41,tickets_nb:957,drive_ttc:5255.05,kiosk_ttc:9485.95,livraison_ttc:1991.9,comptoir_ttc:2604.35,corrections_montant:498.4,corrections_pct:4.37,annulations_montant:0.0,remises_montant:768.3,remises_pct:3.68},
+  {restaurant:'BK509',date:'2025-11-09',ca_ttc:16551.15,ca_ht:14429.7,tickets_nb:741,drive_ttc:4647.75,kiosk_ttc:7222.25,livraison_ttc:1632.1,comptoir_ttc:1493.15,corrections_montant:292.0,corrections_pct:3.13,annulations_montant:0.0,remises_montant:588.88,remises_pct:3.56},
+  {restaurant:'BK509',date:'2025-11-10',ca_ttc:13853.5,ca_ht:12037.45,tickets_nb:686,drive_ttc:3255.3,kiosk_ttc:5965.95,livraison_ttc:1834.05,comptoir_ttc:2044.75,corrections_montant:406.0,corrections_pct:5.15,annulations_montant:0.0,remises_montant:521.95,remises_pct:3.77},
+  {restaurant:'BK509',date:'2025-11-11',ca_ttc:17195.85,ca_ht:14884.24,tickets_nb:775,drive_ttc:4420.85,kiosk_ttc:8226.4,livraison_ttc:1595.2,comptoir_ttc:1772.05,corrections_montant:599.05,corrections_pct:6.68,annulations_montant:0.0,remises_montant:730.69,remises_pct:4.25},
+  {restaurant:'BK509',date:'2025-11-12',ca_ttc:13231.8,ca_ht:11479.9,tickets_nb:674,drive_ttc:3401.35,kiosk_ttc:5996.65,livraison_ttc:1504.8,comptoir_ttc:1388.45,corrections_montant:300.45,corrections_pct:4.15,annulations_montant:-66.9,remises_montant:521.51,remises_pct:3.94},
+  {restaurant:'BK509',date:'2025-11-13',ca_ttc:12194.4,ca_ht:10594.49,tickets_nb:659,drive_ttc:3802.45,kiosk_ttc:5236.85,livraison_ttc:1542.8,comptoir_ttc:929.35,corrections_montant:248.95,corrections_pct:3.58,annulations_montant:0.0,remises_montant:473.57,remises_pct:3.88},
+  {restaurant:'BK509',date:'2025-11-14',ca_ttc:16688.65,ca_ht:14463.39,tickets_nb:802,drive_ttc:4585.45,kiosk_ttc:6783.4,livraison_ttc:2115.5,comptoir_ttc:1516.3,corrections_montant:574.9,corrections_pct:5.8,annulations_montant:-5.0,remises_montant:670.39,remises_pct:4.02},
+  {restaurant:'BK509',date:'2025-11-15',ca_ttc:19878.8,ca_ht:17307.98,tickets_nb:911,drive_ttc:4572.45,kiosk_ttc:10094.6,livraison_ttc:1789.4,comptoir_ttc:2295.8,corrections_montant:528.7,corrections_pct:5.4,annulations_montant:0.0,remises_montant:762.82,remises_pct:3.84},
+  {restaurant:'BK509',date:'2025-11-16',ca_ttc:17038.55,ca_ht:14660.59,tickets_nb:776,drive_ttc:4377.1,kiosk_ttc:7504.45,livraison_ttc:2027.3,comptoir_ttc:1773.55,corrections_montant:513.95,corrections_pct:5.39,annulations_montant:0.0,remises_montant:808.26,remises_pct:4.74},
+  {restaurant:'BK509',date:'2025-11-17',ca_ttc:9806.8,ca_ht:8467.78,tickets_nb:539,drive_ttc:2505.5,kiosk_ttc:4663.6,livraison_ttc:1173.85,comptoir_ttc:1027.4,corrections_montant:235.25,corrections_pct:4.57,annulations_montant:0.0,remises_montant:443.79,remises_pct:4.53},
+  {restaurant:'BK509',date:'2025-11-18',ca_ttc:11485.75,ca_ht:10069.74,tickets_nb:621,drive_ttc:3025.15,kiosk_ttc:5105.95,livraison_ttc:1377.6,comptoir_ttc:1297.2,corrections_montant:476.75,corrections_pct:7.47,annulations_montant:0.0,remises_montant:355.57,remises_pct:3.1},
+  {restaurant:'BK509',date:'2025-11-19',ca_ttc:13425.95,ca_ht:11708.17,tickets_nb:690,drive_ttc:3449.35,kiosk_ttc:6535.95,livraison_ttc:996.45,comptoir_ttc:1387.15,corrections_montant:239.6,corrections_pct:3.48,annulations_montant:0.0,remises_montant:484.13,remises_pct:3.61},
+  {restaurant:'BK509',date:'2025-11-20',ca_ttc:12085.5,ca_ht:10474.62,tickets_nb:667,drive_ttc:3706.05,kiosk_ttc:4957.0,livraison_ttc:1519.1,comptoir_ttc:1128.25,corrections_montant:421.15,corrections_pct:5.91,annulations_montant:0.0,remises_montant:506.69,remises_pct:4.19},
+  {restaurant:'BK509',date:'2025-11-21',ca_ttc:17755.25,ca_ht:15393.47,tickets_nb:873,drive_ttc:5059.25,kiosk_ttc:7386.5,livraison_ttc:2322.85,comptoir_ttc:1911.9,corrections_montant:450.8,corrections_pct:4.35,annulations_montant:-5.0,remises_montant:736.12,remises_pct:4.15},
+  {restaurant:'BK509',date:'2025-11-22',ca_ttc:20891.8,ca_ht:18119.43,tickets_nb:965,drive_ttc:5772.15,kiosk_ttc:10014.4,livraison_ttc:1634.55,comptoir_ttc:1984.0,corrections_montant:502.65,corrections_pct:4.62,annulations_montant:0.0,remises_montant:858.62,remises_pct:4.11},
+  {restaurant:'BK509',date:'2025-11-23',ca_ttc:16002.35,ca_ht:13802.19,tickets_nb:727,drive_ttc:3988.55,kiosk_ttc:7256.6,livraison_ttc:2132.95,comptoir_ttc:1803.45,corrections_montant:681.25,corrections_pct:7.79,annulations_montant:0.0,remises_montant:735.28,remises_pct:4.59},
+  {restaurant:'BK509',date:'2025-11-24',ca_ttc:9991.25,ca_ht:8774.96,tickets_nb:555,drive_ttc:2978.95,kiosk_ttc:4329.25,livraison_ttc:1235.35,comptoir_ttc:1076.55,corrections_montant:333.0,corrections_pct:5.88,annulations_montant:0.0,remises_montant:288.04,remises_pct:2.88},
+  {restaurant:'BK509',date:'2025-11-25',ca_ttc:12324.9,ca_ht:10731.7,tickets_nb:600,drive_ttc:3354.55,kiosk_ttc:5352.9,livraison_ttc:1176.7,comptoir_ttc:1701.95,corrections_montant:426.6,corrections_pct:6.12,annulations_montant:0.0,remises_montant:469.14,remises_pct:3.81},
+  {restaurant:'BK509',date:'2025-11-26',ca_ttc:16887.8,ca_ht:14635.05,tickets_nb:796,drive_ttc:4046.4,kiosk_ttc:8162.85,livraison_ttc:1987.65,comptoir_ttc:1481.1,corrections_montant:604.35,corrections_pct:6.93,annulations_montant:-52.35,remises_montant:649.96,remises_pct:3.85},
+  {restaurant:'BK509',date:'2025-11-27',ca_ttc:15557.0,ca_ht:13494.67,tickets_nb:731,drive_ttc:4065.35,kiosk_ttc:7147.1,livraison_ttc:2057.6,comptoir_ttc:1343.75,corrections_montant:489.0,corrections_pct:5.81,annulations_montant:0.0,remises_montant:616.07,remises_pct:3.96},
+  {restaurant:'BK509',date:'2025-11-28',ca_ttc:20145.1,ca_ht:17446.69,tickets_nb:917,drive_ttc:4725.6,kiosk_ttc:9023.75,livraison_ttc:2373.35,comptoir_ttc:2041.8,corrections_montant:644.85,corrections_pct:5.8,annulations_montant:0.0,remises_montant:804.38,remises_pct:3.99},
+  {restaurant:'BK509',date:'2025-11-29',ca_ttc:25231.2,ca_ht:22128.36,tickets_nb:1003,drive_ttc:6588.15,kiosk_ttc:11524.35,livraison_ttc:1896.8,comptoir_ttc:3419.5,corrections_montant:876.95,corrections_pct:6.4,annulations_montant:-26.8,remises_montant:749.65,remises_pct:2.97},
+  {restaurant:'BK509',date:'2025-11-30',ca_ttc:21625.4,ca_ht:18818.52,tickets_nb:809,drive_ttc:5413.5,kiosk_ttc:8955.2,livraison_ttc:2825.3,comptoir_ttc:2536.95,corrections_montant:779.05,corrections_pct:6.15,annulations_montant:0.0,remises_montant:750.45,remises_pct:3.47},
+  {restaurant:'BK509',date:'2025-12-01',ca_ttc:11636.2,ca_ht:10124.63,tickets_nb:570,drive_ttc:2929.0,kiosk_ttc:5234.8,livraison_ttc:1313.4,comptoir_ttc:1390.7,corrections_montant:371.4,corrections_pct:5.8,annulations_montant:0.0,remises_montant:430.57,remises_pct:3.7},
+  {restaurant:'BK509',date:'2025-12-02',ca_ttc:13661.85,ca_ht:11901.11,tickets_nb:630,drive_ttc:3585.2,kiosk_ttc:5860.8,livraison_ttc:1911.5,comptoir_ttc:1445.05,corrections_montant:247.0,corrections_pct:3.17,annulations_montant:0.0,remises_montant:489.61,remises_pct:3.58},
+  {restaurant:'BK509',date:'2025-12-03',ca_ttc:16532.9,ca_ht:14392.09,tickets_nb:788,drive_ttc:3800.0,kiosk_ttc:8036.1,livraison_ttc:2031.05,comptoir_ttc:1413.45,corrections_montant:520.55,corrections_pct:6.13,annulations_montant:-39.3,remises_montant:584.98,remises_pct:3.54},
+  {restaurant:'BK509',date:'2025-12-04',ca_ttc:15138.65,ca_ht:13060.44,tickets_nb:699,drive_ttc:3901.9,kiosk_ttc:7070.75,livraison_ttc:1635.4,comptoir_ttc:1663.7,corrections_montant:373.3,corrections_pct:4.63,annulations_montant:0.0,remises_montant:685.52,remises_pct:4.53},
+  {restaurant:'BK509',date:'2025-12-05',ca_ttc:19327.65,ca_ht:16818.36,tickets_nb:867,drive_ttc:4839.8,kiosk_ttc:8788.15,livraison_ttc:2294.95,comptoir_ttc:1522.4,corrections_montant:482.75,corrections_pct:4.58,annulations_montant:0.0,remises_montant:704.44,remises_pct:3.64},
+  {restaurant:'BK509',date:'2025-12-06',ca_ttc:23174.3,ca_ht:20253.05,tickets_nb:950,drive_ttc:5409.25,kiosk_ttc:11998.55,livraison_ttc:1695.75,comptoir_ttc:2663.2,corrections_montant:865.15,corrections_pct:7.74,annulations_montant:-26.4,remises_montant:780.48,remises_pct:3.37},
+  {restaurant:'BK509',date:'2025-12-07',ca_ttc:19752.2,ca_ht:17163.58,tickets_nb:803,drive_ttc:5253.25,kiosk_ttc:9268.5,livraison_ttc:2201.3,comptoir_ttc:1503.3,corrections_montant:646.15,corrections_pct:6.16,annulations_montant:0.0,remises_montant:748.89,remises_pct:3.79},
+  {restaurant:'BK509',date:'2025-12-08',ca_ttc:10285.45,ca_ht:8928.88,tickets_nb:523,drive_ttc:2874.3,kiosk_ttc:4824.7,livraison_ttc:1153.05,comptoir_ttc:917.25,corrections_montant:329.6,corrections_pct:6.04,annulations_montant:0.0,remises_montant:418.26,remises_pct:4.07},
+  {restaurant:'BK509',date:'2025-12-09',ca_ttc:13218.95,ca_ht:11575.78,tickets_nb:638,drive_ttc:3794.3,kiosk_ttc:5965.95,livraison_ttc:1267.85,comptoir_ttc:1249.0,corrections_montant:449.9,corrections_pct:6.2,annulations_montant:0.0,remises_montant:409.37,remises_pct:3.1},
+  {restaurant:'BK509',date:'2025-12-10',ca_ttc:16583.95,ca_ht:14401.75,tickets_nb:797,drive_ttc:4247.35,kiosk_ttc:8406.95,livraison_ttc:1377.4,comptoir_ttc:1510.4,corrections_montant:351.65,corrections_pct:4.3,annulations_montant:0.0,remises_montant:632.49,remises_pct:3.81},
+  {restaurant:'BK509',date:'2025-12-11',ca_ttc:13748.15,ca_ht:11925.1,tickets_nb:673,drive_ttc:3824.75,kiosk_ttc:6537.65,livraison_ttc:1539.0,comptoir_ttc:989.4,corrections_montant:372.5,corrections_pct:5.17,annulations_montant:0.0,remises_montant:550.98,remises_pct:4.01},
+  {restaurant:'BK509',date:'2025-12-12',ca_ttc:18933.2,ca_ht:16354.63,tickets_nb:877,drive_ttc:4968.25,kiosk_ttc:8954.1,livraison_ttc:2246.45,comptoir_ttc:1645.8,corrections_montant:572.05,corrections_pct:5.73,annulations_montant:0.0,remises_montant:829.49,remises_pct:4.38},
+  {restaurant:'BK509',date:'2025-12-13',ca_ttc:22751.55,ca_ht:19813.96,tickets_nb:963,drive_ttc:5247.55,kiosk_ttc:12279.45,livraison_ttc:1620.8,comptoir_ttc:2656.9,corrections_montant:823.5,corrections_pct:7.86,annulations_montant:0.0,remises_montant:851.13,remises_pct:3.74},
+  {restaurant:'BK509',date:'2025-12-14',ca_ttc:18658.05,ca_ht:16191.03,tickets_nb:790,drive_ttc:4635.05,kiosk_ttc:8488.35,livraison_ttc:2324.35,comptoir_ttc:1776.5,corrections_montant:371.45,corrections_pct:3.65,annulations_montant:0.0,remises_montant:701.24,remises_pct:3.76},
+  {restaurant:'BK509',date:'2025-12-15',ca_ttc:11874.4,ca_ht:10304.4,tickets_nb:594,drive_ttc:3207.35,kiosk_ttc:5179.75,livraison_ttc:1717.95,comptoir_ttc:1163.35,corrections_montant:724.85,corrections_pct:10.83,annulations_montant:0.0,remises_montant:458.92,remises_pct:3.86},
+  {restaurant:'BK509',date:'2025-12-16',ca_ttc:12406.65,ca_ht:10878.65,tickets_nb:596,drive_ttc:3132.4,kiosk_ttc:5809.45,livraison_ttc:1572.85,comptoir_ttc:1159.95,corrections_montant:376.3,corrections_pct:5.7,annulations_montant:0.0,remises_montant:374.41,remises_pct:3.02},
+  {restaurant:'BK509',date:'2025-12-17',ca_ttc:17244.1,ca_ht:15030.98,tickets_nb:813,drive_ttc:4042.45,kiosk_ttc:8479.95,livraison_ttc:1703.4,comptoir_ttc:1797.0,corrections_montant:393.8,corrections_pct:4.49,annulations_montant:-51.75,remises_montant:610.3,remises_pct:3.54},
+  {restaurant:'BK509',date:'2025-12-18',ca_ttc:13918.25,ca_ht:12120.99,tickets_nb:671,drive_ttc:3808.05,kiosk_ttc:6212.05,livraison_ttc:1739.8,comptoir_ttc:1398.8,corrections_montant:417.45,corrections_pct:5.42,annulations_montant:0.0,remises_montant:495.86,remises_pct:3.56},
+  {restaurant:'BK509',date:'2025-12-19',ca_ttc:18799.0,ca_ht:16254.89,tickets_nb:829,drive_ttc:5039.4,kiosk_ttc:8016.75,livraison_ttc:2393.5,comptoir_ttc:2201.95,corrections_montant:778.7,corrections_pct:7.22,annulations_montant:-25.9,remises_montant:825.13,remises_pct:4.39},
+  {restaurant:'BK509',date:'2025-12-20',ca_ttc:21903.2,ca_ht:19104.04,tickets_nb:885,drive_ttc:5820.1,kiosk_ttc:10725.45,livraison_ttc:1797.0,comptoir_ttc:2516.0,corrections_montant:630.6,corrections_pct:5.64,annulations_montant:0.0,remises_montant:777.4,remises_pct:3.55},
+  {restaurant:'BK509',date:'2025-12-21',ca_ttc:17667.4,ca_ht:15297.86,tickets_nb:677,drive_ttc:4417.75,kiosk_ttc:7819.35,livraison_ttc:2722.6,comptoir_ttc:1429.7,corrections_montant:623.5,corrections_pct:6.33,annulations_montant:-90.8,remises_montant:718.22,remises_pct:4.07},
+  {restaurant:'BK509',date:'2025-12-22',ca_ttc:14391.3,ca_ht:12502.6,tickets_nb:628,drive_ttc:3254.5,kiosk_ttc:7183.2,livraison_ttc:1359.2,comptoir_ttc:1383.85,corrections_montant:308.6,corrections_pct:4.28,annulations_montant:0.0,remises_montant:576.84,remises_pct:4.01},
+  {restaurant:'BK509',date:'2025-12-23',ca_ttc:18576.6,ca_ht:16276.27,tickets_nb:767,drive_ttc:4074.85,kiosk_ttc:9021.55,livraison_ttc:1885.2,comptoir_ttc:2442.85,corrections_montant:698.75,corrections_pct:7.31,annulations_montant:-8.5,remises_montant:586.13,remises_pct:3.16},
+  {restaurant:'BK509',date:'2025-12-24',ca_ttc:7208.6,ca_ht:6358.26,tickets_nb:325,drive_ttc:1785.7,kiosk_ttc:3811.3,livraison_ttc:480.7,comptoir_ttc:783.45,corrections_montant:212.25,corrections_pct:6.25,annulations_montant:0.0,remises_montant:181.69,remises_pct:2.52},
+  {restaurant:'BK509',date:'2025-12-25',ca_ttc:8794.95,ca_ht:7652.19,tickets_nb:377,drive_ttc:2368.75,kiosk_ttc:3225.7,livraison_ttc:1296.8,comptoir_ttc:1127.4,corrections_montant:265.2,corrections_pct:4.76,annulations_montant:0.0,remises_montant:313.45,remises_pct:3.56},
+  {restaurant:'BK509',date:'2025-12-26',ca_ttc:18920.0,ca_ht:16521.1,tickets_nb:772,drive_ttc:4834.15,kiosk_ttc:8940.6,livraison_ttc:1662.3,comptoir_ttc:2475.45,corrections_montant:393.25,corrections_pct:3.94,annulations_montant:-70.7,remises_montant:648.76,remises_pct:3.43},
+  {restaurant:'BK509',date:'2025-12-27',ca_ttc:17722.6,ca_ht:15456.74,tickets_nb:723,drive_ttc:4081.3,kiosk_ttc:8753.6,livraison_ttc:1612.15,comptoir_ttc:2450.8,corrections_montant:926.8,corrections_pct:10.33,annulations_montant:0.0,remises_montant:637.81,remises_pct:3.6},
+  {restaurant:'BK509',date:'2025-12-28',ca_ttc:20356.6,ca_ht:17794.38,tickets_nb:724,drive_ttc:4861.1,kiosk_ttc:9178.35,livraison_ttc:2361.0,comptoir_ttc:2490.45,corrections_montant:613.4,corrections_pct:5.49,annulations_montant:0.0,remises_montant:656.31,remises_pct:3.22},
+  {restaurant:'BK509',date:'2025-12-29',ca_ttc:17368.7,ca_ht:15176.3,tickets_nb:710,drive_ttc:4166.85,kiosk_ttc:9214.6,livraison_ttc:1336.35,comptoir_ttc:1570.55,corrections_montant:445.4,corrections_pct:5.46,annulations_montant:0.0,remises_montant:593.87,remises_pct:3.42},
+  {restaurant:'BK509',date:'2025-12-30',ca_ttc:18212.05,ca_ht:15856.72,tickets_nb:771,drive_ttc:4360.1,kiosk_ttc:8759.7,livraison_ttc:1899.5,comptoir_ttc:1863.95,corrections_montant:434.55,corrections_pct:4.6,annulations_montant:0.0,remises_montant:671.27,remises_pct:3.69},
+  {restaurant:'BK509',date:'2025-12-31',ca_ttc:8331.2,ca_ht:7383.35,tickets_nb:401,drive_ttc:1712.85,kiosk_ttc:4552.65,livraison_ttc:427.9,comptoir_ttc:1142.6,corrections_montant:230.3,corrections_pct:6.09,annulations_montant:0.0,remises_montant:176.73,remises_pct:2.12}
+];
+
+const SEED_BK509_2026 = [
+  {restaurant:'BK509',date:'2026-01-01',ca_ttc:24097.7,ca_ht:20907.66,tickets_nb:903,drive_ttc:5910.05,kiosk_ttc:8556.1,livraison_ttc:5106.35,comptoir_ttc:2106.95,corrections_montant:639.7,corrections_pct:4.12,annulations_montant:-24.3,remises_montant:838.71,remises_pct:3.48},
+  {restaurant:'BK509',date:'2026-01-02',ca_ttc:19613.65,ca_ht:16903.48,tickets_nb:826,drive_ttc:4122.8,kiosk_ttc:10281.0,livraison_ttc:1741.05,comptoir_ttc:1982.9,corrections_montant:513.35,corrections_pct:5.5,annulations_montant:-31.9,remises_montant:917.48,remises_pct:4.68},
+  {restaurant:'BK509',date:'2026-01-03',ca_ttc:19701.4,ca_ht:17247.66,tickets_nb:826,drive_ttc:4404.65,kiosk_ttc:10268.5,livraison_ttc:1560.05,comptoir_ttc:2036.05,corrections_montant:347.4,corrections_pct:3.68,annulations_montant:-36.9,remises_montant:641.09,remises_pct:3.25},
+  {restaurant:'BK509',date:'2026-01-04',ca_ttc:16922.55,ca_ht:14586.35,tickets_nb:667,drive_ttc:4268.55,kiosk_ttc:7317.4,livraison_ttc:2366.2,comptoir_ttc:1360.0,corrections_montant:503.3,corrections_pct:5.24,annulations_montant:0.0,remises_montant:776.19,remises_pct:4.59},
+  {restaurant:'BK509',date:'2026-01-05',ca_ttc:12333.45,ca_ht:10842.15,tickets_nb:604,drive_ttc:3253.1,kiosk_ttc:5366.3,livraison_ttc:1532.75,comptoir_ttc:1471.05,corrections_montant:490.3,corrections_pct:7.04,annulations_montant:-13.7,remises_montant:338.48,remises_pct:2.74},
+  {restaurant:'BK509',date:'2026-01-06',ca_ttc:10392.9,ca_ht:9072.8,tickets_nb:516,drive_ttc:2987.05,kiosk_ttc:4582.75,livraison_ttc:1071.85,comptoir_ttc:1152.95,corrections_montant:359.75,corrections_pct:6.19,annulations_montant:0.0,remises_montant:360.7,remises_pct:3.47},
+  {restaurant:'BK509',date:'2026-01-07',ca_ttc:14826.4,ca_ht:12904.93,tickets_nb:760,drive_ttc:3584.5,kiosk_ttc:7257.2,livraison_ttc:1542.2,comptoir_ttc:1424.95,corrections_montant:496.9,corrections_pct:6.56,annulations_montant:-27.9,remises_montant:546.66,remises_pct:3.69},
+  {restaurant:'BK509',date:'2026-01-08',ca_ttc:12478.15,ca_ht:10805.81,tickets_nb:600,drive_ttc:3993.1,kiosk_ttc:5276.2,livraison_ttc:1426.7,comptoir_ttc:1048.85,corrections_montant:473.3,corrections_pct:6.57,annulations_montant:0.0,remises_montant:534.64,remises_pct:4.28},
+  {restaurant:'BK509',date:'2026-01-09',ca_ttc:18052.0,ca_ht:15737.44,tickets_nb:840,drive_ttc:5236.6,kiosk_ttc:7599.8,livraison_ttc:2046.8,comptoir_ttc:1748.85,corrections_montant:685.2,corrections_pct:6.56,annulations_montant:0.0,remises_montant:618.88,remises_pct:3.43},
+  {restaurant:'BK509',date:'2026-01-10',ca_ttc:21695.1,ca_ht:18865.24,tickets_nb:888,drive_ttc:5295.65,kiosk_ttc:10656.55,livraison_ttc:1666.45,comptoir_ttc:2400.85,corrections_montant:543.45,corrections_pct:4.92,annulations_montant:0.0,remises_montant:833.32,remises_pct:3.84},
+  {restaurant:'BK509',date:'2026-01-11',ca_ttc:16552.1,ca_ht:14327.99,tickets_nb:670,drive_ttc:4063.45,kiosk_ttc:7264.1,livraison_ttc:2223.5,comptoir_ttc:1566.05,corrections_montant:371.05,corrections_pct:3.99,annulations_montant:0.0,remises_montant:673.07,remises_pct:4.07},
+  {restaurant:'BK509',date:'2026-01-12',ca_ttc:10221.95,ca_ht:8888.89,tickets_nb:529,drive_ttc:2763.35,kiosk_ttc:4566.85,livraison_ttc:1160.9,comptoir_ttc:1001.95,corrections_montant:245.85,corrections_pct:4.35,annulations_montant:0.0,remises_montant:390.29,remises_pct:3.82},
+  {restaurant:'BK509',date:'2026-01-13',ca_ttc:10725.8,ca_ht:9270.51,tickets_nb:544,drive_ttc:2961.6,kiosk_ttc:4717.3,livraison_ttc:1461.65,comptoir_ttc:1008.4,corrections_montant:321.25,corrections_pct:5.35,annulations_montant:0.0,remises_montant:473.62,remises_pct:4.42},
+  {restaurant:'BK509',date:'2026-01-14',ca_ttc:13939.6,ca_ht:12140.9,tickets_nb:669,drive_ttc:3526.3,kiosk_ttc:6673.4,livraison_ttc:1251.4,comptoir_ttc:1541.65,corrections_montant:285.05,corrections_pct:3.92,annulations_montant:0.0,remises_montant:508.77,remises_pct:3.65},
+  {restaurant:'BK509',date:'2026-01-15',ca_ttc:11953.9,ca_ht:10366.34,tickets_nb:592,drive_ttc:3062.1,kiosk_ttc:5726.4,livraison_ttc:1334.25,comptoir_ttc:1025.7,corrections_montant:305.25,corrections_pct:4.9,annulations_montant:0.0,remises_montant:482.81,remises_pct:4.04},
+  {restaurant:'BK509',date:'2026-01-16',ca_ttc:17574.45,ca_ht:15075.16,tickets_nb:817,drive_ttc:5577.25,kiosk_ttc:7471.25,livraison_ttc:1869.6,comptoir_ttc:1543.4,corrections_montant:402.45,corrections_pct:3.98,annulations_montant:0.0,remises_montant:884.21,remises_pct:5.03},
+  {restaurant:'BK509',date:'2026-01-17',ca_ttc:18311.6,ca_ht:15886.1,tickets_nb:759,drive_ttc:4202.85,kiosk_ttc:8783.2,livraison_ttc:1447.75,comptoir_ttc:2520.35,corrections_montant:698.2,corrections_pct:7.33,annulations_montant:-18.75,remises_montant:751.5,remises_pct:4.1},
+  {restaurant:'BK509',date:'2026-01-18',ca_ttc:15299.55,ca_ht:13138.33,tickets_nb:637,drive_ttc:4195.05,kiosk_ttc:6779.5,livraison_ttc:2031.3,comptoir_ttc:1041.15,corrections_montant:332.05,corrections_pct:3.9,annulations_montant:0.0,remises_montant:760.85,remises_pct:4.97},
+  {restaurant:'BK509',date:'2026-01-19',ca_ttc:10030.15,ca_ht:8744.64,tickets_nb:498,drive_ttc:2909.35,kiosk_ttc:4424.1,livraison_ttc:1329.6,comptoir_ttc:739.95,corrections_montant:105.0,corrections_pct:1.87,annulations_montant:0.0,remises_montant:340.6,remises_pct:3.4},
+  {restaurant:'BK509',date:'2026-01-20',ca_ttc:10458.25,ca_ht:9032.6,tickets_nb:525,drive_ttc:2919.9,kiosk_ttc:4370.25,livraison_ttc:1512.1,comptoir_ttc:754.05,corrections_montant:371.95,corrections_pct:6.11,annulations_montant:0.0,remises_montant:449.43,remises_pct:4.3},
+  {restaurant:'BK509',date:'2026-01-21',ca_ttc:13329.75,ca_ht:11506.75,tickets_nb:683,drive_ttc:2969.0,kiosk_ttc:6638.05,livraison_ttc:1488.95,comptoir_ttc:1547.65,corrections_montant:474.05,corrections_pct:7.08,annulations_montant:-6.0,remises_montant:601.88,remises_pct:4.52},
+  {restaurant:'BK509',date:'2026-01-22',ca_ttc:12283.3,ca_ht:10613.49,tickets_nb:634,drive_ttc:2874.0,kiosk_ttc:6067.85,livraison_ttc:1316.9,comptoir_ttc:1029.2,corrections_montant:421.7,corrections_pct:6.78,annulations_montant:-115.65,remises_montant:546.99,remises_pct:4.45},
+  {restaurant:'BK509',date:'2026-01-23',ca_ttc:15496.95,ca_ht:13385.83,tickets_nb:749,drive_ttc:4286.05,kiosk_ttc:7008.8,livraison_ttc:1509.2,comptoir_ttc:1309.35,corrections_montant:668.65,corrections_pct:7.88,annulations_montant:-17.8,remises_montant:695.1,remises_pct:4.49},
+  {restaurant:'BK509',date:'2026-01-24',ca_ttc:19887.7,ca_ht:17320.5,tickets_nb:867,drive_ttc:4792.7,kiosk_ttc:9808.8,livraison_ttc:1704.85,comptoir_ttc:1700.9,corrections_montant:364.65,corrections_pct:3.62,annulations_montant:-12.3,remises_montant:737.68,remises_pct:3.71},
+  {restaurant:'BK509',date:'2026-01-25',ca_ttc:16587.35,ca_ht:14435.59,tickets_nb:726,drive_ttc:4242.35,kiosk_ttc:7353.35,livraison_ttc:1859.3,comptoir_ttc:1696.8,corrections_montant:435.7,corrections_pct:4.72,annulations_montant:0.0,remises_montant:596.36,remises_pct:3.6},
+  {restaurant:'BK509',date:'2026-01-26',ca_ttc:10521.4,ca_ht:9256.29,tickets_nb:539,drive_ttc:2942.7,kiosk_ttc:4770.25,livraison_ttc:1049.5,comptoir_ttc:1136.4,corrections_montant:453.8,corrections_pct:7.89,annulations_montant:-18.2,remises_montant:305.34,remises_pct:2.9},
+  {restaurant:'BK509',date:'2026-01-27',ca_ttc:10713.6,ca_ht:9307.34,tickets_nb:590,drive_ttc:2998.0,kiosk_ttc:5347.9,livraison_ttc:987.6,comptoir_ttc:842.15,corrections_montant:355.85,corrections_pct:6.63,annulations_montant:0.0,remises_montant:440.27,remises_pct:4.11},
+  {restaurant:'BK509',date:'2026-01-28',ca_ttc:13985.8,ca_ht:12030.63,tickets_nb:691,drive_ttc:3558.2,kiosk_ttc:7233.1,livraison_ttc:945.85,comptoir_ttc:1228.15,corrections_montant:397.8,corrections_pct:5.89,annulations_montant:0.0,remises_montant:692.94,remises_pct:4.95},
+  {restaurant:'BK509',date:'2026-01-29',ca_ttc:11941.95,ca_ht:10380.07,tickets_nb:614,drive_ttc:3099.1,kiosk_ttc:5641.25,livraison_ttc:1533.0,comptoir_ttc:949.35,corrections_montant:244.15,corrections_pct:3.87,annulations_montant:0.0,remises_montant:467.01,remises_pct:3.91},
+  {restaurant:'BK509',date:'2026-01-30',ca_ttc:18214.05,ca_ht:15736.33,tickets_nb:830,drive_ttc:5058.05,kiosk_ttc:7663.55,livraison_ttc:2144.15,comptoir_ttc:1956.45,corrections_montant:427.6,corrections_pct:4.05,annulations_montant:-8.5,remises_montant:804.24,remises_pct:4.42},
+  {restaurant:'BK509',date:'2026-01-31',ca_ttc:20155.3,ca_ht:17601.83,tickets_nb:918,drive_ttc:5238.3,kiosk_ttc:9578.5,livraison_ttc:1746.95,comptoir_ttc:2256.55,corrections_montant:416.4,corrections_pct:3.94,annulations_montant:-14.0,remises_montant:698.93,remises_pct:3.47},
+  {restaurant:'BK509',date:'2026-02-01',ca_ttc:17496.7,ca_ht:14901.31,tickets_nb:777,drive_ttc:4057.75,kiosk_ttc:8046.35,livraison_ttc:1734.6,comptoir_ttc:1778.35,corrections_montant:405.3,corrections_pct:4.29,annulations_montant:-6.0,remises_montant:1009.39,remises_pct:5.77},
+  {restaurant:'BK509',date:'2026-02-02',ca_ttc:10439.05,ca_ht:9047.67,tickets_nb:551,drive_ttc:2786.85,kiosk_ttc:4235.55,livraison_ttc:1429.75,comptoir_ttc:1244.35,corrections_montant:376.15,corrections_pct:6.06,annulations_montant:0.0,remises_montant:431.65,remises_pct:4.13},
+  {restaurant:'BK509',date:'2026-02-03',ca_ttc:10856.65,ca_ht:9298.86,tickets_nb:573,drive_ttc:2949.45,kiosk_ttc:5203.05,livraison_ttc:1336.5,comptoir_ttc:810.9,corrections_montant:171.85,corrections_pct:3.04,annulations_montant:0.0,remises_montant:598.56,remises_pct:5.51},
+  {restaurant:'BK509',date:'2026-02-04',ca_ttc:14716.6,ca_ht:12550.06,tickets_nb:708,drive_ttc:4137.6,kiosk_ttc:6263.5,livraison_ttc:1266.0,comptoir_ttc:1789.95,corrections_montant:576.45,corrections_pct:6.82,annulations_montant:0.0,remises_montant:848.05,remises_pct:5.76},
+  {restaurant:'BK509',date:'2026-02-05',ca_ttc:14310.3,ca_ht:12232.68,tickets_nb:704,drive_ttc:4023.2,kiosk_ttc:6948.5,livraison_ttc:1650.4,comptoir_ttc:718.25,corrections_montant:198.4,corrections_pct:2.69,annulations_montant:0.0,remises_montant:815.92,remises_pct:5.7},
+  {restaurant:'BK509',date:'2026-02-06',ca_ttc:16971.35,ca_ht:14577.92,tickets_nb:834,drive_ttc:4777.55,kiosk_ttc:7870.75,livraison_ttc:1668.6,comptoir_ttc:1369.55,corrections_montant:366.35,corrections_pct:4.03,annulations_montant:0.0,remises_montant:875.04,remises_pct:5.16},
+  {restaurant:'BK509',date:'2026-02-07',ca_ttc:21223.65,ca_ht:18178.27,tickets_nb:943,drive_ttc:4555.35,kiosk_ttc:11891.45,livraison_ttc:1554.6,comptoir_ttc:1768.7,corrections_montant:1531.1,corrections_pct:16.41,annulations_montant:0.0,remises_montant:1150.17,remises_pct:5.42},
+  {restaurant:'BK509',date:'2026-02-08',ca_ttc:17713.55,ca_ht:15078.37,tickets_nb:741,drive_ttc:4854.35,kiosk_ttc:7934.55,livraison_ttc:2046.85,comptoir_ttc:1586.9,corrections_montant:570.0,corrections_pct:5.83,annulations_montant:0.0,remises_montant:1064.16,remises_pct:6.01},
+  {restaurant:'BK509',date:'2026-02-09',ca_ttc:10934.1,ca_ht:9339.62,tickets_nb:574,drive_ttc:3011.9,kiosk_ttc:5464.65,livraison_ttc:854.2,comptoir_ttc:1038.3,corrections_montant:146.15,corrections_pct:2.67,annulations_montant:0.0,remises_montant:633.62,remises_pct:5.79},
+  {restaurant:'BK509',date:'2026-02-10',ca_ttc:10743.65,ca_ht:9315.84,tickets_nb:522,drive_ttc:3250.9,kiosk_ttc:4727.4,livraison_ttc:1170.7,comptoir_ttc:903.7,corrections_montant:281.3,corrections_pct:4.68,annulations_montant:0.0,remises_montant:472.23,remises_pct:4.4},
+  {restaurant:'BK509',date:'2026-02-11',ca_ttc:14285.2,ca_ht:12261.21,tickets_nb:696,drive_ttc:3418.4,kiosk_ttc:7383.0,livraison_ttc:1463.7,comptoir_ttc:1126.0,corrections_montant:335.9,corrections_pct:4.87,annulations_montant:0.0,remises_montant:748.65,remises_pct:5.24},
+  {restaurant:'BK509',date:'2026-02-12',ca_ttc:12062.3,ca_ht:10277.29,tickets_nb:618,drive_ttc:3014.85,kiosk_ttc:5754.95,livraison_ttc:1208.9,comptoir_ttc:1145.15,corrections_montant:302.2,corrections_pct:4.79,annulations_montant:0.0,remises_montant:706.92,remises_pct:5.86},
+  {restaurant:'BK509',date:'2026-02-13',ca_ttc:16494.15,ca_ht:14097.78,tickets_nb:758,drive_ttc:4426.2,kiosk_ttc:6811.25,livraison_ttc:2225.5,comptoir_ttc:1586.3,corrections_montant:589.6,corrections_pct:6.09,annulations_montant:-30.5,remises_montant:932.0,remises_pct:5.65},
+  {restaurant:'BK509',date:'2026-02-14',ca_ttc:21463.1,ca_ht:18380.13,tickets_nb:910,drive_ttc:4790.0,kiosk_ttc:11154.75,livraison_ttc:1308.85,comptoir_ttc:2564.7,corrections_montant:475.3,corrections_pct:4.61,annulations_montant:-19.0,remises_montant:1174.48,remises_pct:5.47},
+  {restaurant:'BK509',date:'2026-02-15',ca_ttc:17345.5,ca_ht:14788.38,tickets_nb:693,drive_ttc:4407.35,kiosk_ttc:7609.15,livraison_ttc:2340.05,comptoir_ttc:1457.35,corrections_montant:489.35,corrections_pct:5.03,annulations_montant:-33.1,remises_montant:1019.43,remises_pct:5.88},
+  {restaurant:'BK509',date:'2026-02-16',ca_ttc:10098.8,ca_ht:8659.42,tickets_nb:528,drive_ttc:2731.85,kiosk_ttc:4702.75,livraison_ttc:1077.0,comptoir_ttc:981.5,corrections_montant:357.4,corrections_pct:6.62,annulations_montant:0.0,remises_montant:549.01,remises_pct:5.44},
+  {restaurant:'BK509',date:'2026-02-17',ca_ttc:11301.95,ca_ht:9421.46,tickets_nb:552,drive_ttc:3472.0,kiosk_ttc:4948.55,livraison_ttc:1290.5,comptoir_ttc:1165.5,corrections_montant:557.7,corrections_pct:8.78,annulations_montant:-10.4,remises_montant:909.2,remises_pct:8.04},
+  {restaurant:'BK509',date:'2026-02-18',ca_ttc:13671.15,ca_ht:11739.17,tickets_nb:669,drive_ttc:3821.4,kiosk_ttc:6279.35,livraison_ttc:1605.35,comptoir_ttc:997.85,corrections_montant:421.5,corrections_pct:5.7,annulations_montant:-29.7,remises_montant:709.91,remises_pct:5.19},
+  {restaurant:'BK509',date:'2026-02-19',ca_ttc:13162.2,ca_ht:11266.84,tickets_nb:626,drive_ttc:3641.75,kiosk_ttc:6192.2,livraison_ttc:1582.0,comptoir_ttc:1183.0,corrections_montant:461.5,corrections_pct:6.62,annulations_montant:0.0,remises_montant:734.72,remises_pct:5.58},
+  {restaurant:'BK509',date:'2026-02-20',ca_ttc:18500.2,ca_ht:15666.5,tickets_nb:794,drive_ttc:5129.35,kiosk_ttc:7708.3,livraison_ttc:1914.95,comptoir_ttc:2039.1,corrections_montant:627.35,corrections_pct:5.81,annulations_montant:0.0,remises_montant:1188.06,remises_pct:6.42},
+  {restaurant:'BK509',date:'2026-02-21',ca_ttc:19409.9,ca_ht:16229.82,tickets_nb:782,drive_ttc:4365.9,kiosk_ttc:9607.2,livraison_ttc:1365.8,comptoir_ttc:2700.6,corrections_montant:609.6,corrections_pct:6.22,annulations_montant:0.0,remises_montant:1486.77,remises_pct:7.66},
+  {restaurant:'BK509',date:'2026-02-22',ca_ttc:18086.4,ca_ht:15533.62,tickets_nb:738,drive_ttc:4816.85,kiosk_ttc:8202.8,livraison_ttc:1661.15,comptoir_ttc:1702.05,corrections_montant:906.85,corrections_pct:9.18,annulations_montant:-30.25,remises_montant:931.33,remises_pct:5.15},
+  {restaurant:'BK509',date:'2026-02-23',ca_ttc:12222.1,ca_ht:10364.9,tickets_nb:563,drive_ttc:3343.65,kiosk_ttc:5936.6,livraison_ttc:1040.4,comptoir_ttc:1288.3,corrections_montant:505.4,corrections_pct:8.04,annulations_montant:0.0,remises_montant:786.9,remises_pct:6.44},
+  {restaurant:'BK509',date:'2026-02-24',ca_ttc:12270.55,ca_ht:10464.99,tickets_nb:557,drive_ttc:3387.5,kiosk_ttc:5744.8,livraison_ttc:1153.9,comptoir_ttc:1186.45,corrections_montant:636.0,corrections_pct:9.75,annulations_montant:-42.4,remises_montant:716.24,remises_pct:5.84},
+  {restaurant:'BK509',date:'2026-02-25',ca_ttc:13996.25,ca_ht:12047.13,tickets_nb:646,drive_ttc:3377.9,kiosk_ttc:7174.85,livraison_ttc:1447.5,comptoir_ttc:1421.95,corrections_montant:633.55,corrections_pct:9.29,annulations_montant:0.0,remises_montant:703.19,remises_pct:5.02},
+  {restaurant:'BK509',date:'2026-02-26',ca_ttc:14766.3,ca_ht:12687.56,tickets_nb:645,drive_ttc:4483.15,kiosk_ttc:6981.9,livraison_ttc:1360.55,comptoir_ttc:1425.6,corrections_montant:414.4,corrections_pct:5.32,annulations_montant:0.0,remises_montant:778.82,remises_pct:5.27},
+  {restaurant:'BK509',date:'2026-02-27',ca_ttc:18839.3,ca_ht:16190.74,tickets_nb:783,drive_ttc:4531.4,kiosk_ttc:8519.5,livraison_ttc:2299.35,comptoir_ttc:2119.35,corrections_montant:385.95,corrections_pct:3.74,annulations_montant:-127.1,remises_montant:965.37,remises_pct:5.12},
+  {restaurant:'BK509',date:'2026-02-28',ca_ttc:17656.75,ca_ht:15253.56,tickets_nb:708,drive_ttc:4550.95,kiosk_ttc:8866.85,livraison_ttc:1164.55,comptoir_ttc:2116.75,corrections_montant:628.3,corrections_pct:7.15,annulations_montant:-35.1,remises_montant:834.49,remises_pct:4.73},
+  {restaurant:'BK509',date:'2026-03-01',ca_ttc:17923.7,ca_ht:15407.44,tickets_nb:714,drive_ttc:4279.35,kiosk_ttc:8470.05,livraison_ttc:2298.65,comptoir_ttc:1310.85,corrections_montant:789.65,corrections_pct:8.35,annulations_montant:-68.75,remises_montant:896.29,remises_pct:5.0},
+  {restaurant:'BK509',date:'2026-03-02',ca_ttc:13254.5,ca_ht:11250.59,tickets_nb:582,drive_ttc:3547.65,kiosk_ttc:6250.7,livraison_ttc:1707.25,comptoir_ttc:1306.2,corrections_montant:409.15,corrections_pct:5.84,annulations_montant:-19.9,remises_montant:846.99,remises_pct:6.39},
+  {restaurant:'BK509',date:'2026-03-03',ca_ttc:15011.05,ca_ht:12713.42,tickets_nb:661,drive_ttc:3394.75,kiosk_ttc:6867.35,livraison_ttc:2243.35,comptoir_ttc:1621.25,corrections_montant:605.5,corrections_pct:7.44,annulations_montant:-43.5,remises_montant:961.09,remises_pct:6.4},
+  {restaurant:'BK509',date:'2026-03-04',ca_ttc:14911.15,ca_ht:12392.67,tickets_nb:667,drive_ttc:3632.6,kiosk_ttc:6990.65,livraison_ttc:2394.15,comptoir_ttc:1395.3,corrections_montant:304.25,corrections_pct:3.84,annulations_montant:-40.0,remises_montant:1211.69,remises_pct:8.13},
+  {restaurant:'BK509',date:'2026-03-05',ca_ttc:14685.95,ca_ht:12437.55,tickets_nb:655,drive_ttc:4101.75,kiosk_ttc:6580.15,livraison_ttc:1772.35,comptoir_ttc:1281.35,corrections_montant:467.25,corrections_pct:5.76,annulations_montant:-15.7,remises_montant:934.44,remises_pct:6.36},
+  {restaurant:'BK509',date:'2026-03-06',ca_ttc:19427.75,ca_ht:16481.0,tickets_nb:796,drive_ttc:4954.5,kiosk_ttc:8934.05,livraison_ttc:2671.0,comptoir_ttc:1378.9,corrections_montant:335.85,corrections_pct:3.2,annulations_montant:0.0,remises_montant:1211.36,remises_pct:6.24},
+  {restaurant:'BK509',date:'2026-03-07',ca_ttc:22555.8,ca_ht:19245.08,tickets_nb:843,drive_ttc:5189.45,kiosk_ttc:11097.05,livraison_ttc:2578.8,comptoir_ttc:2351.65,corrections_montant:562.65,corrections_pct:4.91,annulations_montant:-44.75,remises_montant:1287.25,remises_pct:5.71},
+  {restaurant:'BK509',date:'2026-03-08',ca_ttc:18714.5,ca_ht:15498.62,tickets_nb:749,drive_ttc:4506.2,kiosk_ttc:7427.3,livraison_ttc:3463.15,comptoir_ttc:1337.2,corrections_montant:496.6,corrections_pct:4.4,annulations_montant:0.0,remises_montant:1543.26,remises_pct:8.25},
+  {restaurant:'BK509',date:'2026-03-09',ca_ttc:9789.8,ca_ht:8426.4,tickets_nb:469,drive_ttc:3155.4,kiosk_ttc:3979.65,livraison_ttc:1030.65,comptoir_ttc:1090.2,corrections_montant:393.9,corrections_pct:6.78,annulations_montant:0.0,remises_montant:485.74,remises_pct:4.96},
+  {restaurant:'BK509',date:'2026-03-10',ca_ttc:10069.8,ca_ht:8724.33,tickets_nb:474,drive_ttc:2745.3,kiosk_ttc:4228.45,livraison_ttc:1329.65,comptoir_ttc:1009.75,corrections_montant:311.15,corrections_pct:5.33,annulations_montant:0.0,remises_montant:421.71,remises_pct:4.19},
+  {restaurant:'BK509',date:'2026-03-11',ca_ttc:13618.25,ca_ht:11825.47,tickets_nb:644,drive_ttc:3383.3,kiosk_ttc:6837.7,livraison_ttc:1517.3,comptoir_ttc:1244.8,corrections_montant:333.5,corrections_pct:4.92,annulations_montant:0.0,remises_montant:559.26,remises_pct:4.11},
+  {restaurant:'BK509',date:'2026-03-12',ca_ttc:11966.5,ca_ht:10373.35,tickets_nb:589,drive_ttc:3154.6,kiosk_ttc:5345.1,livraison_ttc:1290.4,comptoir_ttc:1234.0,corrections_montant:219.85,corrections_pct:3.32,annulations_montant:0.0,remises_montant:531.52,remises_pct:4.44},
+  {restaurant:'BK509',date:'2026-03-13',ca_ttc:16497.75,ca_ht:14272.91,tickets_nb:759,drive_ttc:4248.3,kiosk_ttc:7525.65,livraison_ttc:1810.65,comptoir_ttc:1812.6,corrections_montant:555.5,corrections_pct:6.19,annulations_montant:0.0,remises_montant:739.95,remises_pct:4.49},
+  {restaurant:'BK509',date:'2026-03-14',ca_ttc:18047.0,ca_ht:15649.46,tickets_nb:773,drive_ttc:4410.25,kiosk_ttc:8629.8,livraison_ttc:1651.0,comptoir_ttc:2241.55,corrections_montant:725.7,corrections_pct:7.71,annulations_montant:0.0,remises_montant:780.53,remises_pct:4.32},
+  {restaurant:'BK509',date:'2026-03-15',ca_ttc:16432.15,ca_ht:14169.09,tickets_nb:710,drive_ttc:4241.85,kiosk_ttc:8119.55,livraison_ttc:1899.9,comptoir_ttc:1418.5,corrections_montant:508.9,corrections_pct:6.12,annulations_montant:0.0,remises_montant:795.35,remises_pct:4.84},
+  {restaurant:'BK509',date:'2026-03-16',ca_ttc:9700.45,ca_ht:8490.59,tickets_nb:478,drive_ttc:2655.5,kiosk_ttc:4629.5,livraison_ttc:1024.2,comptoir_ttc:770.75,corrections_montant:483.85,corrections_pct:9.54,annulations_montant:0.0,remises_montant:333.58,remises_pct:3.44},
+  {restaurant:'BK509',date:'2026-03-17',ca_ttc:10405.8,ca_ht:9122.3,tickets_nb:486,drive_ttc:2441.85,kiosk_ttc:5103.8,livraison_ttc:1332.5,comptoir_ttc:1005.6,corrections_montant:302.15,corrections_pct:5.7,annulations_montant:0.0,remises_montant:343.92,remises_pct:3.31},
+  {restaurant:'BK509',date:'2026-03-18',ca_ttc:13702.55,ca_ht:11915.68,tickets_nb:678,drive_ttc:3934.95,kiosk_ttc:6421.0,livraison_ttc:1532.7,comptoir_ttc:1099.3,corrections_montant:767.7,corrections_pct:10.54,annulations_montant:0.0,remises_montant:552.33,remises_pct:4.03},
+  {restaurant:'BK509',date:'2026-03-19',ca_ttc:12856.55,ca_ht:11045.39,tickets_nb:625,drive_ttc:3701.6,kiosk_ttc:5877.9,livraison_ttc:1027.0,comptoir_ttc:1354.7,corrections_montant:408.05,corrections_pct:5.85,annulations_montant:-27.7,remises_montant:668.96,remises_pct:5.2},
+  {restaurant:'BK509',date:'2026-03-20',ca_ttc:15703.85,ca_ht:13530.13,tickets_nb:735,drive_ttc:4530.4,kiosk_ttc:6787.3,livraison_ttc:1553.9,comptoir_ttc:1688.05,corrections_montant:504.7,corrections_pct:5.66,annulations_montant:-31.5,remises_montant:759.73,remises_pct:4.84},
+  {restaurant:'BK509',date:'2026-03-21',ca_ttc:18831.65,ca_ht:16296.62,tickets_nb:787,drive_ttc:4118.2,kiosk_ttc:9193.5,livraison_ttc:1565.1,comptoir_ttc:2499.6,corrections_montant:965.6,corrections_pct:10.02,annulations_montant:0.0,remises_montant:841.94,remises_pct:4.47},
+  {restaurant:'BK509',date:'2026-03-22',ca_ttc:15964.2,ca_ht:13679.84,tickets_nb:624,drive_ttc:4299.7,kiosk_ttc:6608.85,livraison_ttc:2080.1,comptoir_ttc:1175.1,corrections_montant:599.7,corrections_pct:6.41,annulations_montant:0.0,remises_montant:840.71,remises_pct:5.27},
+  {restaurant:'BK509',date:'2026-03-23',ca_ttc:9905.75,ca_ht:8511.61,tickets_nb:491,drive_ttc:2889.35,kiosk_ttc:4640.45,livraison_ttc:899.15,comptoir_ttc:779.45,corrections_montant:580.95,corrections_pct:11.03,annulations_montant:-18.0,remises_montant:513.25,remises_pct:5.18},
+  {restaurant:'BK509',date:'2026-03-24',ca_ttc:10839.8,ca_ht:9367.73,tickets_nb:543,drive_ttc:2768.65,kiosk_ttc:5163.5,livraison_ttc:1099.9,comptoir_ttc:968.5,corrections_montant:357.25,corrections_pct:6.29,annulations_montant:-8.5,remises_montant:504.4,remises_pct:4.65},
+  {restaurant:'BK509',date:'2026-03-25',ca_ttc:12834.0,ca_ht:11179.72,tickets_nb:643,drive_ttc:3362.2,kiosk_ttc:6326.55,livraison_ttc:759.25,comptoir_ttc:1516.85,corrections_montant:418.05,corrections_pct:6.42,annulations_montant:0.0,remises_montant:495.72,remises_pct:3.86},
+  {restaurant:'BK509',date:'2026-03-26',ca_ttc:11323.95,ca_ht:9847.64,tickets_nb:578,drive_ttc:3197.1,kiosk_ttc:5264.2,livraison_ttc:1248.85,comptoir_ttc:986.6,corrections_montant:306.7,corrections_pct:5.06,annulations_montant:-56.5,remises_montant:461.79,remises_pct:4.08},
+  {restaurant:'BK509',date:'2026-03-27',ca_ttc:15771.2,ca_ht:13630.85,tickets_nb:700,drive_ttc:3861.55,kiosk_ttc:7589.5,livraison_ttc:1616.5,comptoir_ttc:1424.3,corrections_montant:325.3,corrections_pct:3.98,annulations_montant:-41.45,remises_montant:725.79,remises_pct:4.6},
+  {restaurant:'BK509',date:'2026-03-28',ca_ttc:19486.5,ca_ht:17067.02,tickets_nb:842,drive_ttc:5008.65,kiosk_ttc:9920.35,livraison_ttc:1271.7,comptoir_ttc:2199.4,corrections_montant:555.6,corrections_pct:5.81,annulations_montant:-16.7,remises_montant:655.57,remises_pct:3.36},
+  {restaurant:'BK509',date:'2026-03-29',ca_ttc:16397.25,ca_ht:14155.79,tickets_nb:694,drive_ttc:4487.05,kiosk_ttc:7377.65,livraison_ttc:1876.4,comptoir_ttc:1592.55,corrections_montant:752.7,corrections_pct:8.35,annulations_montant:-29.5,remises_montant:763.41,remises_pct:4.66},
+  {restaurant:'BK509',date:'2026-03-30',ca_ttc:11429.75,ca_ht:9797.27,tickets_nb:566,drive_ttc:2915.95,kiosk_ttc:5069.15,livraison_ttc:1962.8,comptoir_ttc:1080.35,corrections_montant:210.3,corrections_pct:3.31,annulations_montant:0.0,remises_montant:617.56,remises_pct:5.4},
+  {restaurant:'BK509',date:'2026-03-31',ca_ttc:11434.15,ca_ht:9799.23,tickets_nb:558,drive_ttc:2789.75,kiosk_ttc:5248.25,livraison_ttc:1240.2,comptoir_ttc:1192.65,corrections_montant:582.4,corrections_pct:9.41,annulations_montant:0.0,remises_montant:598.38,remises_pct:5.23},
+  {restaurant:'BK509',date:'2026-04-01',ca_ttc:15288.05,ca_ht:13194.96,tickets_nb:758,drive_ttc:4672.3,kiosk_ttc:7017.8,livraison_ttc:1655.15,comptoir_ttc:1306.85,corrections_montant:576.9,corrections_pct:6.98,annulations_montant:-34.95,remises_montant:699.57,remises_pct:4.58},
+  {restaurant:'BK509',date:'2026-04-02',ca_ttc:13684.75,ca_ht:11749.46,tickets_nb:703,drive_ttc:3712.1,kiosk_ttc:6303.05,livraison_ttc:1727.6,comptoir_ttc:1251.75,corrections_montant:693.7,corrections_pct:9.4,annulations_montant:-37.45,remises_montant:705.21,remises_pct:5.15},
+  {restaurant:'BK509',date:'2026-04-03',ca_ttc:17115.05,ca_ht:14577.73,tickets_nb:805,drive_ttc:3989.0,kiosk_ttc:7326.85,livraison_ttc:2803.15,comptoir_ttc:1684.0,corrections_montant:540.95,corrections_pct:5.53,annulations_montant:0.0,remises_montant:986.2,remises_pct:5.76},
+  {restaurant:'BK509',date:'2026-04-04',ca_ttc:18598.3,ca_ht:16066.4,tickets_nb:827,drive_ttc:4061.65,kiosk_ttc:9835.35,livraison_ttc:1591.35,comptoir_ttc:1937.1,corrections_montant:706.15,corrections_pct:8.06,annulations_montant:0.0,remises_montant:863.25,remises_pct:4.64},
+  {restaurant:'BK509',date:'2026-04-05',ca_ttc:13797.95,ca_ht:11762.31,tickets_nb:587,drive_ttc:3449.05,kiosk_ttc:6453.75,livraison_ttc:1851.55,comptoir_ttc:1122.1,corrections_montant:433.45,corrections_pct:5.9,annulations_montant:0.0,remises_montant:776.41,remises_pct:5.63},
+  {restaurant:'BK509',date:'2026-04-06',ca_ttc:13971.8,ca_ht:12184.27,tickets_nb:613,drive_ttc:3596.9,kiosk_ttc:6434.2,livraison_ttc:1370.85,comptoir_ttc:1356.3,corrections_montant:567.8,corrections_pct:7.53,annulations_montant:0.0,remises_montant:495.81,remises_pct:3.55},
+  {restaurant:'BK509',date:'2026-04-07',ca_ttc:11012.1,ca_ht:9487.13,tickets_nb:571,drive_ttc:2837.9,kiosk_ttc:5151.8,livraison_ttc:1036.8,comptoir_ttc:1279.55,corrections_montant:276.25,corrections_pct:4.71,annulations_montant:0.0,remises_montant:521.06,remises_pct:4.73},
+  {restaurant:'BK509',date:'2026-04-08',ca_ttc:12391.85,ca_ht:10676.28,tickets_nb:631,drive_ttc:3277.2,kiosk_ttc:6012.45,livraison_ttc:1269.95,comptoir_ttc:941.45,corrections_montant:442.5,corrections_pct:6.94,annulations_montant:0.0,remises_montant:584.01,remises_pct:4.71},
+  {restaurant:'BK509',date:'2026-04-09',ca_ttc:11495.05,ca_ht:10011.85,tickets_nb:589,drive_ttc:3325.55,kiosk_ttc:5161.15,livraison_ttc:1224.25,comptoir_ttc:1180.9,corrections_montant:394.6,corrections_pct:6.23,annulations_montant:0.0,remises_montant:433.82,remises_pct:3.77},
+  {restaurant:'BK509',date:'2026-04-10',ca_ttc:15715.75,ca_ht:13554.82,tickets_nb:745,drive_ttc:3950.75,kiosk_ttc:7142.0,livraison_ttc:1866.1,comptoir_ttc:1464.65,corrections_montant:479.0,corrections_pct:5.59,annulations_montant:0.0,remises_montant:712.75,remises_pct:4.54},
+  {restaurant:'BK509',date:'2026-04-11',ca_ttc:18959.8,ca_ht:16509.76,tickets_nb:815,drive_ttc:4412.75,kiosk_ttc:9632.8,livraison_ttc:1549.95,comptoir_ttc:2288.5,corrections_montant:1006.35,corrections_pct:10.79,annulations_montant:-35.8,remises_montant:726.94,remises_pct:3.83},
+  {restaurant:'BK509',date:'2026-04-12',ca_ttc:17849.05,ca_ht:15291.42,tickets_nb:783,drive_ttc:4209.45,kiosk_ttc:8622.3,livraison_ttc:2118.25,comptoir_ttc:1651.1,corrections_montant:611.6,corrections_pct:6.63,annulations_montant:-107.45,remises_montant:928.92,remises_pct:5.2},
+  {restaurant:'BK509',date:'2026-04-13',ca_ttc:11242.95,ca_ht:9742.12,tickets_nb:584,drive_ttc:2701.85,kiosk_ttc:5603.35,livraison_ttc:1054.4,comptoir_ttc:1224.75,corrections_montant:323.4,corrections_pct:5.73,annulations_montant:0.0,remises_montant:485.19,remises_pct:4.32},
+  {restaurant:'BK509',date:'2026-04-14',ca_ttc:11011.65,ca_ht:9467.37,tickets_nb:556,drive_ttc:2870.7,kiosk_ttc:5135.2,livraison_ttc:1656.15,comptoir_ttc:706.8,corrections_montant:258.2,corrections_pct:4.39,annulations_montant:-13.3,remises_montant:518.3,remises_pct:4.71},
+  {restaurant:'BK509',date:'2026-04-15',ca_ttc:13455.6,ca_ht:11666.65,tickets_nb:679,drive_ttc:3119.95,kiosk_ttc:6579.85,livraison_ttc:1407.45,comptoir_ttc:1243.45,corrections_montant:482.8,corrections_pct:7.02,annulations_montant:-16.8,remises_montant:538.07,remises_pct:4.0},
+  {restaurant:'BK509',date:'2026-04-16',ca_ttc:12286.3,ca_ht:10669.32,tickets_nb:632,drive_ttc:3575.1,kiosk_ttc:5248.85,livraison_ttc:1405.25,comptoir_ttc:1289.45,corrections_montant:505.4,corrections_pct:7.18,annulations_montant:-31.85,remises_montant:479.91,remises_pct:3.91},
+  {restaurant:'BK509',date:'2026-04-17',ca_ttc:16909.8,ca_ht:14538.01,tickets_nb:774,drive_ttc:4091.6,kiosk_ttc:7864.75,livraison_ttc:1813.95,comptoir_ttc:1735.45,corrections_montant:464.25,corrections_pct:5.13,annulations_montant:0.0,remises_montant:819.34,remises_pct:4.85},
+  {restaurant:'BK509',date:'2026-04-18',ca_ttc:16274.1,ca_ht:14088.62,tickets_nb:733,drive_ttc:4140.45,kiosk_ttc:8220.85,livraison_ttc:1406.0,comptoir_ttc:1832.3,corrections_montant:685.2,corrections_pct:8.51,annulations_montant:-58.05,remises_montant:703.35,remises_pct:4.32},
+  {restaurant:'BK509',date:'2026-04-19',ca_ttc:17181.9,ca_ht:14742.0,tickets_nb:720,drive_ttc:4333.05,kiosk_ttc:7734.3,livraison_ttc:2010.8,comptoir_ttc:1683.75,corrections_montant:326.6,corrections_pct:3.46,annulations_montant:0.0,remises_montant:849.6,remises_pct:4.94},
+  {restaurant:'BK509',date:'2026-04-20',ca_ttc:11015.35,ca_ht:9620.22,tickets_nb:559,drive_ttc:2614.8,kiosk_ttc:5707.45,livraison_ttc:688.6,comptoir_ttc:1493.05,corrections_montant:414.75,corrections_pct:7.81,annulations_montant:0.0,remises_montant:390.21,remises_pct:3.54},
+  {restaurant:'BK509',date:'2026-04-21',ca_ttc:10461.5,ca_ht:8905.47,tickets_nb:529,drive_ttc:2469.4,kiosk_ttc:5399.15,livraison_ttc:577.0,comptoir_ttc:1478.9,corrections_montant:408.8,corrections_pct:8.08,annulations_montant:0.0,remises_montant:631.43,remises_pct:6.04},
+  {restaurant:'BK509',date:'2026-04-22',ca_ttc:13913.4,ca_ht:12089.02,tickets_nb:712,drive_ttc:3460.55,kiosk_ttc:7032.15,livraison_ttc:1118.95,comptoir_ttc:1593.25,corrections_montant:593.9,corrections_pct:8.63,annulations_montant:0.0,remises_montant:538.24,remises_pct:3.87},
+  {restaurant:'BK509',date:'2026-04-23',ca_ttc:12201.45,ca_ht:10659.39,tickets_nb:591,drive_ttc:3089.9,kiosk_ttc:6317.3,livraison_ttc:890.3,comptoir_ttc:1366.15,corrections_montant:621.0,corrections_pct:10.55,annulations_montant:0.0,remises_montant:425.46,remises_pct:3.49},
+  {restaurant:'BK509',date:'2026-04-24',ca_ttc:16459.65,ca_ht:14329.99,tickets_nb:754,drive_ttc:4103.15,kiosk_ttc:7880.8,livraison_ttc:1147.75,comptoir_ttc:1932.1,corrections_montant:491.1,corrections_pct:5.72,annulations_montant:-24.9,remises_montant:616.54,remises_pct:3.75},
+  {restaurant:'BK509',date:'2026-04-25',ca_ttc:14712.1,ca_ht:12774.16,tickets_nb:670,drive_ttc:3385.3,kiosk_ttc:8219.1,livraison_ttc:966.9,comptoir_ttc:1612.85,corrections_montant:371.75,corrections_pct:5.73,annulations_montant:0.0,remises_montant:614.39,remises_pct:4.18},
+  {restaurant:'BK509',date:'2026-04-26',ca_ttc:16049.9,ca_ht:13970.93,tickets_nb:696,drive_ttc:4032.35,kiosk_ttc:7860.3,livraison_ttc:1161.8,comptoir_ttc:1666.5,corrections_montant:516.45,corrections_pct:6.31,annulations_montant:-22.1,remises_montant:594.62,remises_pct:3.7},
+  {restaurant:'BK509',date:'2026-04-27',ca_ttc:11613.35,ca_ht:10055.4,tickets_nb:568,drive_ttc:3131.05,kiosk_ttc:5366.25,livraison_ttc:1075.65,comptoir_ttc:1240.2,corrections_montant:353.8,corrections_pct:5.66,annulations_montant:0.0,remises_montant:489.48,remises_pct:4.21},
+  {restaurant:'BK509',date:'2026-04-28',ca_ttc:13887.1,ca_ht:11956.43,tickets_nb:645,drive_ttc:2958.95,kiosk_ttc:7050.25,livraison_ttc:1176.85,comptoir_ttc:1881.7,corrections_montant:622.7,corrections_pct:9.11,annulations_montant:0.0,remises_montant:663.84,remises_pct:4.78},
+  {restaurant:'BK509',date:'2026-04-29',ca_ttc:15311.9,ca_ht:13132.01,tickets_nb:704,drive_ttc:3073.35,kiosk_ttc:7594.4,livraison_ttc:1635.3,comptoir_ttc:1756.65,corrections_montant:539.85,corrections_pct:7.0,annulations_montant:-20.7,remises_montant:740.32,remises_pct:4.83},
+  {restaurant:'BK509',date:'2026-04-30',ca_ttc:18295.35,ca_ht:15802.82,tickets_nb:825,drive_ttc:3842.4,kiosk_ttc:9146.25,livraison_ttc:1514.25,comptoir_ttc:2288.75,corrections_montant:617.65,corrections_pct:6.75,annulations_montant:0.0,remises_montant:801.72,remises_pct:4.38},
+  {restaurant:'BK509',date:'2026-05-01',ca_ttc:20501.05,ca_ht:17745.31,tickets_nb:820,drive_ttc:4082.6,kiosk_ttc:9355.9,livraison_ttc:2631.55,comptoir_ttc:2447.75,corrections_montant:915.45,corrections_pct:8.21,annulations_montant:0.0,remises_montant:809.46,remises_pct:3.95},
+  {restaurant:'BK509',date:'2026-05-02',ca_ttc:20283.35,ca_ht:17711.56,tickets_nb:854,drive_ttc:4617.0,kiosk_ttc:10540.3,livraison_ttc:1420.9,comptoir_ttc:2364.05,corrections_montant:638.2,corrections_pct:6.55,annulations_montant:-46.6,remises_montant:678.98,remises_pct:3.35},
+  {restaurant:'BK509',date:'2026-05-03',ca_ttc:17992.1,ca_ht:15708.07,tickets_nb:748,drive_ttc:4310.0,kiosk_ttc:8939.5,livraison_ttc:1852.25,comptoir_ttc:1355.45,corrections_montant:608.4,corrections_pct:6.72,annulations_montant:-178.45,remises_montant:590.12,remises_pct:3.28},
+  {restaurant:'BK509',date:'2026-05-04',ca_ttc:12937.95,ca_ht:11121.62,tickets_nb:587,drive_ttc:3067.8,kiosk_ttc:5758.8,livraison_ttc:1837.8,comptoir_ttc:1308.35,corrections_montant:455.4,corrections_pct:6.34,annulations_montant:0.0,remises_montant:619.07,remises_pct:4.78},
+  {restaurant:'BK509',date:'2026-05-05',ca_ttc:11960.1,ca_ht:10179.43,tickets_nb:570,drive_ttc:3251.2,kiosk_ttc:4843.45,livraison_ttc:2038.7,comptoir_ttc:1011.1,corrections_montant:303.55,corrections_pct:4.27,annulations_montant:0.0,remises_montant:658.74,remises_pct:5.51},
+  {restaurant:'BK509',date:'2026-05-06',ca_ttc:14560.25,ca_ht:12552.14,tickets_nb:716,drive_ttc:4107.65,kiosk_ttc:6566.15,livraison_ttc:1815.4,comptoir_ttc:1318.85,corrections_montant:481.35,corrections_pct:6.02,annulations_montant:0.0,remises_montant:659.12,remises_pct:4.53},
+  {restaurant:'BK509',date:'2026-05-07',ca_ttc:17168.8,ca_ht:14665.98,tickets_nb:800,drive_ttc:4047.05,kiosk_ttc:8691.75,livraison_ttc:2289.05,comptoir_ttc:1588.45,corrections_montant:445.2,corrections_pct:5.25,annulations_montant:0.0,remises_montant:932.8,remises_pct:5.43},
+  {restaurant:'BK509',date:'2026-05-08',ca_ttc:17718.95,ca_ht:15021.09,tickets_nb:733,drive_ttc:3994.55,kiosk_ttc:8617.6,livraison_ttc:2331.2,comptoir_ttc:2072.6,corrections_montant:802.35,corrections_pct:8.82,annulations_montant:-44.7,remises_montant:1073.12,remises_pct:6.06},
+  {restaurant:'BK509',date:'2026-05-09',ca_ttc:20588.65,ca_ht:17558.09,tickets_nb:874,drive_ttc:4456.8,kiosk_ttc:10819.55,livraison_ttc:2270.15,comptoir_ttc:2709.7,corrections_montant:624.3,corrections_pct:6.39,annulations_montant:-11.0,remises_montant:1156.61,remises_pct:5.62},
+  {restaurant:'BK509',date:'2026-05-10',ca_ttc:19240.1,ca_ht:16524.53,tickets_nb:774,drive_ttc:4658.3,kiosk_ttc:9507.0,livraison_ttc:2840.3,comptoir_ttc:1785.4,corrections_montant:564.75,corrections_pct:5.8,annulations_montant:0.0,remises_montant:915.91,remises_pct:4.76},
+  {restaurant:'BK509',date:'2026-05-11',ca_ttc:9577.4,ca_ht:8155.72,tickets_nb:508,drive_ttc:2705.5,kiosk_ttc:4388.6,livraison_ttc:1116.05,comptoir_ttc:799.05,corrections_montant:282.1,corrections_pct:5.44,annulations_montant:0.0,remises_montant:555.51,remises_pct:5.8},
+  {restaurant:'BK509',date:'2026-05-12',ca_ttc:11952.6,ca_ht:10283.81,tickets_nb:600,drive_ttc:3821.6,kiosk_ttc:5633.4,livraison_ttc:1305.8,comptoir_ttc:773.3,corrections_montant:275.0,corrections_pct:4.35,annulations_montant:0.0,remises_montant:584.79,remises_pct:4.89},
+  {restaurant:'BK509',date:'2026-05-13',ca_ttc:16995.2,ca_ht:14628.04,tickets_nb:793,drive_ttc:4170.35,kiosk_ttc:8341.3,livraison_ttc:1616.05,comptoir_ttc:2177.55,corrections_montant:543.9,corrections_pct:6.29,annulations_montant:-11.4,remises_montant:808.37,remises_pct:4.76},
+  {restaurant:'BK509',date:'2026-05-14',ca_ttc:16798.2,ca_ht:14528.61,tickets_nb:704,drive_ttc:3898.05,kiosk_ttc:9172.65,livraison_ttc:1272.55,comptoir_ttc:1748.5,corrections_montant:620.45,corrections_pct:8.14,annulations_montant:-43.2,remises_montant:721.16,remises_pct:4.29},
+  {restaurant:'BK509',date:'2026-05-15',ca_ttc:16747.6,ca_ht:14382.6,tickets_nb:769,drive_ttc:4157.0,kiosk_ttc:9128.25,livraison_ttc:1289.7,comptoir_ttc:1172.8,corrections_montant:399.85,corrections_pct:5.25,annulations_montant:0.0,remises_montant:838.58,remises_pct:5.01},
+  {restaurant:'BK509',date:'2026-05-16',ca_ttc:16903.6,ca_ht:14405.85,tickets_nb:717,drive_ttc:3997.15,kiosk_ttc:8712.1,livraison_ttc:1659.05,comptoir_ttc:1760.2,corrections_montant:426.0,corrections_pct:5.2,annulations_montant:-23.4,remises_montant:979.95,remises_pct:5.8},
+  {restaurant:'BK509',date:'2026-05-17',ca_ttc:21000.85,ca_ht:17975.45,tickets_nb:862,drive_ttc:5086.7,kiosk_ttc:10401.95,livraison_ttc:2150.6,comptoir_ttc:2470.35,corrections_montant:1225.15,corrections_pct:11.56,annulations_montant:-10.0,remises_montant:1121.23,remises_pct:5.34}
+];
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',ventes:'Ventes par demi-heure',annulations:'Annulations'};
 function nav(id) {
   const targetSec = document.getElementById('sec-'+id);
   if(!targetSec) { console.warn("nav: section sec-"+id+" introuvable"); return; }
@@ -1366,6 +1974,8 @@ function nav(id) {
   if(id==='journee') buildJourneeSelect();
   if(id==='seuils') renderSeuils();
   if(id==='acces') renderAcces();
+  if(id==='managers') renderManagers();
+  if(id==='annulations'){renderAnnulationsHistorique();populateAnnManagerSelect();}
 }
 
 // ══ INIT & LOAD ══
@@ -1401,15 +2011,26 @@ function switchResto(restoId) {
   document.getElementById('historique-content').innerHTML = '';
 }
 
+function getSeedForResto(year) {
+  // Retourne les données SEED combinées selon le resto actif
+  const s25 = SEED_2025 || []; // BK526
+  const s26 = SEED_2026 || [];
+  const b25 = typeof SEED_BK509_2025 !== 'undefined' ? SEED_BK509_2025 : [];
+  const b26 = typeof SEED_BK509_2026 !== 'undefined' ? SEED_BK509_2026 : [];
+  const a25 = typeof SEED_BK500_2025 !== 'undefined' ? SEED_BK500_2025 : [];
+  const a26 = typeof SEED_BK500_2026 !== 'undefined' ? SEED_BK500_2026 : [];
+  const all25 = [...s25, ...b25, ...a25];
+  const all26 = [...s26, ...b26, ...a26];
+  return year===2025 ? all25 : all26;
+}
+
 function applyRestoFilter() {
-  const ALL25 = window._ALL_DATA25 || SEED_2025;
-  const ALL26 = window._ALL_DATA26 || SEED_2026;
+  const ALL25 = window._ALL_DATA25 || getSeedForResto(2025);
+  const ALL26 = window._ALL_DATA26 || getSeedForResto(2026);
   if(!ACTIVE_RESTO || ACTIVE_RESTO==='ALL') {
-    // Admin/superviseur vue "Tous" OU pas encore de filtre défini
     DATA25 = ALL25;
     DATA   = ALL26;
   } else {
-    // Filtrer strictement sur le restaurant actif — vide si pas de données
     DATA25 = ALL25.filter(d=>d.restaurant===ACTIVE_RESTO);
     DATA   = ALL26.filter(d=>d.restaurant===ACTIVE_RESTO);
   }
@@ -2619,6 +3240,13 @@ function enregistrerEquipe() {
   }
 }
 
+function populateAnnManagerSelect() {
+  const codes = getCodes();
+  const opts = codes.managers.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+  const el = document.getElementById('ann-manager');
+  if(el) el.innerHTML = '<option value="">— sélectionner —</option>' + opts;
+}
+
 function populateManagerSelect() {
   const codes = getCodes();
   const opts = codes.managers.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
@@ -2645,75 +3273,261 @@ function doLogout() {
 
 // ── Fichiers manager ──
 let FILES_LIST=[];
+function handleMgrDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag-over');
+  const files = e.dataTransfer.files;
+  if(files && files.length > 0) handleMgrFiles(files);
+}
+
 function handleMgrFiles(files) {
-  // Plusieurs PDF acceptés, on lit le premier pour extraire les données
   FILES_LIST = Array.from(files);
   renderFileList();
-  if(FILES_LIST.length > 0) extrairePDFManager(FILES_LIST[0]);
+  if(FILES_LIST.length > 0) lireTousPDFs(FILES_LIST);
 }
+
+async function lireTousPDFs(files) {
+  document.getElementById('mgr-loading').style.display = 'block';
+  document.getElementById('mgr-pdf-err').style.display = 'none';
+  document.getElementById('mgr-step2').style.display = 'none';
+
+  const pdfjsLib = window['pdfjs-dist/build/pdf'];
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  let synthese = null;
+  let ventesData = null;
+  const summaries = [];
+
+  for(let i=0; i<files.length; i++) {
+    const file = files[i];
+    document.getElementById('mgr-loading-text').textContent = `Lecture ${i+1}/${files.length} : ${file.name}…`;
+    try {
+      const ab = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data:ab}).promise;
+      let txt = '';
+      for(let p=1;p<=pdf.numPages;p++){
+        const page = await pdf.getPage(p);
+        const tc = await page.getTextContent();
+        txt += tc.items.map(t=>t.str).join(' ') + ' ';
+      }
+
+      // Détecter le type de PDF
+      if(txt.includes('Synthèse CA') || txt.includes('TOTAL DRIVE') || txt.includes('TOTAL KIOSK')) {
+        synthese = parserSynthesCA(txt);
+        summaries.push({nom:file.name, type:'Synthèse CA', ok:true, date:synthese?.date});
+      } else if(txt.includes('VENTES HORAIRE') || txt.includes('DEMI HEU') || txt.includes('COMPTOIR') && txt.includes('CABINE')) {
+        ventesData = txt;
+        summaries.push({nom:file.name, type:'Ventes demi-heure', ok:true});
+      } else {
+        summaries.push({nom:file.name, type:'Autre document', ok:null});
+      }
+    } catch(err) {
+      summaries.push({nom:file.name, type:'Erreur lecture', ok:false});
+    }
+  }
+
+  document.getElementById('mgr-loading').style.display = 'none';
+
+  if(!synthese && !ventesData) {
+    const e = document.getElementById('mgr-pdf-err');
+    e.textContent = '✗ Aucun PDF reconnu. Vérifiez vos fichiers (Synthèse CA ou Ventes horaire).';
+    e.style.display = 'block';
+    return;
+  }
+
+  // Stocker pour enregistrement
+  MGR_EXTRACTED = synthese || {};
+  MGR_VENTES_TXT = ventesData;
+
+  // Afficher étape 2
+  document.getElementById('mgr-step2').style.display = 'block';
+  document.getElementById('mgr-step2').scrollIntoView({behavior:'smooth'});
+
+  // Date et CA
+  const dateLabel = MGR_EXTRACTED.date
+    ? formatDate(MGR_EXTRACTED.date)+' — '+jourSemaine(new Date(MGR_EXTRACTED.date))
+    : '—';
+  document.getElementById('mgr-date-label').textContent = dateLabel;
+  document.getElementById('mgr-ca-label').textContent = MGR_EXTRACTED.ca_ttc
+    ? 'CA TTC : '+fmt(MGR_EXTRACTED.ca_ttc)+' €  ·  '+(MGR_EXTRACTED.tickets_nb||'—')+' tickets'
+    : (ventesData ? 'Ventes horaire chargées' : 'PDF chargé');
+
+  // Résumé des fichiers
+  document.getElementById('mgr-pdf-summary').innerHTML = summaries.map(s=>`
+    <span style="font-size:10px;padding:3px 8px;border-radius:99px;border:1px solid ${s.ok===true?'rgba(62,207,142,.3)':s.ok===false?'rgba(248,113,113,.3)':'var(--border2)'};color:${s.ok===true?'var(--green)':s.ok===false?'var(--red)':'var(--muted2)'}">
+      ${s.ok===true?'✓':s.ok===false?'✗':'?'} ${s.type}
+    </span>`).join('');
+
+  populateManagerSelect();
+}
+
+let MGR_VENTES_TXT = null;
 
 async function extrairePDFManager(file) {
   document.getElementById('mgr-loading').style.display = 'block';
   document.getElementById('mgr-pdf-err').style.display = 'none';
   try {
-    const base64 = await new Promise((res,rej)=>{
-      const r = new FileReader();
-      r.onload = ()=>res(r.result.split(',')[1]);
-      r.onerror = ()=>rej(new Error('Lecture échouée'));
-      r.readAsDataURL(file);
-    });
-    const response = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:800,
-        messages:[{role:'user',content:[
-          {type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}},
-          {type:'text',text:`Extrais uniquement ces données de ce PDF Synthèse CA BK et retourne UNIQUEMENT du JSON valide, sans markdown :
-{"date":"YYYY-MM-DD","ca_ttc":null,"ca_ht":null,"tickets_nb":null,"drive_voitures":null,"drive_ttc":null,"kiosk_ttc":null,"livraison_ttc":null,"livraison_nb":null,"comptoir_ttc":null,"cc_ttc":null,"corrections_nb":null,"corrections_montant":null,"corrections_pct":null,"remises_nb":null,"remises_montant":null,"remises_pct":null,"sauces_nb":null,"sauces_montant":null,"annulations_nb":null,"annulations_montant":null,"commandes_ouvertes_nb":null,"commandes_ouvertes_montant":null,"repas_employes_nb":null,"repas_employes_montant":null,"repas_employes_pct":null,"erreur_caisse":null,"cb":null,"especes":null,"uber_eats":null,"deliveroo":null,"bk_livraison":null,"trd":null}`}
-        ]}]
-      })
-    });
-    if(!response.ok) throw new Error('API '+response.status);
-    const data = await response.json();
-    const txt = data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
-    MGR_EXTRACTED = JSON.parse(txt);
+    // Lire le texte du PDF avec PDF.js
+    const arrayBuffer = await file.arrayBuffer();
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+    let fullText = '';
+    for(let i=1; i<=pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const tc = await page.getTextContent();
+      fullText += tc.items.map(t=>t.str).join(' ') + ' ';
+    }
 
-    // Afficher l'étape 2
+    // Parser le texte extrait
+    MGR_EXTRACTED = parserSynthesCA(fullText);
+
     document.getElementById('mgr-loading').style.display = 'none';
     document.getElementById('mgr-step2').style.display = 'block';
     document.getElementById('mgr-step2').scrollIntoView({behavior:'smooth'});
 
-    // Afficher date et CA
     const dateLabel = MGR_EXTRACTED.date ? formatDate(MGR_EXTRACTED.date)+' — '+jourSemaine(new Date(MGR_EXTRACTED.date)) : '—';
     document.getElementById('mgr-date-label').textContent = dateLabel;
-    document.getElementById('mgr-ca-label').textContent = MGR_EXTRACTED.ca_ttc ? 'CA TTC : '+fmt(MGR_EXTRACTED.ca_ttc)+' €  ·  '+( MGR_EXTRACTED.tickets_nb||'—')+' tickets' : 'Données extraites';
+    document.getElementById('mgr-ca-label').textContent = MGR_EXTRACTED.ca_ttc
+      ? 'CA TTC : '+fmt(MGR_EXTRACTED.ca_ttc)+' €  ·  '+(MGR_EXTRACTED.tickets_nb||'—')+' tickets'
+      : 'PDF lu — complétez les informations';
 
     populateManagerSelect();
   } catch(err) {
     document.getElementById('mgr-loading').style.display = 'none';
     const e = document.getElementById('mgr-pdf-err');
-    e.textContent = '✗ '+err.message; e.style.display='block';
+    e.textContent = '✗ Erreur lecture PDF : '+err.message;
+    e.style.display = 'block';
+    console.error(err);
   }
+}
+
+function parserSynthesCA(txt) {
+  const n = (re) => { const m=txt.match(re); return m?parseFloat(m[1].replace(/\s/g,'').replace(',','.')):null; };
+  const i = (re) => { const m=txt.match(re); return m?parseInt(m[1].replace(/\s/g,'')):null; };
+
+  // Date : "Du DD/MM/YY au DD/MM/YY"
+  let date = null;
+  const dm = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2})/);
+  if(dm) {
+    const yr = parseInt(dm[3]) < 50 ? '20'+dm[3] : '19'+dm[3];
+    date = `${yr}-${dm[2]}-${dm[1]}`;
+  }
+
+  // TOTAL principal
+  const totMatch = txt.match(/TOTAL\s+([\d\s]+)\s+([\d\s,]+)\s+([\d\s,]+)/);
+  const ca_ht  = totMatch ? parseFloat(totMatch[2].replace(/\s/g,'').replace(',','.')) : null;
+  const ca_ttc = totMatch ? parseFloat(totMatch[3].replace(/\s/g,'').replace(',','.')) : null;
+  const tickets_nb = totMatch ? parseInt(totMatch[1].replace(/\s/g,'')) : null;
+
+  // Drive voitures
+  const driveMatch = txt.match(/DRIVE\s+DRIVE_THROUGH\s+(\d+)/);
+  const drive_v = driveMatch ? parseInt(driveMatch[1]) : null;
+  const driveTTCm = txt.match(/TOTAL DRIVE\s+\d+\s+([\d\s,]+)\s+([\d\s,]+)/);
+  const drive_ttc = driveTTCm ? parseFloat(driveTTCm[2].replace(/\s/g,'').replace(',','.')) : null;
+
+  // Kiosk
+  const kioskM = txt.match(/TOTAL KIOSK\s+\d+\s+([\d\s,]+)\s+([\d\s,]+)/);
+  const kiosk_ttc = kioskM ? parseFloat(kioskM[2].replace(/\s/g,'').replace(',','.')) : null;
+
+  // Livraison
+  const lvM = txt.match(/TOTAL HOME DELIVERY\s+(\d+)\s+([\d\s,]+)\s+([\d\s,]+)/);
+  const livraison_nb  = lvM ? parseInt(lvM[1]) : null;
+  const livraison_ttc = lvM ? parseFloat(lvM[3].replace(/\s/g,'').replace(',','.')) : null;
+
+  // Comptoir
+  const compM = txt.match(/TOTAL COMPTOIR\s+\d+\s+([\d\s,]+)\s+([\d\s,]+)/);
+  const comptoir_ttc = compM ? parseFloat(compM[2].replace(/\s/g,'').replace(',','.')) : null;
+
+  // C&C
+  const ccM = txt.match(/TOTAL CLICK & COLLECT\s+\d+\s+([\d\s,]+)\s+([\d\s,]+)/);
+  const cc_ttc = ccM ? parseFloat(ccM[2].replace(/\s/g,'').replace(',','.')) : null;
+
+  // Corrections
+  const corrM = txt.match(/Corrections\s*Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)\s*([\d,]+)/);
+  const corrections_nb      = corrM ? parseInt(corrM[1]) : null;
+  const corrections_montant = corrM ? parseFloat(corrM[2].replace(/\s/g,'').replace(',','.')) : null;
+  const corrections_pct     = corrM ? parseFloat(corrM[3].replace(',','.')) : null;
+
+  // Remises
+  const remM = txt.match(/Remises\s*Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)\s*([\d,]+)/);
+  const remises_nb      = remM ? parseInt(remM[1]) : null;
+  const remises_montant = remM ? parseFloat(remM[2].replace(/\s/g,'').replace(',','.')) : null;
+  const remises_pct     = remM ? parseFloat(remM[3].replace(',','.')) : null;
+
+  // Sauces
+  const sauM = txt.match(/Sauces offertes\s*Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)\s*([\d,]+)/);
+  const sauces_nb      = sauM ? parseInt(sauM[1]) : null;
+  const sauces_montant = sauM ? parseFloat(sauM[2].replace(/\s/g,'').replace(',','.')) : null;
+
+  // Annulations
+  const annM = txt.match(/Annulations.*?Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)/);
+  const annulations_nb      = annM ? parseInt(annM[1]) : null;
+  const annulations_montant = annM ? parseFloat(annM[2].replace(/\s/g,'').replace(',','.')) : null;
+
+  // Commandes ouvertes
+  const coM = txt.match(/Commandes Ouvertes.*?Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)/);
+  const commandes_ouvertes_nb      = coM ? parseInt(coM[1]) : null;
+  const commandes_ouvertes_montant = coM ? parseFloat(coM[2].replace(/\s/g,'').replace(',','.')) : null;
+
+  // Repas employés
+  const repM = txt.match(/Repas Employ.*?Nbr V Faciale % CA\s*(\d+)\s*([\d\s,]+)/);
+  const repas_employes_nb      = repM ? parseInt(repM[1]) : null;
+  const repas_employes_montant = repM ? parseFloat(repM[2].replace(/\s/g,'').replace(',','.')) : null;
+
+  // Encaissements
+  const getEnc = (label) => {
+    const r = new RegExp(label+'\s+([\d\s,]+)\s+0,00\s+([\d\s,]+)');
+    const m = txt.match(r);
+    return m ? parseFloat(m[2].replace(/\s/g,'').replace(',','.')) : null;
+  };
+  const cb         = getEnc('CB');
+  const especes    = getEnc('ESPECES');
+  const uber_eats  = getEnc('UBER EATS');
+  const deliveroo  = getEnc('DELIVEROO');
+  const bk_livraison = getEnc('LIVRAISON BK');
+  const trd        = getEnc('TRD');
+
+  // Erreur caisse
+  const errM = txt.match(/TOTAL CA ENCAISSE[\s\S]{0,100}?([-\d\s,]+)\s*$/m);
+  const erreur_caisse = errM ? parseFloat(errM[1].replace(/\s/g,'').replace(',','.')) : null;
+
+  return {
+    date, ca_ht, ca_ttc, tickets_nb,
+    drive_voitures:drive_v, drive_ttc,
+    kiosk_ttc, livraison_ttc, livraison_nb,
+    comptoir_ttc, cc_ttc,
+    corrections_nb, corrections_montant, corrections_pct,
+    remises_nb, remises_montant, remises_pct,
+    sauces_nb, sauces_montant,
+    annulations_nb, annulations_montant,
+    commandes_ouvertes_nb, commandes_ouvertes_montant,
+    repas_employes_nb, repas_employes_montant,
+    erreur_caisse, cb, especes, uber_eats, deliveroo, bk_livraison, trd
+  };
 }
 
 let MGR_EXTRACTED = null;
 
 function resetMgrFlow() {
-  MGR_EXTRACTED = null; FILES_LIST = [];
+  MGR_EXTRACTED = null; MGR_VENTES_TXT = null; FILES_LIST = [];
   document.getElementById('file-list').innerHTML = '';
   document.getElementById('file-input').value = '';
   document.getElementById('mgr-step2').style.display = 'none';
   document.getElementById('mgr-pdf-err').style.display = 'none';
+  document.getElementById('mgr-pdf-summary').innerHTML = '';
 }
 
 function enregistrerJourneeMgr() {
-  if(!MGR_EXTRACTED?.date) return;
+  if(!MGR_EXTRACTED?.date && !MGR_VENTES_TXT) {
+    alert('Aucune donnée extraite. Déposez au moins un PDF.');
+    return;
+  }
+  const date = MGR_EXTRACTED?.date || new Date().toISOString().slice(0,10);
   const row = {
     restaurant: CURRENT_USER?.resto||'BK526',
-    date: MGR_EXTRACTED.date,
-    ...MGR_EXTRACTED,
+    date,
+    ...(MGR_EXTRACTED||{}),
     manager_ouverture: document.getElementById('mgr-ouv')?.value||null,
     manager_fermeture: document.getElementById('mgr-fer')?.value||null,
     leader_ouverture:  document.getElementById('mgr-leader-ouv')?.value||null,
@@ -2722,8 +3536,18 @@ function enregistrerJourneeMgr() {
     directeur_soir:    document.getElementById('mgr-dir-soir')?.checked||false,
     commentaire:       document.getElementById('mgr-comment')?.value||''
   };
+
+  // Si ventes horaire aussi présentes, les stocker localement
+  if(MGR_VENTES_TXT) {
+    const ventesKey = 'bk_ventes_'+date;
+    try { localStorage.setItem(ventesKey, MGR_VENTES_TXT.slice(0,50000)); } catch(e){}
+  }
+
   if(typeof upsert==='function') upsert(row,'mgr-save-ok','mgr-save-ok');
-  else { const ok=document.getElementById('mgr-save-ok'); if(ok){ok.style.display='block';setTimeout(()=>ok.style.display='none',3000);} }
+  else {
+    const ok=document.getElementById('mgr-save-ok');
+    if(ok){ok.style.display='block';setTimeout(()=>{ok.style.display='none';resetMgrFlow();},3000);}
+  }
 }
 
 function handleFiles(files){
@@ -2815,6 +3639,304 @@ function checkSession(){
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-shell').style.display='none';
   showLoginStep('step-resto');
+}
+
+// ══ SUIVI MANAGERS ══
+function renderManagers() {
+  const el = document.getElementById('managers-content');
+  if(!el) return;
+
+  // Regrouper DATA par manager d'ouverture et fermeture
+  const stats = {}; // {nom: {ouv:[...], fer:[...]}}
+  const addStat = (nom, role, d) => {
+    if(!nom) return;
+    if(!stats[nom]) stats[nom] = {ouv:[], fer:[], all:[]};
+    stats[nom][role].push(d);
+    stats[nom].all.push(d);
+  };
+
+  const allData = [...(DATA||[]), ...(DATA25||[])];
+  allData.forEach(d => {
+    addStat(d.manager_ouverture, 'ouv', d);
+    if(d.manager_fermeture && d.manager_fermeture !== d.manager_ouverture)
+      addStat(d.manager_fermeture, 'fer', d);
+  });
+
+  if(!Object.keys(stats).length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Aucune donnée manager</div><div class="empty-sub">Les données apparaîtront dès que des journées avec managers seront enregistrées.</div></div>';
+    return;
+  }
+
+  const avg = (arr, key) => {
+    const vals = arr.filter(d=>d[key]!=null&&d[key]>0);
+    return vals.length ? (vals.reduce((a,b)=>a+(b[key]||0),0)/vals.length) : null;
+  };
+  const sum = (arr, key) => arr.reduce((a,b)=>a+(b[key]||0),0);
+
+  const rows = Object.entries(stats).map(([nom, s]) => {
+    const n = s.all.length;
+    return {
+      nom,
+      jours: n,
+      ca_moy: avg(s.all,'ca_ttc'),
+      corr_moy_pct: avg(s.all,'corrections_pct'),
+      corr_moy_eur: avg(s.all,'corrections_montant'),
+      rem_moy_pct: avg(s.all,'remises_pct'),
+      rem_moy_eur: avg(s.all,'remises_montant'),
+      ann_nb: sum(s.all,'annulations_nb'),
+      ann_eur: sum(s.all,'annulations_montant'),
+      co_nb: sum(s.all,'commandes_ouvertes_nb'),
+      co_eur: sum(s.all,'commandes_ouvertes_montant'),
+      repas_nb: sum(s.all,'repas_employes_nb'),
+      repas_eur: sum(s.all,'repas_employes_montant'),
+      dir_midi: s.all.filter(d=>d.directeur_midi).length,
+      dir_soir: s.all.filter(d=>d.directeur_soir).length,
+    };
+  }).sort((a,b)=>b.jours-a.jours);
+
+  el.innerHTML = `
+  <div class="table-card">
+    <div class="table-header">
+      <span class="table-title">Comparatif managers</span>
+      <span style="font-size:10px;color:var(--muted)">${rows.length} managers · ${allData.length} journées analysées</span>
+    </div>
+    <div class="table-wrap"><table>
+      <thead>
+        <tr>
+          <th>Manager</th><th class="num">Jours</th>
+          <th class="num">CA moy/j</th>
+          <th class="num">Corr. %</th><th class="num">Corr. €/j</th>
+          <th class="num">Remises %</th><th class="num">Remises €/j</th>
+          <th class="num">Annul. nb</th><th class="num">Annul. €</th>
+          <th class="num">Cmd ouv.</th><th class="num">Cmd €</th>
+          <th class="num">Repas emp.</th>
+          <th class="num">Dir. midi</th><th class="num">Dir. soir</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r=>`<tr>
+          <td style="font-weight:600;color:var(--accent)">${r.nom}</td>
+          <td class="num">${r.jours}</td>
+          <td class="num">${r.ca_moy?fmt(r.ca_moy)+' €':'—'}</td>
+          <td class="num">${r.corr_moy_pct!=null?chipS(r.corr_moy_pct,SEUILS.corrections_max,SEUILS.corrections_rouge,'l')+' '+r.corr_moy_pct.toFixed(1)+'%':'—'}</td>
+          <td class="num">${r.corr_moy_eur!=null?fmt(r.corr_moy_eur)+' €':'—'}</td>
+          <td class="num">${r.rem_moy_pct!=null?chipS(r.rem_moy_pct,SEUILS.remises_max,SEUILS.remises_rouge,'l')+' '+r.rem_moy_pct.toFixed(1)+'%':'—'}</td>
+          <td class="num">${r.rem_moy_eur!=null?fmt(r.rem_moy_eur)+' €':'—'}</td>
+          <td class="num">${r.ann_nb||'—'}</td>
+          <td class="num">${r.ann_eur?fmt(Math.abs(r.ann_eur))+' €':'—'}</td>
+          <td class="num">${r.co_nb||'—'}</td>
+          <td class="num">${r.co_eur?fmt(r.co_eur)+' €':'—'}</td>
+          <td class="num">${r.repas_nb||'—'}</td>
+          <td class="num" style="color:${r.dir_midi>0?'var(--green)':'var(--muted)'}">${r.dir_midi}/${r.jours}</td>
+          <td class="num" style="color:${r.dir_soir>0?'var(--green)':'var(--muted)'}">${r.dir_soir}/${r.jours}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+// ══ VENTES PAR DEMI-HEURE ══
+function handleVentesDrop(e) {
+  e.preventDefault();
+  document.getElementById('ventes-drop-zone').classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if(f) handleVentesFile(f);
+}
+
+async function handleVentesFile(file) {
+  document.getElementById('ventes-loading').style.display = 'block';
+  document.getElementById('ventes-content').innerHTML = '';
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+    let txt = '';
+    for(let i=1;i<=pdf.numPages;i++){
+      const page = await pdf.getPage(i);
+      const tc = await page.getTextContent();
+      txt += tc.items.map(t=>t.str).join(' ') + ' ';
+    }
+    document.getElementById('ventes-loading').style.display = 'none';
+    renderVentes(txt);
+  } catch(err) {
+    document.getElementById('ventes-loading').style.display = 'none';
+    document.getElementById('ventes-content').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Erreur lecture PDF</div><div class="empty-sub">'+err.message+'</div></div>';
+  }
+}
+
+function renderVentes(txt) {
+  // Parser les lignes : HH:MM suivi de données
+  const tranches = [];
+  const heureRe = /(\d{2}:\d{2})\s+(\d+)\s+([\d.]+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s+([\d.]+)\s+(\d+)\s+([\d.]+)/g;
+  let m;
+  while((m=heureRe.exec(txt))!==null) {
+    const heure = m[1];
+    const h = parseInt(heure.split(':')[0]);
+    const periode = h<15?'Midi':h<19?'Après-midi':'Soir';
+    tranches.push({
+      heure,
+      periode,
+      comptoir_nb: parseInt(m[2])||0,
+      comptoir_ht: parseFloat(m[3])||0,
+      drive_nb: parseInt(m[8])||0,
+      drive_ht: parseFloat(m[9])||0,
+      total_ht: (parseFloat(m[3])||0)+(parseFloat(m[9])||0)
+    });
+  }
+
+  if(!tranches.length) {
+    document.getElementById('ventes-content').innerHTML = '<div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Format non reconnu</div><div class="empty-sub">Vérifiez que c\'est bien le rapport "Ventes horaire par demi-heure".</div></div>';
+    return;
+  }
+
+  // Grouper par période
+  const periodes = ['Midi','Après-midi','Soir'];
+  const couleurs = {Midi:'#f5a623','Après-midi':'#60a5fa',Soir:'#a78bfa'};
+  const totaux = {};
+  periodes.forEach(p => {
+    const pt = tranches.filter(t=>t.periode===p);
+    totaux[p] = {
+      ht: pt.reduce((a,b)=>a+b.total_ht,0),
+      tickets: pt.reduce((a,b)=>a+b.comptoir_nb+b.drive_nb,0),
+      drive: pt.reduce((a,b)=>a+b.drive_ht,0),
+      comptoir: pt.reduce((a,b)=>a+b.comptoir_ht,0)
+    };
+  });
+
+  const maxVal = Math.max(...tranches.map(t=>t.total_ht), 1);
+
+  document.getElementById('ventes-content').innerHTML = `
+  <!-- KPIs par période -->
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">
+    ${periodes.map(p=>`
+    <div class="kpi neutral">
+      <div class="kpi-label" style="color:${couleurs[p]}">${p}</div>
+      <div class="kpi-val">${fmt(totaux[p].ht)} €</div>
+      <div style="font-size:10px;color:var(--muted2)">${totaux[p].tickets} tickets · Drive ${fmt(totaux[p].drive)} €</div>
+    </div>`).join('')}
+  </div>
+
+  <!-- Graphique barres par demi-heure -->
+  <div class="table-card" style="margin-bottom:16px">
+    <div class="table-header"><span class="table-title">CA HT par tranche de 30 min</span></div>
+    <div style="padding:16px 18px">
+      ${tranches.map(t=>`
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div style="width:44px;font-size:10px;color:var(--muted);flex-shrink:0">${t.heure}</div>
+        <div style="flex:1;background:var(--bg3);border-radius:4px;height:20px;overflow:hidden">
+          <div style="height:100%;display:flex">
+            <div style="width:${(t.comptoir_ht/maxVal*100).toFixed(1)}%;background:#f5a623;transition:width .3s"></div>
+            <div style="width:${(t.drive_ht/maxVal*100).toFixed(1)}%;background:#60a5fa;transition:width .3s"></div>
+          </div>
+        </div>
+        <div style="width:64px;font-size:10px;color:var(--muted2);text-align:right">${fmt(t.total_ht)} €</div>
+        <div style="width:28px;font-size:9px;color:${couleurs[t.periode]};flex-shrink:0">${t.periode.slice(0,1)}</div>
+      </div>`).join('')}
+      <div style="display:flex;gap:16px;margin-top:10px;font-size:10px;color:var(--muted)">
+        <span><span style="display:inline-block;width:10px;height:10px;background:#f5a623;border-radius:2px;margin-right:4px"></span>Comptoir</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#60a5fa;border-radius:2px;margin-right:4px"></span>Drive</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tableau détaillé -->
+  <div class="table-card">
+    <div class="table-header"><span class="table-title">Détail par demi-heure</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr>
+        <th>Heure</th><th>Période</th>
+        <th class="num">Comptoir nb</th><th class="num">Comptoir HT</th>
+        <th class="num">Drive nb</th><th class="num">Drive HT</th>
+        <th class="num">Total HT</th>
+      </tr></thead>
+      <tbody>
+        ${tranches.map(t=>`<tr>
+          <td style="color:var(--accent)">${t.heure}</td>
+          <td><span style="color:${couleurs[t.periode]};font-size:10px">${t.periode}</span></td>
+          <td class="num">${t.comptoir_nb}</td>
+          <td class="num">${fmt(t.comptoir_ht)} €</td>
+          <td class="num">${t.drive_nb}</td>
+          <td class="num">${fmt(t.drive_ht)} €</td>
+          <td class="num" style="font-weight:600">${fmt(t.total_ht)} €</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+// ══ ANNULATIONS ══
+let ANN_PHOTOS = {bad:null, annul:null, good:null};
+
+function previewTicket(input, previewId) {
+  const file = input.files[0];
+  if(!file) return;
+  const key = previewId.replace('prev-','');
+  ANN_PHOTOS[key] = file;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const el = document.getElementById(previewId);
+    if(el) el.innerHTML = `<img src="${e.target.result}" style="width:100%;border-radius:4px;object-fit:cover">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+function sauvegarderAnnulation() {
+  const date    = document.getElementById('ann-date')?.value;
+  const heure   = document.getElementById('ann-heure')?.value;
+  const montant = parseFloat(document.getElementById('ann-montant')?.value||0);
+  const manager = document.getElementById('ann-manager')?.value;
+  const motif   = document.getElementById('ann-motif')?.value;
+  const comment = document.getElementById('ann-comment')?.value;
+
+  if(!date||!montant) { alert('Date et montant obligatoires'); return; }
+
+  // Stocker localement (Supabase storage pour les photos — à venir)
+  const anns = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
+  anns.unshift({ id:Date.now(), date, heure, montant, manager, motif, comment,
+    restaurant: CURRENT_USER?.resto||'BK526', createdAt: new Date().toISOString() });
+  localStorage.setItem('bk_annulations', JSON.stringify(anns.slice(0,200)));
+
+  // Reset
+  ['ann-date','ann-heure','ann-montant','ann-comment'].forEach(id=>{
+    const el=document.getElementById(id); if(el)el.value='';
+  });
+  ['ann-manager','ann-motif'].forEach(id=>{
+    const el=document.getElementById(id); if(el)el.selectedIndex=0;
+  });
+  ['prev-bad','prev-annul','prev-good'].forEach(id=>{
+    const el=document.getElementById(id); if(el)el.innerHTML='<span style="font-size:10px;color:var(--muted)">Photo</span>';
+  });
+  ANN_PHOTOS = {bad:null,annul:null,good:null};
+
+  showAlert('ann-ok');
+  renderAnnulationsHistorique();
+}
+
+function renderAnnulationsHistorique() {
+  const el = document.getElementById('ann-historique-content');
+  if(!el) return;
+  const anns = JSON.parse(localStorage.getItem('bk_annulations')||'[]')
+    .filter(a=>!ACTIVE_RESTO||ACTIVE_RESTO==='ALL'||a.restaurant===ACTIVE_RESTO);
+  if(!anns.length) { el.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">Aucune annulation enregistrée</div>'; return; }
+  el.innerHTML = `<table style="width:100%;font-size:11px">
+    <thead><tr>
+      <th style="padding:6px;text-align:left;color:var(--muted)">Date</th>
+      <th style="padding:6px;text-align:left;color:var(--muted)">Heure</th>
+      <th style="padding:6px;text-align:right;color:var(--muted)">Montant</th>
+      <th style="padding:6px;text-align:left;color:var(--muted)">Manager</th>
+      <th style="padding:6px;text-align:left;color:var(--muted)">Motif</th>
+    </tr></thead>
+    <tbody>
+      ${anns.slice(0,50).map(a=>`<tr style="border-top:1px solid var(--border)">
+        <td style="padding:6px;color:var(--accent)">${formatDate(a.date)}</td>
+        <td style="padding:6px;color:var(--muted2)">${a.heure||'—'}</td>
+        <td style="padding:6px;text-align:right;font-weight:600;color:var(--red)">${fmt(a.montant)} €</td>
+        <td style="padding:6px">${a.manager||'—'}</td>
+        <td style="padding:6px;color:var(--muted2)">${a.motif||'—'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
 }
 
 // ══ IMPORT PDF — EXTRACTION IA ══
