@@ -402,10 +402,19 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
           <option value="ca">CA TTC</option>
           <option value="tickets">Tickets</option>
           <option value="drive">Drive voitures</option>
-          <option value="corrections">Corrections %</option>
+          <option value="corrections">Corrections €</option>
           <option value="remises">Remises %</option>
           <option value="livraisons">Livraisons</option>
         </select>
+        <span style="font-size:10px;color:var(--muted)">Colonnes :</span>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-ca" checked onchange="loadHistorique()"> CA</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-drive" checked onchange="loadHistorique()"> Drive</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-lv" checked onchange="loadHistorique()"> Livraison</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-corr" checked onchange="loadHistorique()"> Corrections</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-rem" checked onchange="loadHistorique()"> Remises</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-annul" onchange="loadHistorique()"> Annulations</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-co" onchange="loadHistorique()"> Cmd ouvertes</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-emp" onchange="loadHistorique()"> Repas emp.</label>
       </div>
       <div id="historique-content"></div>
     </section>
@@ -1318,6 +1327,13 @@ function switchResto(restoId) {
   // Filtrer et recharger
   applyRestoFilter();
   renderDashboard();
+  // Reset section journée si vide
+  if(!DATA.length) {
+    document.getElementById('select-journee').innerHTML = '<option value="">Aucune donnée pour ce restaurant</option>';
+    document.getElementById('journee-content').innerHTML = '<div class="empty"><div class="empty-icon">📅</div><div class="empty-title">Aucune donnée</div><div class="empty-sub">Ce restaurant n'a pas encore de journées enregistrées.</div></div>';
+  }
+  // Reset historique
+  document.getElementById('historique-content').innerHTML = '';
 }
 
 function applyRestoFilter() {
@@ -1334,12 +1350,18 @@ function applyRestoFilter() {
   }
 }
 
+// ══ SUPABASE CONFIG ══
+const SB_URL_DEFAULT = 'https://qywucwvcnijkbdcdczch.supabase.co';
+const SB_KEY_DEFAULT = 'sb_publishable_OjZ_TMHBKogqLzhay1JNJw_mUo5Zru0';
+
 function loadConfig() {
-  const url = localStorage.getItem('sb_url')||'';
-  const key = localStorage.getItem('sb_key')||'';
+  const url = localStorage.getItem('sb_url') || SB_URL_DEFAULT;
+  const key = localStorage.getItem('sb_key') || SB_KEY_DEFAULT;
   if(url && key) {
-    document.getElementById('cfg-url').value = url;
-    document.getElementById('cfg-key').value = key;
+    const cfgUrl = document.getElementById('cfg-url');
+    const cfgKey = document.getElementById('cfg-key');
+    if(cfgUrl) cfgUrl.value = url;
+    if(cfgKey) cfgKey.value = key;
     initSupabase(url, key);
   } else {
     window._ALL_DATA25 = SEED_2025;
@@ -1428,23 +1450,32 @@ function renderDashboard() {
   const avgRem = rD.length ? (rD.reduce((a,b)=>a+b.remises_pct,0)/rD.length).toFixed(1) : 0;
   const avgTM = totT ? (totCA/totT).toFixed(2) : 0;
   const ecN1 = totCA25 ? ((totCA-totCA25)/totCA25*100).toFixed(1) : null;
+  // Valeurs 2025 pour affichage sous les KPIs
+  const avgDr25 = DATA25.filter(d=>d.drive_voitures).length ?
+    Math.round(DATA25.filter(d=>d.drive_voitures).reduce((a,b)=>a+b.drive_voitures,0)/DATA25.filter(d=>d.drive_voitures).length) : null;
+  const avgCorr25 = DATA25.filter(d=>d.corrections_pct).length ?
+    (DATA25.filter(d=>d.corrections_pct).reduce((a,b)=>a+b.corrections_pct,0)/DATA25.filter(d=>d.corrections_pct).length).toFixed(1) : null;
+  const avgRem25 = DATA25.filter(d=>d.remises_pct).length ?
+    (DATA25.filter(d=>d.remises_pct).reduce((a,b)=>a+b.remises_pct,0)/DATA25.filter(d=>d.remises_pct).length).toFixed(1) : null;
+  const avgTM25 = totT25 && totCA25 ? (totCA25/totT25).toFixed(2) : null;
   const ecT = totT25 ? ((totT-totT25)/totT25*100).toFixed(1) : null;
 
   const kpis = [
-    {l:'CA TTC cumulé',v:fmt(totCA)+' €',d:ecN1?(ecN1>0?'+':'')+ecN1+'% vs N-1':DATA.length+' jours',cls:ecN1===null?'neutral':ecN1>0?'ok':ecN1>-5?'warn':'bad',up:!ecN1||ecN1>0},
-    {l:'Ticket moyen',v:avgTM+' €',d:'objectif ≥'+SEUILS.ticket_min+' €',cls:parseFloat(avgTM)>=SEUILS.ticket_min?'ok':'warn',up:true},
-    {l:'Tickets / jour',v:Math.round(totT/DATA.length),d:ecT?(ecT>0?'+':'')+ecT+'% vs N-1':'',cls:ecT&&parseFloat(ecT)<-5?'warn':'ok',up:!ecT||parseFloat(ecT)>0},
-    {l:'Drive moy/jour',v:avgDr+' voitures',d:avgDr>=SEUILS.drive_min?'✓ Objectif atteint':'⚠ Sous seuil '+SEUILS.drive_min,cls:avgDr>=SEUILS.drive_min?'ok':'warn',up:avgDr>=SEUILS.drive_min},
-    {l:'Corrections moy',v:avgCorr+'%',d:(parseFloat(avgCorr)<=SEUILS.corrections_max?'✓ ':parseFloat(avgCorr)<=SEUILS.corrections_rouge?'⚠ ':'🚨 ')+'seuil '+SEUILS.corrections_max+'%',cls:parseFloat(avgCorr)<=SEUILS.corrections_max?'ok':parseFloat(avgCorr)<=SEUILS.corrections_rouge?'warn':'bad',up:false},
-    {l:'Remises moy',v:avgRem+'%',d:(parseFloat(avgRem)<=SEUILS.remises_max?'✓ Sous seuil':'⚠ Dépasse '+SEUILS.remises_max+'%'),cls:parseFloat(avgRem)<=SEUILS.remises_max?'ok':'warn',up:false},
-    {l:'Dernière journée',v:formatDate(last.date),d:fmt(last.ca_ttc)+' €',cls:'neutral',up:true},
-    {l:'Journées enreg.',v:DATA.length,d:'dans la base',cls:'neutral',up:true},
+    {l:'CA TTC cumulé',v:fmt(totCA)+' €',n1:totCA25?fmt(totCA25)+' €':null,d:ecN1?(ecN1>0?'+':'')+ecN1+'% vs 2025':DATA.length+' jours',cls:ecN1===null?'neutral':ecN1>0?'ok':ecN1>-5?'warn':'bad',up:!ecN1||ecN1>0},
+    {l:'Ticket moyen',v:avgTM+' €',n1:avgTM25?avgTM25+' €':null,d:'objectif ≥'+SEUILS.ticket_min+' €',cls:parseFloat(avgTM)>=SEUILS.ticket_min?'ok':'warn',up:true},
+    {l:'Tickets / jour',v:Math.round(totT/DATA.length),n1:totT25&&DATA25.length?Math.round(totT25/DATA25.length)+' tickets/j':null,d:ecT?(ecT>0?'+':'')+ecT+'% vs 2025':'',cls:ecT&&parseFloat(ecT)<-5?'warn':'ok',up:!ecT||parseFloat(ecT)>0},
+    {l:'Drive moy/jour',v:avgDr+' voitures',n1:avgDr25?avgDr25+' voitures':null,d:avgDr>=SEUILS.drive_min?'✓ Objectif atteint':'⚠ Sous seuil '+SEUILS.drive_min,cls:avgDr>=SEUILS.drive_min?'ok':'warn',up:avgDr>=SEUILS.drive_min},
+    {l:'Corrections moy',v:avgCorr+'%',n1:avgCorr25?avgCorr25+'%':null,d:(parseFloat(avgCorr)<=SEUILS.corrections_max?'✓ ':parseFloat(avgCorr)<=SEUILS.corrections_rouge?'⚠ ':'🚨 ')+'seuil '+SEUILS.corrections_max+'%',cls:parseFloat(avgCorr)<=SEUILS.corrections_max?'ok':parseFloat(avgCorr)<=SEUILS.corrections_rouge?'warn':'bad',up:false},
+    {l:'Remises moy',v:avgRem+'%',n1:avgRem25?avgRem25+'%':null,d:(parseFloat(avgRem)<=SEUILS.remises_max?'✓ Sous seuil':'⚠ Dépasse '+SEUILS.remises_max+'%'),cls:parseFloat(avgRem)<=SEUILS.remises_max?'ok':'warn',up:false},
+    {l:'Dernière journée',v:formatDate(last.date),n1:null,d:fmt(last.ca_ttc)+' €',cls:'neutral',up:true},
+    {l:'Journées enreg.',v:DATA.length,n1:DATA25.length?DATA25.length+' en 2025':null,d:'dans la base',cls:'neutral',up:true},
   ];
 
   document.getElementById('dash-kpis').innerHTML = kpis.map(k=>`
     <div class="kpi ${k.cls}">
-      <div class="kpi-label">${k.l}</div>
+      <div class="kpi-label">${k.l} <span style="font-size:8px;color:var(--muted);font-weight:400;text-transform:uppercase;letter-spacing:.08em">2026</span></div>
       <div class="kpi-val">${k.v}</div>
+      ${k.n1?`<div style="font-size:10px;color:var(--muted2);margin-top:2px">2025 : ${k.n1}</div>`:''}
       ${k.d?`<div class="kpi-delta ${k.up?'up':'down'}">${k.d}</div>`:''}
     </div>`).join('');
 
@@ -1784,6 +1815,15 @@ function exportPDF(dateStr) {
 function loadHistorique() {
   const mois = document.getElementById('hist-mois').value;
   const filtre = document.getElementById('hist-filtre').value;
+  // Colonnes sélectionnées
+  const colCA    = document.getElementById('col-ca')?.checked ?? true;
+  const colDrive = document.getElementById('col-drive')?.checked ?? true;
+  const colLv    = document.getElementById('col-lv')?.checked ?? true;
+  const colCorr  = document.getElementById('col-corr')?.checked ?? true;
+  const colRem   = document.getElementById('col-rem')?.checked ?? true;
+  const colAnnul = document.getElementById('col-annul')?.checked ?? false;
+  const colCO    = document.getElementById('col-co')?.checked ?? false;
+  const colEmp   = document.getElementById('col-emp')?.checked ?? false;
   const yr = mois.slice(0,4);
   const mm = mois.slice(5,7);
 
