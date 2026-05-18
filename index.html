@@ -286,6 +286,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-full-only" style="display:none" onclick="nav('comparaison')"><span>🔄</span><span>Comparaison N-1</span></div>
     <div class="nav-section role-dir-only" style="display:none">Saisie</div>
     <div class="nav-item role-dir-only" style="display:none" onclick="nav('saisie')"><span>📥</span><span>Importer PDF</span></div>
+    <div class="nav-item role-admin-only" style="display:none" onclick="nav('import-masse')"><span>⚡</span><span>Import massif</span></div>
     <div class="nav-section role-mgr-only" style="display:none">Journée</div>
     <div class="nav-item role-mgr-only" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
     <div class="nav-section role-full-only" style="display:none">Analyse</div>
@@ -568,94 +569,260 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 
     <!-- MANAGER -->
     <section class="section" id="sec-manager">
-      <div style="max-width:580px">
+      <div style="max-width:560px">
 
-        <!-- ÉTAPE 1 : Dépôt TOUS les PDF -->
-        <div class="mgr-card" id="mgr-step1">
-          <div class="mgr-title">📂 Déposer les PDF de la journée</div>
-          <div class="mgr-sub">Glissez tous vos PDF en même temps — Synthèse CA, ventes horaire, etc. L'IA lit et extrait tout automatiquement.</div>
+        <!-- 3 BOUTONS PRINCIPAUX -->
+        <div id="mgr-home">
 
-          <div class="drop-zone" id="drop-zone"
-               onclick="document.getElementById('file-input').click()"
+          <!-- Bonjour manager -->
+          <div style="margin-bottom:20px">
+            <div style="font-family:var(--font-head);font-size:20px;font-weight:700">Bonjour <span id="mgr-hello-name" style="color:var(--accent)"></span> 👋</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:4px" id="mgr-hello-date"></div>
+          </div>
+
+          <!-- Bouton 1 : PDF journée -->
+          <div class="mgr-card" style="cursor:pointer;transition:border-color .2s" onclick="showMgrSection('pdf')"
+               onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''">
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="font-size:36px">📂</div>
+              <div>
+                <div class="mgr-title" style="margin-bottom:2px">Déposer les PDF de la journée</div>
+                <div class="mgr-sub" style="margin-bottom:0">Synthèse CA + Temps de service → extraction automatique</div>
+              </div>
+              <div style="margin-left:auto;color:var(--muted);font-size:18px">›</div>
+            </div>
+          </div>
+
+          <!-- Bouton 2 : Annulation -->
+          <div class="mgr-card" style="cursor:pointer;border-color:rgba(248,113,113,.3);transition:border-color .2s" onclick="showMgrSection('annulation')"
+               onmouseover="this.style.borderColor='var(--red)'" onmouseout="this.style.borderColor='rgba(248,113,113,.3)'">
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="font-size:36px">🚫</div>
+              <div>
+                <div class="mgr-title" style="margin-bottom:2px;color:var(--red)">Déclarer une annulation</div>
+                <div class="mgr-sub" style="margin-bottom:0">Photo des tickets · mauvais + annulé + bon ticket</div>
+              </div>
+              <div style="margin-left:auto;color:var(--muted);font-size:18px">›</div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- SECTION PDF -->
+        <div id="mgr-section-pdf" style="display:none">
+          <button class="btn" style="margin-bottom:14px;font-size:11px" onclick="showMgrSection('home')">← Retour</button>
+
+          <div class="mgr-card" id="mgr-step1">
+            <div class="mgr-title">📂 Déposer les PDF de la journée</div>
+            <div class="mgr-sub">Glissez tous vos PDF — Synthèse CA et Temps de service en même temps</div>
+            <div class="drop-zone" id="drop-zone"
+                 onclick="document.getElementById('file-input').click()"
+                 ondragover="event.preventDefault();this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')"
+                 ondrop="handleMgrDrop(event)"
+                 style="min-height:130px">
+              <div class="drop-zone-icon">📂</div>
+              <div class="drop-zone-text">Cliquez ou <span>glissez vos PDF ici</span></div>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px">Plusieurs PDF acceptés</div>
+            </div>
+            <input type="file" id="file-input" multiple accept=".pdf" style="display:none" onchange="handleMgrFiles(this.files)">
+            <div id="file-list" style="margin-bottom:12px"></div>
+            <div id="mgr-loading" style="display:none;text-align:center;padding:16px;color:var(--muted2);font-size:12px">
+              <div style="font-size:22px;margin-bottom:6px;animation:pulse 1.5s infinite">⏳</div>
+              <span id="mgr-loading-text">Lecture en cours…</span>
+            </div>
+            <div id="mgr-pdf-err" style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);padding:10px 14px;border-radius:var(--radius-sm);font-size:11px;display:none;margin-top:8px"></div>
+          </div>
+
+          <!-- Étape 2 après lecture PDF -->
+          <div class="mgr-card" id="mgr-step2" style="display:none">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+              <div>
+                <div class="mgr-title" style="margin-bottom:2px">✅ <span id="mgr-date-label">—</span></div>
+                <div style="font-size:11px;color:var(--muted2)" id="mgr-ca-label"></div>
+              </div>
+              <button class="btn" style="font-size:10px;padding:4px 10px" onclick="resetMgrFlow()">✕ Recommencer</button>
+            </div>
+            <div id="mgr-pdf-summary" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px"></div>
+
+            <!-- Équipe -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+              <div>
+                <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Ouverture (8h → 19h)</div>
+                <label class="form-label">Manager ouverture</label>
+                <select class="form-input" id="mgr-ouv" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
+                <label class="form-label">Leader ouverture</label>
+                <select class="form-input" id="mgr-leader-ouv"><option value="">— sélectionner —</option></select>
+              </div>
+              <div>
+                <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Fermeture (19h → 2h)</div>
+                <label class="form-label">Manager fermeture</label>
+                <select class="form-input" id="mgr-fer" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
+                <label class="form-label">Leader fermeture</label>
+                <select class="form-input" id="mgr-leader-fer"><option value="">— sélectionner —</option></select>
+              </div>
+            </div>
+
+            <!-- Directeur -->
+            <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:16px">
+              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px">Présence directeur</div>
+              <div style="display:flex;gap:12px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border2);border-radius:var(--radius-sm);flex:1;transition:all .15s" id="lbl-dir-midi">
+                  <input type="checkbox" id="mgr-dir-midi" onchange="toggleDirStyle('midi')">
+                  <span style="font-size:16px">☀️</span>
+                  <div><div style="font-size:11px;font-weight:600">Rush midi</div><div style="font-size:10px;color:var(--muted)">Déjeuner</div></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border2);border-radius:var(--radius-sm);flex:1;transition:all .15s" id="lbl-dir-soir">
+                  <input type="checkbox" id="mgr-dir-soir" onchange="toggleDirStyle('soir')">
+                  <span style="font-size:16px">🌙</span>
+                  <div><div style="font-size:11px;font-weight:600">Rush soir</div><div style="font-size:10px;color:var(--muted)">Dîner</div></div>
+                </label>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:16px">
+              <label class="form-label">💬 Commentaire</label>
+              <input type="text" class="form-input" id="mgr-comment" placeholder="Événement, météo, incident...">
+            </div>
+            <button class="btn btn-accent" style="width:100%;padding:12px;font-size:13px" onclick="enregistrerJourneeMgr()">💾 Enregistrer la journée</button>
+            <div class="mgr-alert-ok" id="mgr-save-ok">✓ Journée enregistrée !</div>
+          </div>
+        </div>
+
+        <!-- SECTION ANNULATION -->
+        <div id="mgr-section-annulation" style="display:none">
+          <button class="btn" style="margin-bottom:14px;font-size:11px" onclick="showMgrSection('home')">← Retour</button>
+
+          <div class="mgr-card">
+            <div class="mgr-title" style="color:var(--red)">🚫 Déclarer une annulation</div>
+            <div class="mgr-sub">Photographiez les 3 tickets — l'IA lit la date, l'heure et le montant automatiquement</div>
+
+            <!-- Résumé extraction (visible après photos) -->
+            <div id="ann-extracted" style="display:none;background:var(--bg3);border-radius:var(--radius-sm);padding:12px;margin-bottom:16px;font-size:11px">
+              <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Données extraites des tickets</div>
+              <div style="display:flex;gap:16px;flex-wrap:wrap">
+                <span>📅 <span id="ann-ext-date" style="color:var(--text)">—</span></span>
+                <span>🕐 <span id="ann-ext-heure" style="color:var(--text)">—</span></span>
+                <span>💶 <span id="ann-ext-montant" style="color:var(--red);font-weight:700">—</span></span>
+              </div>
+            </div>
+
+            <!-- 3 tickets photos -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
+
+              <!-- Mauvais ticket -->
+              <div>
+                <div style="font-size:10px;color:var(--red);text-align:center;margin-bottom:6px;font-weight:600">❌ Mauvais ticket</div>
+                <div class="drop-zone" id="zone-bad" style="padding:12px;min-height:110px;text-align:center;position:relative" onclick="document.getElementById('ann-photo-bad').click()">
+                  <div id="prev-bad"><div style="font-size:28px">📷</div><div style="font-size:9px;color:var(--muted);margin-top:6px">Appuyer pour photographier</div></div>
+                  <div id="loading-bad" style="display:none;font-size:20px;animation:pulse 1s infinite">⏳</div>
+                </div>
+                <input type="file" id="ann-photo-bad" accept="image/*" capture="environment" style="display:none" onchange="lireTicket(this,'bad')">
+                <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);margin-top:6px;cursor:pointer">
+                  <input type="checkbox" id="chk-miss-bad" onchange="toggleMissing('bad')"> Ticket manquant
+                </label>
+                <div id="miss-bad" style="display:none;margin-top:6px">
+                  <textarea class="form-input" id="miss-bad-txt" placeholder="Expliquez pourquoi ce ticket manque…" style="font-size:10px;padding:6px 8px;height:60px;resize:none"></textarea>
+                </div>
+              </div>
+
+              <!-- Ticket annulé -->
+              <div>
+                <div style="font-size:10px;color:var(--yellow);text-align:center;margin-bottom:6px;font-weight:600">🔄 Ticket annulé</div>
+                <div class="drop-zone" id="zone-annul" style="padding:12px;min-height:110px;text-align:center" onclick="document.getElementById('ann-photo-annul').click()">
+                  <div id="prev-annul"><div style="font-size:28px">📷</div><div style="font-size:9px;color:var(--muted);margin-top:6px">Appuyer pour photographier</div></div>
+                  <div id="loading-annul" style="display:none;font-size:20px;animation:pulse 1s infinite">⏳</div>
+                </div>
+                <input type="file" id="ann-photo-annul" accept="image/*" capture="environment" style="display:none" onchange="lireTicket(this,'annul')">
+                <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);margin-top:6px;cursor:pointer">
+                  <input type="checkbox" id="chk-miss-annul" onchange="toggleMissing('annul')"> Ticket manquant
+                </label>
+                <div id="miss-annul" style="display:none;margin-top:6px">
+                  <textarea class="form-input" id="miss-annul-txt" placeholder="Expliquez pourquoi ce ticket manque…" style="font-size:10px;padding:6px 8px;height:60px;resize:none"></textarea>
+                </div>
+              </div>
+
+              <!-- Bon ticket -->
+              <div>
+                <div style="font-size:10px;color:var(--green);text-align:center;margin-bottom:6px;font-weight:600">✅ Bon ticket</div>
+                <div class="drop-zone" id="zone-good" style="padding:12px;min-height:110px;text-align:center" onclick="document.getElementById('ann-photo-good').click()">
+                  <div id="prev-good"><div style="font-size:28px">📷</div><div style="font-size:9px;color:var(--muted);margin-top:6px">Appuyer pour photographier</div></div>
+                  <div id="loading-good" style="display:none;font-size:20px;animation:pulse 1s infinite">⏳</div>
+                </div>
+                <input type="file" id="ann-photo-good" accept="image/*" capture="environment" style="display:none" onchange="lireTicket(this,'good')">
+                <label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--muted);margin-top:6px;cursor:pointer">
+                  <input type="checkbox" id="chk-miss-good" onchange="toggleMissing('good')"> Ticket manquant
+                </label>
+                <div id="miss-good" style="display:none;margin-top:6px">
+                  <textarea class="form-input" id="miss-good-txt" placeholder="Expliquez pourquoi ce ticket manque…" style="font-size:10px;padding:6px 8px;height:60px;resize:none"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:16px">
+              <label class="form-label">💬 Commentaire complémentaire (optionnel)</label>
+              <input type="text" class="form-input" id="ann-comment" placeholder="Précisions sur l'annulation...">
+            </div>
+
+            <button class="btn btn-accent" id="btn-ann-save" style="width:100%;padding:12px;font-size:13px;background:var(--red);border-color:var(--red);opacity:.5" onclick="sauvegarderAnnulation()" disabled>
+              💾 Enregistrer l'annulation
+            </button>
+            <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:6px" id="ann-save-hint">Photographiez au moins un ticket pour continuer</div>
+            <div class="mgr-alert-ok" id="ann-ok">✓ Annulation enregistrée !</div>
+          </div>
+
+          <!-- Historique annulations du jour -->
+          <div class="table-card" style="margin-top:14px">
+            <div class="table-header"><span class="table-title">Annulations enregistrées</span></div>
+            <div id="ann-historique-content" style="padding:12px"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+        <!-- IMPORT MASSIF ADMIN -->
+    <section class="section" id="sec-import-masse">
+      <div style="max-width:700px">
+        <div class="mgr-card">
+          <div class="mgr-title">⚡ Import massif — Admin</div>
+          <div class="mgr-sub">Glissez tous vos PDF en même temps — extraction et enregistrement automatiques, aucune confirmation demandée</div>
+
+          <div style="margin-bottom:14px">
+            <label class="form-label">🏪 Restaurant concerné</label>
+            <select class="form-input" id="masse-resto" style="max-width:300px">
+              <option value="BK526">🌿 BK 526 — Saint-Clément-Rivière</option>
+              <option value="BK509">🏪 BK 509 — Saint-Jean-de-Védas</option>
+              <option value="BK500">🏟️ BK 500 — Arènes</option>
+            </select>
+          </div>
+
+          <div class="drop-zone" id="masse-drop-zone"
+               onclick="document.getElementById('masse-file-input').click()"
                ondragover="event.preventDefault();this.classList.add('drag-over')"
                ondragleave="this.classList.remove('drag-over')"
-               ondrop="handleMgrDrop(event)"
-               style="min-height:120px">
-            <div class="drop-zone-icon">📂</div>
-            <div class="drop-zone-text">Cliquez ou <span>glissez vos PDF ici</span></div>
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Plusieurs PDF acceptés · Synthèse CA + Ventes horaire + autres</div>
+               ondrop="handleMasseDrop(event)"
+               style="min-height:150px">
+            <div class="drop-zone-icon" style="font-size:40px">📂</div>
+            <div class="drop-zone-text" style="font-size:14px">Glissez <span>tous vos PDF ici</span></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">Plusieurs PDF simultanés · Extraction automatique · Aucune saisie requise</div>
           </div>
-          <input type="file" id="file-input" multiple accept=".pdf" style="display:none" onchange="handleMgrFiles(this.files)">
+          <input type="file" id="masse-file-input" multiple accept=".pdf" style="display:none" onchange="handleMasseFiles(this.files)">
 
-          <!-- Liste des fichiers avec statut -->
-          <div id="file-list" style="margin-bottom:12px"></div>
-
-          <div id="mgr-loading" style="display:none;text-align:center;padding:16px;color:var(--muted2);font-size:12px">
-            <div style="font-size:22px;margin-bottom:6px;animation:pulse 1.5s infinite">⏳</div>
-            <span id="mgr-loading-text">Lecture des PDF en cours…</span>
+          <!-- Barre de progression -->
+          <div id="masse-progress-wrap" style="display:none;margin-top:14px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2);margin-bottom:6px">
+              <span id="masse-progress-label">Traitement en cours…</span>
+              <span id="masse-progress-pct">0%</span>
+            </div>
+            <div style="background:var(--bg3);border-radius:99px;height:6px;overflow:hidden">
+              <div id="masse-progress-bar" style="height:100%;background:var(--accent);border-radius:99px;transition:width .3s;width:0%"></div>
+            </div>
           </div>
-          <div id="mgr-pdf-err" style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);padding:10px 14px;border-radius:var(--radius-sm);font-size:11px;display:none;margin-top:8px"></div>
+
+          <!-- Résultats -->
+          <div id="masse-results" style="margin-top:14px"></div>
         </div>
-
-        <!-- ÉTAPE 2 : Résumé extraction + Équipe -->
-        <div class="mgr-card" id="mgr-step2" style="display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-            <div>
-              <div class="mgr-title" style="margin-bottom:2px">✅ <span id="mgr-date-label">—</span></div>
-              <div style="font-size:11px;color:var(--muted2)" id="mgr-ca-label"></div>
-            </div>
-            <button class="btn" style="font-size:10px;padding:4px 10px" onclick="resetMgrFlow()">✕ Recommencer</button>
-          </div>
-
-          <!-- Résumé des PDF lus -->
-          <div id="mgr-pdf-summary" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px"></div>
-
-          <!-- Équipe -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
-            <div>
-              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Ouverture (8h → 19h)</div>
-              <label class="form-label">Manager ouverture</label>
-              <select class="form-input" id="mgr-ouv" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
-              <label class="form-label">Leader ouverture</label>
-              <select class="form-input" id="mgr-leader-ouv"><option value="">— sélectionner —</option></select>
-            </div>
-            <div>
-              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Fermeture (19h → 2h)</div>
-              <label class="form-label">Manager fermeture</label>
-              <select class="form-input" id="mgr-fer" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
-              <label class="form-label">Leader fermeture</label>
-              <select class="form-input" id="mgr-leader-fer"><option value="">— sélectionner —</option></select>
-            </div>
-          </div>
-
-          <!-- Directeur -->
-          <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:16px">
-            <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px">Présence directeur</div>
-            <div style="display:flex;gap:12px">
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border2);border-radius:var(--radius-sm);flex:1;transition:all .15s" id="lbl-dir-midi">
-                <input type="checkbox" id="mgr-dir-midi" onchange="toggleDirStyle('midi')">
-                <span style="font-size:16px">☀️</span>
-                <div><div style="font-size:11px;font-weight:600">Rush midi</div><div style="font-size:10px;color:var(--muted)">Déjeuner</div></div>
-              </label>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border2);border-radius:var(--radius-sm);flex:1;transition:all .15s" id="lbl-dir-soir">
-                <input type="checkbox" id="mgr-dir-soir" onchange="toggleDirStyle('soir')">
-                <span style="font-size:16px">🌙</span>
-                <div><div style="font-size:11px;font-weight:600">Rush soir</div><div style="font-size:10px;color:var(--muted)">Dîner</div></div>
-              </label>
-            </div>
-          </div>
-
-          <div class="form-group" style="margin-bottom:16px">
-            <label class="form-label">💬 Commentaire (optionnel)</label>
-            <input type="text" class="form-input" id="mgr-comment" placeholder="Événement, météo, incident...">
-          </div>
-
-          <button class="btn btn-accent" style="width:100%;padding:12px;font-size:13px" onclick="enregistrerJourneeMgr()">
-            💾 Enregistrer la journée
-          </button>
-          <div class="mgr-alert-ok" id="mgr-save-ok">✓ Journée enregistrée !</div>
-        </div>
-
       </div>
     </section>
 
@@ -1958,7 +2125,7 @@ const SEED_BK509_2026 = [
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',ventes:'Ventes par demi-heure',annulations:'Annulations'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',ventes:'Ventes par demi-heure',annulations:'Annulations','import-masse':'Import massif (Admin)'};
 function nav(id) {
   const targetSec = document.getElementById('sec-'+id);
   if(!targetSec) { console.warn("nav: section sec-"+id+" introuvable"); return; }
@@ -2033,6 +2200,7 @@ function applyRestoFilter() {
   } else {
     DATA25 = ALL25.filter(d=>d.restaurant===ACTIVE_RESTO);
     DATA   = ALL26.filter(d=>d.restaurant===ACTIVE_RESTO);
+    console.log('[filter] ACTIVE_RESTO='+ACTIVE_RESTO+' → DATA26='+DATA.length+' DATA25='+DATA25.length);
   }
 }
 
@@ -2050,8 +2218,8 @@ function loadConfig() {
     if(cfgKey) cfgKey.value = key;
     initSupabase(url, key);
   } else {
-    window._ALL_DATA25 = SEED_2025;
-    window._ALL_DATA26 = SEED_2026;
+    window._ALL_DATA25 = getSeedForResto(2025);
+    window._ALL_DATA26 = getSeedForResto(2026);
     applyRestoFilter();
     if(CURRENT_ROLE && CURRENT_ROLE !== 'manager') renderDashboard();
     document.getElementById('db-status').textContent = 'Local (sans DB)';
@@ -2091,18 +2259,39 @@ async function saveConfig() {
 }
 
 async function loadAll() {
+  // Toujours partir des seeds locaux comme base
+  const seed25 = getSeedForResto(2025);
+  const seed26 = getSeedForResto(2026);
+
   if(SB) {
-    const {data, error} = await SB.from('journees').select('*').order('date',{ascending:true});
-    if(!error && data && data.length>0) {
-      window._ALL_DATA25 = data.filter(d=>d.date.startsWith('2025'));
-      window._ALL_DATA26 = data.filter(d=>d.date.startsWith('2026'));
-    } else {
-      window._ALL_DATA25 = SEED_2025;
-      window._ALL_DATA26 = SEED_2026;
+    try {
+      const {data, error} = await SB.from('journees').select('*').order('date',{ascending:true});
+      if(!error && data && data.length > 0) {
+        // Fusionner : les données Supabase écrasent les seeds sur la même clé (restaurant+date)
+        const merge = (seeds, sbData) => {
+          const map = {};
+          seeds.forEach(d => { map[(d.restaurant||'BK526')+'|'+d.date] = d; });
+          sbData.forEach(d => { map[(d.restaurant||'BK526')+'|'+d.date] = d; }); // Supabase prioritaire
+          return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date));
+        };
+        window._ALL_DATA25 = merge(seed25, data.filter(d=>d.date.startsWith('2025')));
+        window._ALL_DATA26 = merge(seed26, data.filter(d=>d.date.startsWith('2026')));
+        console.log('[loadAll] Supabase: '+data.length+' lignes. Fusion: 2025='+window._ALL_DATA25.length+' 2026='+window._ALL_DATA26.length);
+        // Restos présents dans Supabase
+        const restos = [...new Set(data.map(d=>d.restaurant))];
+        console.log('[loadAll] Restos Supabase:', restos);
+      } else {
+        // Supabase vide ou erreur → seeds seuls
+        window._ALL_DATA25 = seed25;
+        window._ALL_DATA26 = seed26;
+      }
+    } catch(e) {
+      window._ALL_DATA25 = seed25;
+      window._ALL_DATA26 = seed26;
     }
   } else {
-    window._ALL_DATA25 = SEED_2025;
-    window._ALL_DATA26 = SEED_2026;
+    window._ALL_DATA25 = seed25;
+    window._ALL_DATA26 = seed26;
   }
   applyRestoFilter();
   document.getElementById('last-update').textContent = 'Màj '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
@@ -2955,7 +3144,7 @@ async function saveSaisie(e) {
 
 async function upsert(row, okId, errId) {
   if(SB) {
-    const {error} = await SB.from('journees').upsert(row,{onConflict:'date'});
+    const {error} = await SB.from('journees').upsert(row,{onConflict:'restaurant,date'});
     if(error){showAlert(errId);console.error(error);return;}
   } else {
     const idx = DATA.findIndex(d=>d.date===row.date);
@@ -3192,12 +3381,125 @@ function applyRoleUI(role) {
   if(isManager) {
     setTimeout(()=>{
       nav('manager');
-      const d = document.getElementById('mgr-date');
-      if(d) d.value = new Date().toISOString().slice(0,10);
+      showMgrSection('home');
+      const nameEl = document.getElementById('mgr-hello-name');
+      if(nameEl) nameEl.textContent = CURRENT_USER?.nom||'';
+      const dateEl = document.getElementById('mgr-hello-date');
+      if(dateEl) dateEl.textContent = new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
       populateManagerSelect();
     },150);
   } else {
     setTimeout(()=>nav('dashboard'), 50);
+  }
+}
+
+function showMgrSection(section) {
+  // Afficher le bon panneau dans l'interface manager
+  document.getElementById('mgr-home').style.display             = section==='home'       ? 'block' : 'none';
+  document.getElementById('mgr-section-pdf').style.display      = section==='pdf'        ? 'block' : 'none';
+  document.getElementById('mgr-section-annulation').style.display = section==='annulation' ? 'block' : 'none';
+  // Init date/heure pour annulation
+  if(section==='annulation') {
+    const now = new Date();
+    const d = document.getElementById('ann-date');
+    const h = document.getElementById('ann-heure');
+    if(d && !d.value) d.value = now.toISOString().slice(0,10);
+    if(h && !h.value) h.value = now.toTimeString().slice(0,5);
+    renderAnnulationsHistorique();
+    populateAnnManagerSelect();
+  }
+}
+
+function toggleMissing(ticket) {
+  const chk = document.getElementById('chk-miss-'+ticket);
+  const box = document.getElementById('miss-'+ticket);
+  if(box) box.style.display = chk?.checked ? 'block' : 'none';
+}
+
+// Données extraites des tickets
+let ANN_DATA = {date:null, heure:null, montant:null};
+let ANN_PHOTOS_COUNT = 0;
+
+async function lireTicket(input, key) {
+  const file = input.files[0];
+  if(!file) return;
+  ANN_PHOTOS[key] = file;
+
+  // Afficher loading
+  document.getElementById('loading-'+key).style.display = 'block';
+  document.getElementById('prev-'+key).style.display = 'none';
+
+  // Lire image en base64
+  const base64 = await new Promise((res,rej)=>{
+    const r = new FileReader();
+    r.onload = ()=>res(r.result.split(',')[1]);
+    r.onerror = ()=>rej();
+    r.readAsDataURL(file);
+  });
+
+  // Prévisualiser
+  const prevEl = document.getElementById('prev-'+key);
+  prevEl.innerHTML = `<img src="data:image/jpeg;base64,${base64}" style="width:100%;border-radius:4px;max-height:100px;object-fit:cover">`;
+  prevEl.style.display = 'block';
+  document.getElementById('loading-'+key).style.display = 'none';
+
+  // Colorier la zone selon le ticket
+  const colors = {bad:'rgba(248,113,113,.15)',annul:'rgba(251,191,36,.15)',good:'rgba(62,207,142,.15)'};
+  const zone = document.getElementById('zone-'+key);
+  if(zone) zone.style.background = colors[key];
+
+  // OCR via Claude API pour extraire date/heure/montant
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:200,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:file.type||'image/jpeg',data:base64}},
+          {type:'text',text:'Sur ce ticket de caisse de restaurant, extrais uniquement: date (DD/MM/YYYY), heure (HH:MM) et montant total (nombre décimal). Réponds UNIQUEMENT en JSON: {"date":"DD/MM/YYYY","heure":"HH:MM","montant":0.00}. Si une info est illisible mets null.'}
+        ]}]
+      })
+    });
+    if(resp.ok) {
+      const data = await resp.json();
+      const txt = data.content.map(c=>c.text||'').join('').replace(/```json|```/g,'').trim();
+      try {
+        const info = JSON.parse(txt);
+        // Mettre à jour ANN_DATA avec les infos du ticket annulé (priorité) ou mauvais
+        if(key==='annul' || key==='bad') {
+          if(info.date && !ANN_DATA.date) ANN_DATA.date = info.date;
+          if(info.heure && !ANN_DATA.heure) ANN_DATA.heure = info.heure;
+          if(info.montant && !ANN_DATA.montant) ANN_DATA.montant = info.montant;
+        }
+        majAnnExtracted();
+      } catch(e){}
+    }
+  } catch(e){ console.log('OCR ticket:', e); }
+
+  // Activer le bouton si au moins 1 ticket
+  ANN_PHOTOS_COUNT = Object.values(ANN_PHOTOS).filter(Boolean).length;
+  const btn = document.getElementById('btn-ann-save');
+  const hint = document.getElementById('ann-save-hint');
+  if(btn && ANN_PHOTOS_COUNT > 0) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    if(hint) hint.style.display = 'none';
+  }
+}
+
+function majAnnExtracted() {
+  const el = document.getElementById('ann-extracted');
+  if(!el) return;
+  if(ANN_DATA.date || ANN_DATA.heure || ANN_DATA.montant) {
+    el.style.display = 'block';
+    const d = document.getElementById('ann-ext-date');
+    const h = document.getElementById('ann-ext-heure');
+    const m = document.getElementById('ann-ext-montant');
+    if(d) d.textContent = ANN_DATA.date || '—';
+    if(h) h.textContent = ANN_DATA.heure || '—';
+    if(m) m.textContent = ANN_DATA.montant ? ANN_DATA.montant.toFixed(2)+' €' : '—';
   }
 }
 
@@ -3403,94 +3705,128 @@ async function extrairePDFManager(file) {
 }
 
 function parserSynthesCA(txt) {
-  const n = (re) => { const m=txt.match(re); return m?parseFloat(m[1].replace(/\s/g,'').replace(',','.')):null; };
-  const i = (re) => { const m=txt.match(re); return m?parseInt(m[1].replace(/\s/g,'')):null; };
+  // Helper : extraire un nombre depuis un texte avec espaces et virgules
+  const num = (s) => s ? parseFloat(s.replace(/\s/g,'').replace(',','.')) : null;
 
-  // Date : "Du DD/MM/YY au DD/MM/YY"
+  // ── DATE ──
   let date = null;
-  const dm = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2})/);
+  const dm = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2,4})/);
   if(dm) {
-    const yr = parseInt(dm[3]) < 50 ? '20'+dm[3] : '19'+dm[3];
+    const yr = dm[3].length===4 ? dm[3] : (parseInt(dm[3])<50?'20':'19')+dm[3];
     date = `${yr}-${dm[2]}-${dm[1]}`;
   }
 
-  // TOTAL principal
-  const totMatch = txt.match(/TOTAL\s+([\d\s]+)\s+([\d\s,]+)\s+([\d\s,]+)/);
-  const ca_ht  = totMatch ? parseFloat(totMatch[2].replace(/\s/g,'').replace(',','.')) : null;
-  const ca_ttc = totMatch ? parseFloat(totMatch[3].replace(/\s/g,'').replace(',','.')) : null;
-  const tickets_nb = totMatch ? parseInt(totMatch[1].replace(/\s/g,'')) : null;
+  // ── TOTAL (tickets CA_HT CA_TTC) ──
+  // Format : TOTAL 1038 16 257,24 17 911,79 ...
+  let tickets_nb=null, ca_ht=null, ca_ttc=null;
+  const totM = txt.match(/TOTAL\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
+  if(totM) {
+    tickets_nb = parseInt(totM[1]);
+    ca_ht  = num(totM[2]);
+    ca_ttc = num(totM[3]);
+  }
 
-  // Drive voitures
-  const driveMatch = txt.match(/DRIVE\s+DRIVE_THROUGH\s+(\d+)/);
-  const drive_v = driveMatch ? parseInt(driveMatch[1]) : null;
-  const driveTTCm = txt.match(/TOTAL DRIVE\s+\d+\s+([\d\s,]+)\s+([\d\s,]+)/);
-  const drive_ttc = driveTTCm ? parseFloat(driveTTCm[2].replace(/\s/g,'').replace(',','.')) : null;
+  // ── DRIVE ──
+  let drive_voitures=null, drive_ttc=null;
+  const dvM = txt.match(/DRIVE[_\s]THROUGH\s+(\d+)/);
+  if(dvM) drive_voitures = parseInt(dvM[1]);
+  const dtM = txt.match(/TOTAL DRIVE\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
+  if(dtM) drive_ttc = num(dtM[3]);
 
-  // Kiosk
-  const kioskM = txt.match(/TOTAL KIOSK\s+\d+\s+([\d\s,]+)\s+([\d\s,]+)/);
-  const kiosk_ttc = kioskM ? parseFloat(kioskM[2].replace(/\s/g,'').replace(',','.')) : null;
+  // ── KIOSK ──
+  let kiosk_ttc=null;
+  const ktM = txt.match(/TOTAL KIOSK\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
+  if(ktM) kiosk_ttc = num(ktM[3]);
 
-  // Livraison
-  const lvM = txt.match(/TOTAL HOME DELIVERY\s+(\d+)\s+([\d\s,]+)\s+([\d\s,]+)/);
-  const livraison_nb  = lvM ? parseInt(lvM[1]) : null;
-  const livraison_ttc = lvM ? parseFloat(lvM[3].replace(/\s/g,'').replace(',','.')) : null;
+  // ── LIVRAISON ──
+  let livraison_nb=null, livraison_ttc=null;
+  const lvM = txt.match(/TOTAL HOME DELIVERY\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
+  if(lvM) { livraison_nb=parseInt(lvM[1]); livraison_ttc=num(lvM[3]); }
 
-  // Comptoir
-  const compM = txt.match(/TOTAL COMPTOIR\s+\d+\s+([\d\s,]+)\s+([\d\s,]+)/);
-  const comptoir_ttc = compM ? parseFloat(compM[2].replace(/\s/g,'').replace(',','.')) : null;
+  // ── COMPTOIR ──
+  let comptoir_ttc=null;
+  const cpM = txt.match(/TOTAL COMPTOIR\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
+  if(cpM) comptoir_ttc = num(cpM[3]);
 
-  // C&C
-  const ccM = txt.match(/TOTAL CLICK & COLLECT\s+\d+\s+([\d\s,]+)\s+([\d\s,]+)/);
-  const cc_ttc = ccM ? parseFloat(ccM[2].replace(/\s/g,'').replace(',','.')) : null;
+  // ── CLICK & COLLECT ──
+  let cc_ttc=null;
+  const ccM = txt.match(/TOTAL CLICK\s*&\s*COLLECT\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
+  if(ccM) cc_ttc = num(ccM[3]);
 
-  // Corrections
-  const corrM = txt.match(/Corrections\s*Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)\s*([\d,]+)/);
-  const corrections_nb      = corrM ? parseInt(corrM[1]) : null;
-  const corrections_montant = corrM ? parseFloat(corrM[2].replace(/\s/g,'').replace(',','.')) : null;
-  const corrections_pct     = corrM ? parseFloat(corrM[3].replace(',','.')) : null;
+  // ── CORRECTIONS ──
+  // Format ligne : "Corrections Nbr Montant % CA 170 899,80 5,02 %"
+  // Dans le texte PDF les colonnes se suivent
+  let corrections_nb=null, corrections_montant=null, corrections_pct=null;
+  const coM = txt.match(/Corrections\s*Nbr\s*Montant\s*%\s*CA\s*(\d+)\s*(\d[\d\s]*,\d+)\s*(\d+,\d+)\s*%/);
+  if(coM) {
+    corrections_nb=parseInt(coM[1]);
+    corrections_montant=num(coM[2]);
+    corrections_pct=num(coM[3]);
+  } else {
+    // Fallback : juste le nombre et montant
+    const coF = txt.match(/Corrections[\s\S]{0,40}?(\d{2,4})\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%/);
+    if(coF){corrections_nb=parseInt(coF[1]);corrections_montant=num(coF[2]);corrections_pct=num(coF[3]);}
+  }
 
-  // Remises
-  const remM = txt.match(/Remises\s*Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)\s*([\d,]+)/);
-  const remises_nb      = remM ? parseInt(remM[1]) : null;
-  const remises_montant = remM ? parseFloat(remM[2].replace(/\s/g,'').replace(',','.')) : null;
-  const remises_pct     = remM ? parseFloat(remM[3].replace(',','.')) : null;
+  // ── REMISES ──
+  // Dans le PDF : "Remises Nbr Montant % CA Sauces offertes Nbr Montant % CA 207 1 156,61 6,46 % 1342 405,70 2,26 %"
+  // Les remises et sauces sont sur la même ligne dans le texte PDF
+  let remises_nb=null, remises_montant=null, remises_pct=null;
+  let sauces_nb=null, sauces_montant=null, sauces_pct=null;
+  const remSauM = txt.match(/Remises\s*Nbr\s*Montant\s*%\s*CA\s*Sauces\s*offertes\s*Nbr\s*Montant\s*%\s*CA\s*(\d+)\s*(\d[\d\s]*,\d+)\s*(\d+,\d+)\s*%\s*(\d+)\s*(\d[\d\s]*,\d+)\s*(\d+,\d+)/);
+  if(remSauM) {
+    remises_nb=parseInt(remSauM[1]); remises_montant=num(remSauM[2]); remises_pct=num(remSauM[3]);
+    sauces_nb=parseInt(remSauM[4]);  sauces_montant=num(remSauM[5]);  sauces_pct=num(remSauM[6]);
+  } else {
+    // Fallback séparé
+    const remF = txt.match(/Remises[\s\S]{0,20}?(\d{2,4})\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%/);
+    if(remF){remises_nb=parseInt(remF[1]);remises_montant=num(remF[2]);remises_pct=num(remF[3]);}
+    const sauF = txt.match(/Sauces offertes[\s\S]{0,20}?(\d{3,5})\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%/);
+    if(sauF){sauces_nb=parseInt(sauF[1]);sauces_montant=num(sauF[2]);sauces_pct=num(sauF[3]);}
+  }
 
-  // Sauces
-  const sauM = txt.match(/Sauces offertes\s*Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)\s*([\d,]+)/);
-  const sauces_nb      = sauM ? parseInt(sauM[1]) : null;
-  const sauces_montant = sauM ? parseFloat(sauM[2].replace(/\s/g,'').replace(',','.')) : null;
+  // ── ANNULATIONS / COMMANDES OUVERTES / REPAS EMPLOYES ──
+  // Format : "Annulations Commandes Ouvertes Repas Employés Nbr Montant % CA Nbr Montant % CA Nbr V Faciale % CA 1 10,00 0,06 % 5 45,30 0,25 % 21 266,65 1,49 %"
+  let annulations_nb=null, annulations_montant=null;
+  let commandes_ouvertes_nb=null, commandes_ouvertes_montant=null;
+  let repas_employes_nb=null, repas_employes_montant=null, repas_employes_pct=null;
 
-  // Annulations
-  const annM = txt.match(/Annulations.*?Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)/);
-  const annulations_nb      = annM ? parseInt(annM[1]) : null;
-  const annulations_montant = annM ? parseFloat(annM[2].replace(/\s/g,'').replace(',','.')) : null;
+  const annCoRep = txt.match(/Annulations[\s\S]{0,80}?Repas\s*Employ[\s\S]{0,60}?CA\s*(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%\s*(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%\s*(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%/);
+  if(annCoRep) {
+    annulations_nb=parseInt(annCoRep[1]); annulations_montant=num(annCoRep[2]);
+    commandes_ouvertes_nb=parseInt(annCoRep[4]); commandes_ouvertes_montant=num(annCoRep[5]);
+    repas_employes_nb=parseInt(annCoRep[7]); repas_employes_montant=num(annCoRep[8]); repas_employes_pct=num(annCoRep[9]);
+  } else {
+    // Fallback individuel
+    const annF = txt.match(/Annulations[\s\S]{0,20}?\n?\s*(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)/);
+    if(annF){annulations_nb=parseInt(annF[1]);annulations_montant=num(annF[2]);}
+    const coF2 = txt.match(/Commandes Ouvertes[\s\S]{0,20}?(\d+)\s+(\d[\d\s]*,\d+)/);
+    if(coF2 && coF2[1]!==String(annulations_nb)){commandes_ouvertes_nb=parseInt(coF2[1]);commandes_ouvertes_montant=num(coF2[2]);}
+    const repF = txt.match(/Repas\s*Employ[\s\S]{0,30}?(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)/);
+    if(repF){repas_employes_nb=parseInt(repF[1]);repas_employes_montant=num(repF[2]);repas_employes_pct=num(repF[3]);}
+  }
 
-  // Commandes ouvertes
-  const coM = txt.match(/Commandes Ouvertes.*?Nbr Montant % CA\s*(\d+)\s*([\d\s,]+)/);
-  const commandes_ouvertes_nb      = coM ? parseInt(coM[1]) : null;
-  const commandes_ouvertes_montant = coM ? parseFloat(coM[2].replace(/\s/g,'').replace(',','.')) : null;
-
-  // Repas employés
-  const repM = txt.match(/Repas Employ.*?Nbr V Faciale % CA\s*(\d+)\s*([\d\s,]+)/);
-  const repas_employes_nb      = repM ? parseInt(repM[1]) : null;
-  const repas_employes_montant = repM ? parseFloat(repM[2].replace(/\s/g,'').replace(',','.')) : null;
-
-  // Encaissements
+  // ── ENCAISSEMENTS ──
   const getEnc = (label) => {
-    const r = new RegExp(label+'\s+([\d\s,]+)\s+0,00\s+([\d\s,]+)');
+    const esc = label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const r = new RegExp(esc+'\\s+([\\d\\s,]+)\\s+0,00\\s+([\\d\\s,]+)\\s+[\\d,\\-]+');
     const m = txt.match(r);
-    return m ? parseFloat(m[2].replace(/\s/g,'').replace(',','.')) : null;
+    return m ? num(m[2]) : null;
   };
-  const cb         = getEnc('CB');
-  const especes    = getEnc('ESPECES');
-  const uber_eats  = getEnc('UBER EATS');
-  const deliveroo  = getEnc('DELIVEROO');
+  const cb           = getEnc('CB');
+  const especes      = getEnc('ESPECES');
+  const uber_eats    = getEnc('UBER EATS');
+  const deliveroo    = getEnc('DELIVEROO');
   const bk_livraison = getEnc('LIVRAISON BK');
-  const trd        = getEnc('TRD');
+  const trd          = getEnc('TRD');
+
+  // ── ERREUR CAISSE ──
+  let erreur_caisse = null;
+  const errM = txt.match(/TOTAL CA ENCAISSE\s+[\d\s,]+\s+0,00\s+[\d\s,]+\s+([\-\d,]+)/);
+  if(errM) erreur_caisse = num(errM[1]);
 
   // Erreur caisse
-  const errM = txt.match(/TOTAL CA ENCAISSE[\s\S]{0,100}?([-\d\s,]+)\s*$/m);
-  const erreur_caisse = errM ? parseFloat(errM[1].replace(/\s/g,'').replace(',','.')) : null;
+  // erreur_caisse déjà extrait ci-dessus
 
   return {
     date, ca_ht, ca_ttc, tickets_nb,
@@ -3868,20 +4204,69 @@ function renderVentes(txt) {
 // ══ ANNULATIONS ══
 let ANN_PHOTOS = {bad:null, annul:null, good:null};
 
-function previewTicket(input, previewId) {
-  const file = input.files[0];
-  if(!file) return;
-  const key = previewId.replace('prev-','');
-  ANN_PHOTOS[key] = file;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const el = document.getElementById(previewId);
-    if(el) el.innerHTML = `<img src="${e.target.result}" style="width:100%;border-radius:4px;object-fit:cover">`;
-  };
-  reader.readAsDataURL(file);
-}
+
 
 function sauvegarderAnnulation() {
+  if(ANN_PHOTOS_COUNT === 0 && !document.getElementById('chk-miss-bad')?.checked
+     && !document.getElementById('chk-miss-annul')?.checked
+     && !document.getElementById('chk-miss-good')?.checked) {
+    alert('Photographiez au moins un ticket ou cochez "Ticket manquant".');
+    return;
+  }
+
+  // Utiliser les données extraites par OCR
+  const date    = ANN_DATA.date || new Date().toLocaleDateString('fr-FR');
+  const heure   = ANN_DATA.heure || new Date().toTimeString().slice(0,5);
+  const montant = ANN_DATA.montant || 0;
+  const comment = document.getElementById('ann-comment')?.value;
+
+  const missBad   = document.getElementById('chk-miss-bad')?.checked   ? document.getElementById('miss-bad-txt')?.value   : null;
+  const missAnnul = document.getElementById('chk-miss-annul')?.checked ? document.getElementById('miss-annul-txt')?.value : null;
+  const missGood  = document.getElementById('chk-miss-good')?.checked  ? document.getElementById('miss-good-txt')?.value  : null;
+
+  const anns = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
+  anns.unshift({
+    id: Date.now(), date, heure, montant, comment,
+    manager: CURRENT_USER?.nom||null,
+    restaurant: CURRENT_USER?.resto||'BK526',
+    ticket_bad_manquant: missBad||null,
+    ticket_annul_manquant: missAnnul||null,
+    ticket_good_manquant: missGood||null,
+    createdAt: new Date().toISOString()
+  });
+  localStorage.setItem('bk_annulations', JSON.stringify(anns.slice(0,500)));
+
+  // Reset complet
+  ANN_DATA = {date:null,heure:null,montant:null};
+  ANN_PHOTOS = {bad:null,annul:null,good:null};
+  ANN_PHOTOS_COUNT = 0;
+  ['ann-comment','miss-bad-txt','miss-annul-txt','miss-good-txt'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  ['chk-miss-bad','chk-miss-annul','chk-miss-good'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.checked=false;
+  });
+  ['miss-bad','miss-annul','miss-good'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  ['prev-bad','prev-annul','prev-good'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.innerHTML='<div style="font-size:28px">📷</div><div style="font-size:9px;color:var(--muted);margin-top:6px">Appuyer pour photographier</div>';
+  });
+  ['zone-bad','zone-annul','zone-good'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.background='';
+  });
+  document.getElementById('ann-extracted').style.display='none';
+  const btn=document.getElementById('btn-ann-save');
+  if(btn){btn.disabled=true;btn.style.opacity='0.5';}
+  const hint=document.getElementById('ann-save-hint');
+  if(hint) hint.style.display='block';
+
+  showAlert('ann-ok');
+  renderAnnulationsHistorique();
+}
+
+function _OLD_sauvegarderAnnulation() {
   const date    = document.getElementById('ann-date')?.value;
   const heure   = document.getElementById('ann-heure')?.value;
   const montant = parseFloat(document.getElementById('ann-montant')?.value||0);
@@ -3937,6 +4322,118 @@ function renderAnnulationsHistorique() {
       </tr>`).join('')}
     </tbody>
   </table>`;
+}
+
+// ══ IMPORT MASSIF ADMIN ══
+function handleMasseDrop(e) {
+  e.preventDefault();
+  document.getElementById('masse-drop-zone').classList.remove('drag-over');
+  handleMasseFiles(e.dataTransfer.files);
+}
+
+async function handleMasseFiles(files) {
+  if(!files || !files.length) return;
+  const arr = Array.from(files).filter(f=>f.type==='application/pdf'||f.name.endsWith('.pdf'));
+  if(!arr.length) return;
+
+  const pdfjsLib = window['pdfjs-dist/build/pdf'];
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  // Afficher progression
+  document.getElementById('masse-progress-wrap').style.display = 'block';
+  document.getElementById('masse-results').innerHTML = '';
+
+  const results = [];
+
+  for(let i=0; i<arr.length; i++) {
+    const file = arr[i];
+    const pct = Math.round((i/arr.length)*100);
+    document.getElementById('masse-progress-bar').style.width = pct+'%';
+    document.getElementById('masse-progress-pct').textContent = pct+'%';
+    document.getElementById('masse-progress-label').textContent = `(${i+1}/${arr.length}) ${file.name}`;
+
+    try {
+      // Lire le PDF
+      const ab = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({data:ab}).promise;
+      let txt = '';
+      for(let p=1;p<=pdf.numPages;p++){
+        const page = await pdf.getPage(p);
+        const tc = await page.getTextContent();
+        txt += tc.items.map(t=>t.str).join(' ') + ' ';
+      }
+
+      // Parser selon le type
+      let row = null;
+      if(txt.includes('Synthèse CA')||txt.includes('TOTAL DRIVE')||txt.includes('TOTAL KIOSK')) {
+        row = parserSynthesCA(txt);
+        if(row && row.date) {
+          // Restaurant depuis le sélecteur
+          const masseResto = document.getElementById('masse-resto')?.value || 'BK526';
+          row.restaurant = masseResto;
+
+          // Nettoyer : ne garder que les colonnes connues de Supabase
+          const COLS_SB = ['restaurant','date','ca_ttc','ca_ht','tickets_nb',
+            'drive_voitures','drive_ttc','kiosk_ttc','livraison_ttc','livraison_nb',
+            'comptoir_ttc','cc_ttc','corrections_nb','corrections_montant','corrections_pct',
+            'remises_nb','remises_montant','remises_pct','sauces_nb','sauces_montant','sauces_pct',
+            'annulations_nb','annulations_montant','repas_employes_nb','repas_employes_montant',
+            'repas_employes_pct','commandes_ouvertes_nb','commandes_ouvertes_montant',
+            'erreur_caisse','cb','especes','uber_eats','deliveroo','bk_livraison','trd',
+            'manager_ouverture','manager_fermeture','leader_ouverture','leader_fermeture',
+            'directeur_midi','directeur_soir','commentaire','ca_n1','tickets_n1'];
+          const cleanRow = {};
+          COLS_SB.forEach(k => { if(row[k] !== null && row[k] !== undefined) cleanRow[k] = row[k]; });
+
+          if(SB) {
+            const {error} = await SB.from('journees').upsert(cleanRow, {onConflict:'restaurant,date'});
+            console.log('[import] '+masseResto+' '+row.date+' CA='+row.ca_ttc+' err=',error?.message||'OK');
+          results.push({file:file.name, date:row.date, ca:row.ca_ttc, ok:!error, err:error?.message, resto:masseResto});
+          } else {
+            results.push({file:file.name, date:row.date, ca:row.ca_ttc, ok:true, local:true});
+          }
+        } else {
+          results.push({file:file.name, ok:false, err:'Date non détectée'});
+        }
+      } else {
+        results.push({file:file.name, ok:null, err:'Type de PDF non reconnu'});
+      }
+    } catch(err) {
+      results.push({file:file.name, ok:false, err:err.message});
+    }
+  }
+
+  // Finaliser la barre
+  document.getElementById('masse-progress-bar').style.width = '100%';
+  document.getElementById('masse-progress-pct').textContent = '100%';
+  document.getElementById('masse-progress-label').textContent = `✓ ${arr.length} fichier(s) traité(s)`;
+
+  // Afficher résultats
+  const ok = results.filter(r=>r.ok===true).length;
+  const skip = results.filter(r=>r.ok===null).length;
+  const err = results.filter(r=>r.ok===false).length;
+
+  document.getElementById('masse-results').innerHTML = `
+    <div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <span style="font-size:12px;color:var(--green);font-weight:600">✓ ${ok} enregistré(s)</span>
+      ${skip?`<span style="font-size:12px;color:var(--muted)">? ${skip} ignoré(s)</span>`:''}
+      ${err?`<span style="font-size:12px;color:var(--red)">✗ ${err} erreur(s)</span>`:''}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:4px;max-height:300px;overflow-y:auto">
+      ${results.map(r=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-sm);font-size:11px">
+          <span>${r.ok===true?'✓':r.ok===false?'✗':'?'}</span>
+          <span style="flex:1;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.file}</span>
+          ${r.resto?`<span style="font-size:9px;color:var(--muted)">${r.resto}</span>`:''}
+          ${r.date?`<span style="color:var(--accent)">${formatDate(r.date)}</span>`:''}
+          ${r.ca?`<span style="color:var(--muted2)">${fmt(r.ca)} €</span>`:''}
+          ${r.err?`<span style="color:var(--red)">${r.err}</span>`:''}
+          ${r.local?`<span style="color:var(--muted)">(local)</span>`:''}
+        </div>`).join('')}
+    </div>`;
+
+  // Recharger les données
+  if(ok > 0) setTimeout(()=>loadAll(), 500);
 }
 
 // ══ IMPORT PDF — EXTRACTION IA ══
