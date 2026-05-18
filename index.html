@@ -284,7 +284,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-full-only" style="display:none" onclick="nav('historique')"><span>📈</span><span>Historique</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('comparaison')"><span>🔄</span><span>Comparaison N-1</span></div>
     <div class="nav-section role-dir-only" style="display:none">Saisie</div>
-    <div class="nav-item role-dir-only" style="display:none" onclick="nav('saisie')"><span>➕</span><span>Saisir journée</span></div>
+    <div class="nav-item role-dir-only" style="display:none" onclick="nav('saisie')"><span>📥</span><span>Importer PDF</span></div>
     <div class="nav-section role-mgr-only" style="display:none">Journée</div>
     <div class="nav-item role-mgr-only" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
     <div class="nav-section role-full-only" style="display:none">Config</div>
@@ -424,146 +424,134 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       <div id="comp-content"></div>
     </section>
 
-    <!-- SAISIE -->
+    <!-- SAISIE / IMPORT PDF -->
     <section class="section" id="sec-saisie">
-      <div style="max-width:720px">
-        <div class="table-card">
-          <div class="table-header"><span class="table-title">Saisie complète d'une journée</span><span style="font-size:10px;color:var(--muted)">Tous les champs extraits de votre Synthèse CA</span></div>
-          <div style="padding:22px">
-            <div class="alert alert-ok" id="saisie-ok">✓ Journée enregistrée avec succès !</div>
-            <div class="alert alert-err" id="saisie-err">Erreur lors de l'enregistrement.</div>
-            <form id="form-saisie" onsubmit="saveSaisie(event)">
+      <div style="max-width:680px">
 
-              <div class="form-row" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Date *</label><input type="date" class="form-input" id="s-date" required></div>
-                <div class="form-group"><label class="form-label">Restaurant</label><input type="text" class="form-input" id="s-resto" value="SAINT CLEMENT" readonly style="opacity:.6"></div>
+        <!-- Zone dépôt PDF -->
+        <div class="mgr-card">
+          <div class="mgr-title">📥 Importer la Synthèse CA (PDF)</div>
+          <div class="mgr-sub">Déposez le PDF de la journée — les données sont extraites automatiquement par IA</div>
+          <div class="drop-zone" id="import-drop-zone"
+               onclick="document.getElementById('import-file-input').click()"
+               ondragover="event.preventDefault();this.classList.add('drag-over')"
+               ondragleave="this.classList.remove('drag-over')"
+               ondrop="handleImportDrop(event)">
+            <div class="drop-zone-icon">📄</div>
+            <div class="drop-zone-text">Cliquez ou <span>glissez le PDF ici</span></div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">Synthèse CA Journalière · PDF uniquement</div>
+          </div>
+          <input type="file" id="import-file-input" accept=".pdf" style="display:none" onchange="handleImportFile(this.files[0])">
+          <div id="import-file-name" style="font-size:11px;color:var(--muted2);margin-bottom:10px;display:none"></div>
+          <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px" id="btn-extraire" onclick="extrairePDF()" disabled>
+            🤖 Extraire les données
+          </button>
+          <div id="import-loading" style="display:none;text-align:center;padding:18px;color:var(--muted2);font-size:12px">
+            <div style="font-size:24px;margin-bottom:8px;animation:pulse 1.5s infinite">⏳</div>
+            Analyse du PDF en cours…
+          </div>
+          <div class="mgr-alert-ok" id="import-err" style="background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:var(--red)"></div>
+        </div>
+
+        <!-- Prévisualisation des données extraites -->
+        <div id="import-preview" style="display:none">
+          <div class="table-card">
+            <div class="table-header">
+              <span class="table-title">✅ Données extraites — vérifiez avant d'enregistrer</span>
+              <button class="btn" style="font-size:10px;padding:4px 10px" onclick="resetImport()">✕ Recommencer</button>
+            </div>
+            <div style="padding:20px">
+              <div class="alert alert-ok" id="saisie-ok">✓ Journée enregistrée avec succès !</div>
+              <div class="alert alert-err" id="saisie-err">Erreur lors de l'enregistrement.</div>
+
+              <!-- Champs éditables pré-remplis -->
+              <div class="sub-title">Identifiant</div>
+              <div class="form-row" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">Date *</label><input type="date" class="form-input" id="s-date"></div>
+                <div class="form-group"><label class="form-label">Restaurant</label><input type="text" class="form-input" id="s-resto" readonly style="opacity:.6"></div>
               </div>
 
-              <div class="sub-title">Chiffre d'affaires</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">CA HT (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-ht" placeholder="17915.78"></div>
-                <div class="form-group"><label class="form-label">CA TTC (€) *</label><input type="number" step="0.01" class="form-input" id="s-ca-ttc" required placeholder="19766.93"></div>
-                <div class="form-group"><label class="form-label">CA N-1 (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-n1" placeholder="17484"></div>
-                <div class="form-group"><label class="form-label">CA Prévu (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-prevu" placeholder="17000"></div>
+              <div class="sub-title">CA</div>
+              <div class="form-row-4" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">CA HT (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-ht"></div>
+                <div class="form-group"><label class="form-label">CA TTC (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-ttc"></div>
+                <div class="form-group"><label class="form-label">Tickets</label><input type="number" class="form-input" id="s-tickets"></div>
+                <div class="form-group"><label class="form-label">Ticket moy. (€)</label><input type="number" step="0.01" class="form-input" id="s-tm"></div>
               </div>
 
-              <div class="sub-title">Tickets</div>
-              <div class="form-row" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Nb tickets 2026 *</label><input type="number" class="form-input" id="s-tickets" required placeholder="938"></div>
-                <div class="form-group"><label class="form-label">Nb tickets N-1</label><input type="number" class="form-input" id="s-tickets-n1" placeholder="1106"></div>
+              <div class="sub-title">Canaux TTC</div>
+              <div class="form-row-4" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">Drive (€)</label><input type="number" step="0.01" class="form-input" id="s-drive-ca"></div>
+                <div class="form-group"><label class="form-label">Voitures drive</label><input type="number" class="form-input" id="s-drive-vol"></div>
+                <div class="form-group"><label class="form-label">Kiosk (€)</label><input type="number" step="0.01" class="form-input" id="s-kiosk-ca"></div>
+                <div class="form-group"><label class="form-label">Livraison (€)</label><input type="number" step="0.01" class="form-input" id="s-lv-ca"></div>
+              </div>
+              <div class="form-row-4" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">Comptoir (€)</label><input type="number" step="0.01" class="form-input" id="s-comptoir-ca"></div>
+                <div class="form-group"><label class="form-label">Click&Collect (€)</label><input type="number" step="0.01" class="form-input" id="s-cc-ca"></div>
+                <div class="form-group"><label class="form-label">Nb livraisons</label><input type="number" class="form-input" id="s-lv-nb"></div>
               </div>
 
-              <div class="sub-title">Drive</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Voitures drive</label><input type="number" class="form-input" id="s-drive-vol" placeholder="223"></div>
-                <div class="form-group"><label class="form-label">CA drive TTC (€)</label><input type="number" step="0.01" class="form-input" id="s-drive-ca" placeholder="4544.43"></div>
-                <div class="form-group"><label class="form-label">Voitures N-1</label><input type="number" class="form-input" id="s-drive-n1" placeholder="256"></div>
-                <div class="form-group"><label class="form-label">Ticket moy drive</label><input type="number" step="0.01" class="form-input" id="s-drive-tm" placeholder="20.38"></div>
+              <div class="sub-title">Corrections / Remises</div>
+              <div class="form-row-4" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">Corrections nb</label><input type="number" class="form-input" id="s-corr-nb"></div>
+                <div class="form-group"><label class="form-label">Corrections (€)</label><input type="number" step="0.01" class="form-input" id="s-corr-mnt"></div>
+                <div class="form-group"><label class="form-label">Corrections %</label><input type="number" step="0.01" class="form-input" id="s-corr-pct"></div>
+                <div class="form-group"><label class="form-label">Remises (€)</label><input type="number" step="0.01" class="form-input" id="s-rem-mnt"></div>
+              </div>
+              <div class="form-row-4" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">Remises nb</label><input type="number" class="form-input" id="s-rem-nb"></div>
+                <div class="form-group"><label class="form-label">Remises %</label><input type="number" step="0.01" class="form-input" id="s-rem-pct"></div>
+                <div class="form-group"><label class="form-label">Sauces nb</label><input type="number" class="form-input" id="s-sauces-nb"></div>
+                <div class="form-group"><label class="form-label">Sauces (€)</label><input type="number" step="0.01" class="form-input" id="s-sauces-mnt"></div>
               </div>
 
-              <div class="sub-title">Livraison domicile</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Nb commandes</label><input type="number" class="form-input" id="s-lv-nb" placeholder="130"></div>
-                <div class="form-group"><label class="form-label">CA livraison TTC</label><input type="number" step="0.01" class="form-input" id="s-lv-ca" placeholder="3379.05"></div>
-                <div class="form-group"><label class="form-label">Commandes N-1</label><input type="number" class="form-input" id="s-lv-n1" placeholder="137"></div>
-                <div class="form-group"><label class="form-label">Ticket moy livr.</label><input type="number" step="0.01" class="form-input" id="s-lv-tm" placeholder="25.99"></div>
+              <div class="sub-title">Annulations / Commandes / Repas</div>
+              <div class="form-row-4" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">Annulations nb</label><input type="number" class="form-input" id="s-annul-nb"></div>
+                <div class="form-group"><label class="form-label">Annulations (€)</label><input type="number" step="0.01" class="form-input" id="s-annul-mnt"></div>
+                <div class="form-group"><label class="form-label">Cmd ouvertes nb</label><input type="number" class="form-input" id="s-cmdouv-nb"></div>
+                <div class="form-group"><label class="form-label">Cmd ouvertes (€)</label><input type="number" step="0.01" class="form-input" id="s-cmdouv-mnt"></div>
               </div>
-
-              <div class="sub-title">Canaux — CA TTC</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Kiosk TTC (€)</label><input type="number" step="0.01" class="form-input" id="s-kiosk-ca" placeholder="9242.61"></div>
-                <div class="form-group"><label class="form-label">Comptoir TTC (€)</label><input type="number" step="0.01" class="form-input" id="s-comptoir-ca" placeholder="1729.59"></div>
-                <div class="form-group"><label class="form-label">Click&Collect TTC</label><input type="number" step="0.01" class="form-input" id="s-cc-ca" placeholder="871.25"></div>
-              </div>
-
-              <div class="sub-title">Corrections</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Nb corrections</label><input type="number" class="form-input" id="s-corr-nb" placeholder="221"></div>
-                <div class="form-group"><label class="form-label">Montant (€)</label><input type="number" step="0.01" class="form-input" id="s-corr-mnt" placeholder="1116.45"></div>
-                <div class="form-group"><label class="form-label">% CA</label><input type="number" step="0.01" class="form-input" id="s-corr-pct" placeholder="5.65"></div>
-              </div>
-
-              <div class="sub-title">Remises</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Nb remises</label><input type="number" class="form-input" id="s-rem-nb" placeholder="245"></div>
-                <div class="form-group"><label class="form-label">Montant (€)</label><input type="number" step="0.01" class="form-input" id="s-rem-mnt" placeholder="1536.47"></div>
-                <div class="form-group"><label class="form-label">% CA</label><input type="number" step="0.01" class="form-input" id="s-rem-pct" placeholder="7.77"></div>
-              </div>
-
-              <div class="sub-title">Sauces offertes</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Nb sauces</label><input type="number" class="form-input" id="s-sauces-nb" placeholder="1508"></div>
-                <div class="form-group"><label class="form-label">Montant (€)</label><input type="number" step="0.01" class="form-input" id="s-sauces-mnt" placeholder="453.20"></div>
-                <div class="form-group"><label class="form-label">% CA</label><input type="number" step="0.01" class="form-input" id="s-sauces-pct" placeholder="2.29"></div>
-              </div>
-
-              <div class="sub-title">Annulations & commandes ouvertes</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Nb annulations</label><input type="number" class="form-input" id="s-annul-nb" placeholder="0"></div>
-                <div class="form-group"><label class="form-label">Montant annul. (€)</label><input type="number" step="0.01" class="form-input" id="s-annul-mnt" placeholder="0"></div>
-                <div class="form-group"><label class="form-label">Cmd ouvertes nb</label><input type="number" class="form-input" id="s-cmdouv-nb" placeholder="9"></div>
-                <div class="form-group"><label class="form-label">Cmd ouvertes (€)</label><input type="number" step="0.01" class="form-input" id="s-cmdouv-mnt" placeholder="130.20"></div>
-              </div>
-
-              <div class="sub-title">Repas employés</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Nb repas emp.</label><input type="number" class="form-input" id="s-repas-nb" placeholder="23"></div>
-                <div class="form-group"><label class="form-label">Val. faciale (€)</label><input type="number" step="0.01" class="form-input" id="s-repas-mnt" placeholder="291.65"></div>
-                <div class="form-group"><label class="form-label">% CA</label><input type="number" step="0.01" class="form-input" id="s-repas-pct" placeholder="1.48"></div>
-              </div>
-
-              <div class="sub-title">Main d'oeuvre & caisse</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">MO%</label><input type="number" step="0.01" class="form-input" id="s-mo-pct" placeholder="15.2"></div>
-                <div class="form-group"><label class="form-label">Salaires (€)</label><input type="number" step="0.01" class="form-input" id="s-salaires" placeholder="3940"></div>
-                <div class="form-group"><label class="form-label">Erreur caisse (€)</label><input type="number" step="0.01" class="form-input" id="s-err-caisse" placeholder="-0.39"></div>
+              <div class="form-row-4" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">Repas emp. nb</label><input type="number" class="form-input" id="s-repas-nb"></div>
+                <div class="form-group"><label class="form-label">Repas emp. (€)</label><input type="number" step="0.01" class="form-input" id="s-repas-mnt"></div>
+                <div class="form-group"><label class="form-label">Repas emp. %</label><input type="number" step="0.01" class="form-input" id="s-repas-pct"></div>
+                <div class="form-group"><label class="form-label">Erreur caisse (€)</label><input type="number" step="0.01" class="form-input" id="s-err-caisse"></div>
               </div>
 
               <div class="sub-title">Encaissements</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">CB (€)</label><input type="number" step="0.01" class="form-input" id="s-cb" placeholder="13506.13"></div>
-                <div class="form-group"><label class="form-label">Espèces (€)</label><input type="number" step="0.01" class="form-input" id="s-especes" placeholder="1536.10"></div>
-                <div class="form-group"><label class="form-label">Uber Eats (€)</label><input type="number" step="0.01" class="form-input" id="s-uber" placeholder="2253.20"></div>
-                <div class="form-group"><label class="form-label">Deliveroo (€)</label><input type="number" step="0.01" class="form-input" id="s-deliveroo" placeholder="694.60"></div>
+              <div class="form-row-4" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">CB (€)</label><input type="number" step="0.01" class="form-input" id="s-cb"></div>
+                <div class="form-group"><label class="form-label">Espèces (€)</label><input type="number" step="0.01" class="form-input" id="s-especes"></div>
+                <div class="form-group"><label class="form-label">Uber Eats (€)</label><input type="number" step="0.01" class="form-input" id="s-uber"></div>
+                <div class="form-group"><label class="form-label">Deliveroo (€)</label><input type="number" step="0.01" class="form-input" id="s-deliveroo"></div>
               </div>
-              <div class="form-row" style="margin-bottom:20px">
-                <div class="form-group"><label class="form-label">BK Livraison (€)</label><input type="number" step="0.01" class="form-input" id="s-bkliv" placeholder="431.25"></div>
-                <div class="form-group"><label class="form-label">TRD (€)</label><input type="number" step="0.01" class="form-input" id="s-trd" placeholder="354.30"></div>
-              </div>
-
-              <div class="sub-title">Temps de service</div>
-              <div class="form-row-4" style="margin-bottom:18px">
-                <div class="form-group"><label class="form-label">Bornes midi (min)</label><input type="number" step="0.5" class="form-input" id="s-ts-bornes-midi" placeholder="16"></div>
-                <div class="form-group"><label class="form-label">Drive midi TR/30</label><input type="number" class="form-input" id="s-ts-drive-midi" placeholder="18"></div>
-                <div class="form-group"><label class="form-label">Bornes soir (min)</label><input type="number" step="0.5" class="form-input" id="s-ts-bornes-soir" placeholder="17"></div>
-                <div class="form-group"><label class="form-label">Drive soir TR/30</label><input type="number" class="form-input" id="s-ts-drive-soir" placeholder="17"></div>
-              </div>
-
-              <div class="sub-title">Pertes</div>
-              <div class="form-row" style="margin-bottom:20px">
-                <div class="form-group"><label class="form-label">Pertes brutes (€)</label><input type="number" step="0.01" class="form-input" id="s-pertes-brutes" placeholder="0.08"></div>
-                <div class="form-group"><label class="form-label">Pertes finies (€)</label><input type="number" step="0.01" class="form-input" id="s-pertes-finies" placeholder="0.06"></div>
+              <div class="form-row" style="margin-bottom:16px">
+                <div class="form-group"><label class="form-label">BK Livraison (€)</label><input type="number" step="0.01" class="form-input" id="s-bkliv"></div>
+                <div class="form-group"><label class="form-label">TRD (€)</label><input type="number" step="0.01" class="form-input" id="s-trd"></div>
               </div>
 
               <div class="sub-title">Managers</div>
-              <div class="form-row" style="margin-bottom:18px">
+              <div class="form-row" style="margin-bottom:16px">
                 <div class="form-group"><label class="form-label">🔑 Manager ouverture</label><input type="text" class="form-input" id="s-manager-ouv" placeholder="Prénom Nom"></div>
                 <div class="form-group"><label class="form-label">🔒 Manager fermeture</label><input type="text" class="form-input" id="s-manager-fer" placeholder="Prénom Nom"></div>
               </div>
 
               <div class="form-group" style="margin-bottom:20px">
-                <label class="form-label">Commentaire / événement / météo</label>
-                <input type="text" class="form-input" id="s-comment" placeholder="ex: Ligue des champions, météo froide, formation 30h...">
+                <label class="form-label">Commentaire</label>
+                <input type="text" class="form-input" id="s-comment" placeholder="Événement, météo...">
               </div>
 
-              <button type="submit" class="btn btn-accent" style="width:100%;padding:12px;font-size:13px">💾 Enregistrer la journée</button>
-            </form>
+              <button class="btn btn-accent" style="width:100%;padding:12px;font-size:13px" onclick="saveSaisie(event)">💾 Enregistrer la journée</button>
+            </div>
           </div>
         </div>
+
       </div>
     </section>
 
-    <!-- SEUILS -->
+        <!-- SEUILS -->
     <section class="section" id="sec-seuils">
       <div style="margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
         <div style="font-size:11px;color:var(--muted)">Seuils basés sur l'analyse réelle jan 2025 & 2026. Modifiez et enregistrez.</div>
@@ -1285,7 +1273,7 @@ const SEED_2026 = [
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Saisir une journée',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès'};
 function nav(id) {
   const targetSec = document.getElementById('sec-'+id);
   if(!targetSec) { console.warn("nav: section sec-"+id+" introuvable"); return; }
@@ -2630,6 +2618,191 @@ function checkSession(){
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-shell').style.display='none';
   showLoginStep('step-resto');
+}
+
+// ══ IMPORT PDF — EXTRACTION IA ══
+let IMPORT_FILE = null;
+
+function handleImportFile(file) {
+  if(!file) return;
+  IMPORT_FILE = file;
+  const nameEl = document.getElementById('import-file-name');
+  nameEl.textContent = '📄 ' + file.name + ' (' + (file.size/1024).toFixed(0) + ' Ko)';
+  nameEl.style.display = 'block';
+  document.getElementById('btn-extraire').disabled = false;
+  document.getElementById('import-err').style.display = 'none';
+}
+
+function handleImportDrop(e) {
+  e.preventDefault();
+  document.getElementById('import-drop-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if(file && file.type === 'application/pdf') handleImportFile(file);
+}
+
+function resetImport() {
+  IMPORT_FILE = null;
+  document.getElementById('import-file-name').style.display = 'none';
+  document.getElementById('btn-extraire').disabled = true;
+  document.getElementById('import-preview').style.display = 'none';
+  document.getElementById('import-file-input').value = '';
+}
+
+async function extrairePDF() {
+  if(!IMPORT_FILE) return;
+
+  // Afficher loading
+  document.getElementById('import-loading').style.display = 'block';
+  document.getElementById('btn-extraire').disabled = true;
+  document.getElementById('import-err').style.display = 'none';
+
+  try {
+    // Lire le PDF en base64
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(',')[1]);
+      r.onerror = () => rej(new Error('Lecture échouée'));
+      r.readAsDataURL(IMPORT_FILE);
+    });
+
+    // Appel API Claude
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1500,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: base64 }
+            },
+            {
+              type: 'text',
+              text: `Tu es un expert en extraction de données depuis des Synthèses CA de restaurant Burger King.
+Extrais TOUTES les données disponibles de ce PDF et retourne UNIQUEMENT un objet JSON valide, sans texte avant ou après, sans balises markdown.
+
+Structure JSON attendue :
+{
+  "date": "YYYY-MM-DD",
+  "ca_ht": null,
+  "ca_ttc": null,
+  "tickets_nb": null,
+  "drive_ttc": null,
+  "drive_voitures": null,
+  "kiosk_ttc": null,
+  "livraison_ttc": null,
+  "livraison_nb": null,
+  "comptoir_ttc": null,
+  "cc_ttc": null,
+  "corrections_nb": null,
+  "corrections_montant": null,
+  "corrections_pct": null,
+  "remises_nb": null,
+  "remises_montant": null,
+  "remises_pct": null,
+  "sauces_nb": null,
+  "sauces_montant": null,
+  "annulations_nb": null,
+  "annulations_montant": null,
+  "commandes_ouvertes_nb": null,
+  "commandes_ouvertes_montant": null,
+  "repas_employes_nb": null,
+  "repas_employes_montant": null,
+  "repas_employes_pct": null,
+  "erreur_caisse": null,
+  "cb": null,
+  "especes": null,
+  "uber_eats": null,
+  "deliveroo": null,
+  "bk_livraison": null,
+  "trd": null
+}
+
+Règles :
+- date au format YYYY-MM-DD (ex: 2025-05-15)
+- tous les montants en nombre décimal (ex: 14891.28)
+- null si la valeur est absente ou illisible
+- UNIQUEMENT le JSON, rien d'autre`
+            }
+          ]
+        }]
+      })
+    });
+
+    if(!response.ok) throw new Error('API error ' + response.status);
+    const data = await response.json();
+    const text = data.content.map(c => c.text||'').join('');
+    const clean = text.replace(/```json|```/g,'').trim();
+    const extracted = JSON.parse(clean);
+
+    // Remplir les champs
+    fillImportFields(extracted);
+
+    document.getElementById('import-loading').style.display = 'none';
+    document.getElementById('import-preview').style.display = 'block';
+    document.getElementById('import-preview').scrollIntoView({behavior:'smooth'});
+
+  } catch(err) {
+    document.getElementById('import-loading').style.display = 'none';
+    document.getElementById('btn-extraire').disabled = false;
+    const errEl = document.getElementById('import-err');
+    errEl.textContent = '✗ Erreur : ' + err.message;
+    errEl.style.display = 'block';
+    console.error('Extraction PDF:', err);
+  }
+}
+
+function fillImportFields(d) {
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if(el && val !== null && val !== undefined) el.value = val;
+  };
+  // Resto auto
+  const restoEl = document.getElementById('s-resto');
+  if(restoEl) restoEl.value = CURRENT_USER?.resto || 'BK526';
+
+  set('s-date',          d.date);
+  set('s-ca-ht',         d.ca_ht);
+  set('s-ca-ttc',        d.ca_ttc);
+  set('s-tickets',       d.tickets_nb);
+  set('s-drive-ca',      d.drive_ttc);
+  set('s-drive-vol',     d.drive_voitures);
+  set('s-kiosk-ca',      d.kiosk_ttc);
+  set('s-lv-ca',         d.livraison_ttc);
+  set('s-lv-nb',         d.livraison_nb);
+  set('s-comptoir-ca',   d.comptoir_ttc);
+  set('s-cc-ca',         d.cc_ttc);
+  set('s-corr-nb',       d.corrections_nb);
+  set('s-corr-mnt',      d.corrections_montant);
+  set('s-corr-pct',      d.corrections_pct);
+  set('s-rem-nb',        d.remises_nb);
+  set('s-rem-mnt',       d.remises_montant);
+  set('s-rem-pct',       d.remises_pct);
+  set('s-sauces-nb',     d.sauces_nb);
+  set('s-sauces-mnt',    d.sauces_montant);
+  set('s-annul-nb',      d.annulations_nb);
+  set('s-annul-mnt',     d.annulations_montant);
+  set('s-cmdouv-nb',     d.commandes_ouvertes_nb);
+  set('s-cmdouv-mnt',    d.commandes_ouvertes_montant);
+  set('s-repas-nb',      d.repas_employes_nb);
+  set('s-repas-mnt',     d.repas_employes_montant);
+  set('s-repas-pct',     d.repas_employes_pct);
+  set('s-err-caisse',    d.erreur_caisse);
+  set('s-cb',            d.cb);
+  set('s-especes',       d.especes);
+  set('s-uber',          d.uber_eats);
+  set('s-deliveroo',     d.deliveroo);
+  set('s-bkliv',         d.bk_livraison);
+  set('s-trd',           d.trd);
+
+  // Ticket moyen calculé
+  if(d.ca_ttc && d.tickets_nb) {
+    const tmEl = document.getElementById('s-tm');
+    if(tmEl) tmEl.value = (d.ca_ttc / d.tickets_nb).toFixed(2);
+  }
 }
 
 // INIT
