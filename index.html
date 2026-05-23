@@ -3567,7 +3567,8 @@ async function saveModal() {
 
 async function saveSaisie(e) {
   e.preventDefault();
-  const restoId = (document.getElementById('s-resto')?.value) || CURRENT_USER?.resto || 'BK526';
+  const restoEl0 = document.getElementById('s-resto');
+  const restoId = (restoEl0?.dataset?.resto) || CURRENT_USER?.resto || 'BK526';
   const row = {
     restaurant: restoId,
     date:document.getElementById('s-date').value,
@@ -4976,6 +4977,7 @@ Le tableau du haut liste les canaux (CLICK & COLLECT, COMPTOIR, DRIVE, HOME DELI
 Structure JSON attendue :
 {
   "date": "YYYY-MM-DD",
+  "restaurant_detecte": null,
   "ca_ht": null,
   "ca_ttc": null,
   "tickets_nb": null,
@@ -5022,6 +5024,7 @@ Structure JSON attendue :
 
 Règles :
 - date au format YYYY-MM-DD, déduite de la période "Du JJ/MM/AA au JJ/MM/AA"
+- restaurant_detecte : le nom du restaurant tel qu'écrit en haut du PDF (ex: "Burger King-PRES D ARENES", "SAINT CLEMENT", "SAINT JEAN DE VEDAS")
 - ca_ht = ligne TOTAL, colonne HT (ex: 12136.31)
 - ca_ttc = ligne TOTAL, colonne TTC
 - tickets_nb = ligne TOTAL, colonne TAC
@@ -5071,9 +5074,16 @@ function fillImportFields(d) {
     const el = document.getElementById(id);
     if(el && val !== null && val !== undefined) el.value = val;
   };
-  // Resto auto
+  // Resto : priorité au nom détecté DANS le PDF, sinon resto de l'utilisateur connecté
   const restoEl = document.getElementById('s-resto');
-  if(restoEl) restoEl.value = CURRENT_USER?.resto || 'BK526';
+  let restoId = CURRENT_USER?.resto || 'BK526';
+  const det = detectRestoFromFilename(d.restaurant_detecte || '');
+  if(det) restoId = det;
+  if(restoEl) {
+    restoEl.value = (RESTAURANTS[restoId]?.nom || restoId) + (det ? ' (détecté)' : '');
+    restoEl.dataset.resto = restoId;
+    restoEl.style.opacity = det ? '1' : '.6';
+  }
 
   set('s-date',          d.date);
   set('s-ca-ht',         d.ca_ht);
