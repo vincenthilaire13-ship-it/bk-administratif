@@ -3594,19 +3594,31 @@ function renderComparaison() {
 
   // KPIs globaux (HT)
   const sumHT = arr => arr.reduce((a,b)=>a+caHT(b),0);
-  const sumHTn1 = arr => arr.reduce((a,b)=>a+caHT_n1(b),0);
   const sumCanal = (arr,c) => arr.reduce((a,b)=>a+canalHT(b,c),0);
-  const ca25=sumHTn1(DATA25), ca26=sumHT(DATA);
-  const t25=sum(DATA25,'tickets_nb'), t26=sum(DATA,'tickets_nb');
-  const dr25=sumCanal(DATA25,'drive'), dr26=sumCanal(DATA,'drive');
-  const lv25=sumCanal(DATA25,'livraison'), lv26=sumCanal(DATA,'livraison');
-  const ki25=sumCanal(DATA25,'kiosk'), ki26=sumCanal(DATA,'kiosk');
-  const co25=sumCanal(DATA25,'comptoir'), co26=sumCanal(DATA,'comptoir');
-  const corr25=avg(DATA25,'corrections_pct'), corr26=avg(DATA,'corrections_pct');
-  const rem25=avg(DATA25,'remises_pct'), rem26=avg(DATA,'remises_pct');
+  // Période 2026 couverte → on compare 2025 sur la MÊME période (même jour/mois max)
+  const _dates26 = DATA.map(d=>d.date).sort();
+  const _lastMMDD = _dates26.length ? _dates26[_dates26.length-1].slice(5) : '12-31';
+  const DATA25p = DATA25.filter(d => d.date.slice(5) <= _lastMMDD);
+
+  const ca25=sumHT(DATA25p), ca26=sumHT(DATA);
+  const t25=sum(DATA25p,'tickets_nb'), t26=sum(DATA,'tickets_nb');
+  const dr25=sumCanal(DATA25p,'drive'), dr26=sumCanal(DATA,'drive');
+  const lv25=sumCanal(DATA25p,'livraison'), lv26=sumCanal(DATA,'livraison');
+  const ki25=sumCanal(DATA25p,'kiosk'), ki26=sumCanal(DATA,'kiosk');
+  const co25=sumCanal(DATA25p,'comptoir'), co26=sumCanal(DATA,'comptoir');
+  // Voitures drive (nombre)
+  const vdr25=sum(DATA25p,'drive_voitures'), vdr26=sum(DATA,'drive_voitures');
+  // Corrections / Remises (montants cumulés)
+  const corrM25=sum(DATA25p,'corrections_montant'), corrM26=sum(DATA,'corrections_montant');
+  const remM25=sum(DATA25p,'remises_montant'), remM26=sum(DATA,'remises_montant');
+  const corr25=avg(DATA25p,'corrections_pct'), corr26=avg(DATA,'corrections_pct');
+  const rem25=avg(DATA25p,'remises_pct'), rem26=avg(DATA,'remises_pct');
+  // Annulations / Commandes ouvertes / Repas employés (montants cumulés)
+  const ann25=sum(DATA25p,'annulations_montant'), ann26=sum(DATA,'annulations_montant');
+  const co_25=sum(DATA25p,'commandes_ouvertes_montant'), co_26=sum(DATA,'commandes_ouvertes_montant');
+  const emp25=sum(DATA25p,'repas_employes_montant'), emp26=sum(DATA,'repas_employes_montant');
   const tm25=t25?ca25/t25:0, tm26=t26?ca26/t26:0;
-  // Nombre de journées RÉELLES (avec un CA HT) — pas les lignes vides/doublons
-  const n25=DATA25.filter(d=>caHT_n1(d)>0).length || DATA25.length;
+  const n25=DATA25p.filter(d=>caHT(d)>0).length || DATA25p.length;
   const n26=DATA.filter(d=>caHT(d)>0).length || DATA.length;
 
   // Tableau comparaison par mois — tous indicateurs
@@ -3618,7 +3630,7 @@ function renderComparaison() {
     const d25 = m25[m]||[], d26 = m26[m]||[];
     if(!d25.length && !d26.length) return;
     const label = moisNoms[parseInt(m)-1];
-    const ca_25=sumHTn1(d25), ca_26=sumHT(d26);
+    const ca_25=sumHT(d25), ca_26=sumHT(d26);
     const t_25=sum(d25,'tickets_nb'), t_26=sum(d26,'tickets_nb');
     const dr_25=sumCanal(d25,'drive'), dr_26=sumCanal(d26,'drive');
     const lv_25=sumCanal(d25,'livraison'), lv_26=sumCanal(d26,'livraison');
@@ -3655,37 +3667,34 @@ function renderComparaison() {
     </tr>`;
   });
 
+  // Helper % d'écart
+  const ecP = (a,b)=> (b&&b!==0) ? ((a-b)/b*100) : null;
+
   el.innerHTML = `
-  <!-- KPIs globaux -->
-  <div class="kpi-grid" style="margin-bottom:20px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
-    <div class="kpi ${pct(ca26/n26,ca25/n25)>0?'ok':pct(ca26/n26,ca25/n25)>-5?'warn':'bad'}">
-      <div class="kpi-label">CA moy/jour 2026</div><div class="kpi-val">${fmt(ca26/n26)} €</div>
-      <div class="kpi-delta ${pct(ca26/n26,ca25/n25)>0?'up':'down'}">${chip(pct(ca26/n26,ca25/n25))} vs ${fmt(ca25/n25)} €</div>
-    </div>
-    <div class="kpi ${pct(tm26,tm25)>0?'ok':'warn'}">
-      <div class="kpi-label">Ticket moyen 2026</div><div class="kpi-val">${tm26.toFixed(2)} €</div>
-      <div class="kpi-delta ${pct(tm26,tm25)>0?'up':'down'}">${chip(pct(tm26,tm25))} vs ${tm25.toFixed(2)} €</div>
-    </div>
-    <div class="kpi ${pct(dr26/n26,dr25/n25)>0?'ok':'warn'}">
-      <div class="kpi-label">Drive moy/jour</div><div class="kpi-val">${fmt(dr26/n26)} €</div>
-      <div class="kpi-delta ${pct(dr26/n26,dr25/n25)>0?'up':'down'}">${chip(pct(dr26/n26,dr25/n25))} vs ${fmt(dr25/n25)} €</div>
-    </div>
-    <div class="kpi ${pct(lv26/n26,lv25/n25)>0?'ok':'warn'}">
-      <div class="kpi-label">Livraison moy/jour</div><div class="kpi-val">${fmt(lv26/n26)} €</div>
-      <div class="kpi-delta ${pct(lv26/n26,lv25/n25)>0?'up':'down'}">${chip(pct(lv26/n26,lv25/n25))} vs ${fmt(lv25/n25)} €</div>
-    </div>
-    <div class="kpi ${corr26<=corr25?'ok':'bad'}">
-      <div class="kpi-label">Corrections moy</div><div class="kpi-val">${corr26.toFixed(2)}%</div>
-      <div class="kpi-delta ${corr26<=corr25?'up':'down'}">${corr26<=corr25?'↓ Amélioration':'↑ Dégradation'} vs ${corr25.toFixed(2)}%</div>
-    </div>
-    <div class="kpi ${rem26<=rem25?'ok':'warn'}">
-      <div class="kpi-label">Remises moy</div><div class="kpi-val">${rem26.toFixed(2)}%</div>
-      <div class="kpi-delta ${rem26<=rem25?'up':'down'}">${rem26<=rem25?'↓':'↑'} vs ${rem25.toFixed(2)}%</div>
-    </div>
-    <div class="kpi neutral">
-      <div class="kpi-label">Jours analysés</div><div class="kpi-val">${n25} / ${n26}</div>
-      <div class="kpi-delta flat">2025 / 2026</div>
-    </div>
+  <!-- KPIs comparaison complets -->
+  <div class="kpi-grid" style="margin-bottom:20px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+    ${[
+      ['CA HT cumulé', fmt(ca26)+' €', fmt(ca25)+' €', ca26, ca25, true],
+      ['Ticket moyen HT', tm26.toFixed(2)+' €', tm25.toFixed(2)+' €', tm26, tm25, true],
+      ['Tickets clients', t26.toLocaleString('fr-FR'), t25.toLocaleString('fr-FR'), t26, t25, true],
+      ['Voitures drive', vdr26.toLocaleString('fr-FR'), vdr25.toLocaleString('fr-FR'), vdr26, vdr25, true],
+      ['Livraison HT', fmt(lv26)+' €', fmt(lv25)+' €', lv26, lv25, true],
+      ['Corrections €', fmt(corrM26)+' €', fmt(corrM25)+' €', corrM26, corrM25, false],
+      ['Remises €', fmt(remM26)+' €', fmt(remM25)+' €', remM26, remM25, false],
+      ['Annulations €', fmt(Math.abs(ann26))+' €', fmt(Math.abs(ann25))+' €', Math.abs(ann26), Math.abs(ann25), false],
+      ['Cmd ouvertes €', fmt(co_26)+' €', fmt(co_25)+' €', co_26, co_25, false],
+      ['Repas employés €', fmt(emp26)+' €', fmt(emp25)+' €', emp26, emp25, false],
+      ['Jours analysés', n26+' j', n25+' j', n26, n25, true],
+    ].map(([label,s26,s25,num26,num25,hb])=>{
+      const e = ecP(num26,num25);
+      const good = e===null?true:(hb?e>=0:e<=0);
+      return `<div class="kpi ${e===null?'neutral':good?'ok':'warn'}">
+        <div class="kpi-label">${label} <span style="font-size:8px;color:var(--muted);letter-spacing:.08em">2026</span></div>
+        <div class="kpi-val">${s26}</div>
+        <div style="font-size:10px;color:var(--muted2);margin-top:2px">2025 : ${s25}</div>
+        <div class="kpi-delta ${e===null?'flat':good?'up':'down'}">${e===null?'—':(e>0?'+':'')+e.toFixed(1)+'% vs 2025'}</div>
+      </div>`;
+    }).join('')}
   </div>
 
   <!-- Répartition canaux -->
