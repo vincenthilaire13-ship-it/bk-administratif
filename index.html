@@ -3647,6 +3647,11 @@ function renderComparaison() {
   const lv25=sumCanal(DATA25p,'livraison'), lv26=sumCanal(DATAp,'livraison');
   const ki25=sumCanal(DATA25p,'kiosk'), ki26=sumCanal(DATAp,'kiosk');
   const co25=sumCanal(DATA25p,'comptoir'), co26=sumCanal(DATAp,'comptoir');
+  const cc25=sumCanal(DATA25p,'cc'), cc26=sumCanal(DATAp,'cc');
+  // Sous-canaux livraison (Uber / Deliveroo / BK Livraison)
+  const uber25=sum(DATA25p,'uber_eats'), uber26=sum(DATAp,'uber_eats');
+  const deli25=sum(DATA25p,'deliveroo'), deli26=sum(DATAp,'deliveroo');
+  const bkl25=sum(DATA25p,'bk_livraison'), bkl26=sum(DATAp,'bk_livraison');
   // Voitures drive (nombre)
   const vdr25=sum(DATA25p,'drive_voitures'), vdr26=sum(DATAp,'drive_voitures');
   // Corrections / Remises (montants cumulés)
@@ -3740,25 +3745,29 @@ function renderComparaison() {
 
   <!-- Répartition canaux -->
   <div class="table-card" style="margin-bottom:20px">
-    <div class="table-header"><span class="table-title">Répartition par canal — 2025 vs 2026</span><span style="font-size:10px;color:var(--muted)">Montants moyens / jour</span></div>
+    <div class="table-header"><span class="table-title">Répartition par canal — 2025 vs 2026</span><span style="font-size:10px;color:var(--muted)">Montants moyens / jour sur la période</span></div>
     <div class="table-wrap"><table>
       <thead><tr><th>Canal</th><th class="num">2025 moy/j</th><th class="num">2025 %</th><th class="num">2026 moy/j</th><th class="num">2026 %</th><th class="num">Évolution</th></tr></thead>
       <tbody>
         ${[
-          ['Kiosk',ki25,ki26,n25,n26],
-          ['Drive',dr25,dr26,n25,n26],
-          ['Livraison domicile',lv25,lv26,n25,n26],
-          ['Comptoir',co25,co26,n25,n26],
-        ].map(([label,v25,v26,nb25,nb26])=>{
-          const j25=v25/nb25, j26=v26/nb26;
-          const p25=(v25/ca25*100), p26=(v26/ca26*100);
+          ['Kiosk',ki25,ki26],
+          ['Drive',dr25,dr26],
+          ['Comptoir',co25,co26],
+          ['Click & Collect',cc25,cc26],
+          ['Uber Eats',uber25,uber26],
+          ['Deliveroo',deli25,deli26],
+          ['BK Livraison',bkl25,bkl26],
+        ].map(([label,v25,v26])=>{
+          const j25=n25?v25/n25:0, j26=n26?v26/n26:0;
+          const p25=ca25?(v25/ca25*100):0, p26=ca26?(v26/ca26*100):0;
+          const has25=v25>0, has26=v26>0;
           return `<tr>
             <td>${label}</td>
-            <td class="num" style="color:var(--muted)">${fmt(j25)} €</td>
-            <td class="num" style="color:var(--muted)">${p25.toFixed(1)}%</td>
-            <td class="num">${fmt(j26)} €</td>
-            <td class="num">${p26.toFixed(1)}%</td>
-            <td class="num">${chip(pct(j26,j25))}</td>
+            <td class="num" style="color:var(--muted)">${has25?fmt(j25)+' €':'—'}</td>
+            <td class="num" style="color:var(--muted)">${has25?p25.toFixed(1)+'%':'—'}</td>
+            <td class="num">${has26?fmt(j26)+' €':'—'}</td>
+            <td class="num">${has26?p26.toFixed(1)+'%':'—'}</td>
+            <td class="num">${(has25&&has26)?chip(pct(j26,j25)):'—'}</td>
           </tr>`;
         }).join('')}
       </tbody>
