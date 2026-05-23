@@ -3574,6 +3574,10 @@ function renderComparaison() {
   const el = document.getElementById('comp-content');
   if(!DATA25.length || !DATA.length){ el.innerHTML='<div class="empty"><div class="empty-icon">🔄</div><div class="empty-title">Données insuffisantes</div><div class="empty-sub">Les deux années sont nécessaires.</div></div>'; return; }
 
+  // ── État du filtre période ──
+  if(!window.COMP_MODE) window.COMP_MODE = 'annee'; // jour|semaine|mois|annee|periode
+  const mode = window.COMP_MODE;
+
   // Grouper par mois
   function byMonth(arr) {
     const m = {};
@@ -3592,31 +3596,97 @@ function renderComparaison() {
   const m25 = byMonth(DATA25);
   const m26 = byMonth(DATA.filter(d=>d.date.startsWith('2026')));
 
-  // KPIs globaux (HT)
+  // ── Helpers période ──
+  const isoWeek = s => { // numéro de semaine ISO d'une date 'YYYY-MM-DD'
+    const dt = new Date(s); const day = (dt.getDay()+6)%7;
+    dt.setDate(dt.getDate()-day+3);
+    const firstThu = new Date(dt.getFullYear(),0,4);
+    const w = 1 + Math.round(((dt-firstThu)/86400000 - 3 + ((firstThu.getDay()+6)%7))/7);
+    return w;
+  };
+  const allDates26 = DATA.map(d=>d.date).sort();
+  // Valeur de sélection par défaut selon le mode
+  if(window.COMP_SEL===undefined || window.COMP_SEL_MODE!==mode){
+    window.COMP_SEL_MODE = mode;
+    if(mode==='jour') window.COMP_SEL = allDates26[allDates26.length-1];
+    else if(mode==='mois') window.COMP_SEL = allDates26.length?allDates26[allDates26.length-1].slice(5,7):'01';
+    else if(mode==='semaine') window.COMP_SEL = allDates26.length?String(isoWeek(allDates26[allDates26.length-1])):'1';
+    else if(mode==='periode'){ window.COMP_SEL = allDates26[0]; window.COMP_SEL2 = allDates26[allDates26.length-1]; }
+    else window.COMP_SEL = 'annee';
+  }
+  const sel = window.COMP_SEL, sel2 = window.COMP_SEL2;
+
+  // Filtre 2026 selon mode, et borne MM-DD pour aligner 2025 sur la même période
+  let D26, D25;
+  if(mode==='jour'){
+    D26 = DATA.filter(d=>d.date===sel);
+    const mmdd = sel.slice(5);
+    D25 = DATA25.filter(d=>d.date.slice(5)===mmdd);
+  } else if(mode==='mois'){
+    D26 = DATA.filter(d=>d.date.slice(5,7)===sel);
+    D25 = DATA25.filter(d=>d.date.slice(5,7)===sel);
+  } else if(mode==='semaine'){
+    D26 = DATA.filter(d=>String(isoWeek(d.date))===String(sel));
+    D25 = DATA25.filter(d=>String(isoWeek(d.date))===String(sel));
+  } else if(mode==='periode'){
+    const a=sel, b=sel2||sel;
+    D26 = DATA.filter(d=>d.date>=a && d.date<=b);
+    const aMMDD=a.slice(5), bMMDD=b.slice(5);
+    D25 = DATA25.filter(d=>d.date.slice(5)>=aMMDD && d.date.slice(5)<=bMMDD);
+  } else { // annee
+    D26 = DATA.slice();
+    const lastMMDD = allDates26.length?allDates26[allDates26.length-1].slice(5):'12-31';
+    D25 = DATA25.filter(d=>d.date.slice(5)<=lastMMDD);
+  }
+
+  // ── Barre de filtres (insérée en tête du contenu) ──
+  const moisNomsFull = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const modeBtns = [['jour','Jour'],['semaine','Semaine'],['mois','Mois'],['annee','Année'],['periode','Période']]
+    .map(([m,lbl])=>`<button onclick="window.COMP_MODE='${m}';window.COMP_SEL=undefined;renderComparaison()" class="btn ${mode===m?'btn-accent':''}" style="font-size:11px;padding:5px 12px">${lbl}</button>`).join('');
+  let selecteur = '';
+  if(mode==='jour'){
+    selecteur = `<select onchange="window.COMP_SEL=this.value;renderComparaison()" class="form-input" style="width:auto;font-size:12px;padding:5px 10px">${allDates26.map(d=>`<option value="${d}" ${d===sel?'selected':''}>${formatDate(d)}</option>`).join('')}</select>`;
+  } else if(mode==='mois'){
+    const moisDispo=[...new Set(allDates26.map(d=>d.slice(5,7)))];
+    selecteur = `<select onchange="window.COMP_SEL=this.value;renderComparaison()" class="form-input" style="width:auto;font-size:12px;padding:5px 10px">${moisDispo.map(mm=>`<option value="${mm}" ${mm===sel?'selected':''}>${moisNomsFull[parseInt(mm)]}</option>`).join('')}</select>`;
+  } else if(mode==='semaine'){
+    const semDispo=[...new Set(allDates26.map(d=>isoWeek(d)))].sort((a,b)=>a-b);
+    selecteur = `<select onchange="window.COMP_SEL=this.value;renderComparaison()" class="form-input" style="width:auto;font-size:12px;padding:5px 10px">${semDispo.map(w=>`<option value="${w}" ${String(w)===String(sel)?'selected':''}>Semaine ${w}</option>`).join('')}</select>`;
+  } else if(mode==='periode'){
+    selecteur = `<span style="font-size:11px;color:var(--muted2)">du</span>
+      <input type="date" value="${sel}" min="${allDates26[0]}" max="${allDates26[allDates26.length-1]}" onchange="window.COMP_SEL=this.value;renderComparaison()" class="form-input" style="width:auto;font-size:12px;padding:5px 10px">
+      <span style="font-size:11px;color:var(--muted2)">au</span>
+      <input type="date" value="${sel2||sel}" min="${allDates26[0]}" max="${allDates26[allDates26.length-1]}" onchange="window.COMP_SEL2=this.value;renderComparaison()" class="form-input" style="width:auto;font-size:12px;padding:5px 10px">`;
+  }
+  const filtreBar = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:18px;padding:12px 14px;background:var(--card,rgba(255,255,255,.03));border-radius:12px">
+    <span style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-right:4px">Période</span>
+    ${modeBtns}
+    ${selecteur?`<span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>${selecteur}`:''}
+  </div>`;
+
+  // KPIs globaux (HT) — calculés sur la période filtrée (D26 vs D25 alignés)
   const sumHT = arr => arr.reduce((a,b)=>a+caHT(b),0);
   const sumCanal = (arr,c) => arr.reduce((a,b)=>a+canalHT(b,c),0);
-  // Période 2026 couverte → on compare 2025 sur la MÊME période (même jour/mois max)
-  const _dates26 = DATA.map(d=>d.date).sort();
-  const _lastMMDD = _dates26.length ? _dates26[_dates26.length-1].slice(5) : '12-31';
-  const DATA25p = DATA25.filter(d => d.date.slice(5) <= _lastMMDD);
+  const DATA25p = D25;
+  const DATAp = D26;
 
-  const ca25=sumHT(DATA25p), ca26=sumHT(DATA);
-  const t25=sum(DATA25p,'tickets_nb'), t26=sum(DATA,'tickets_nb');
-  const dr25=sumCanal(DATA25p,'drive'), dr26=sumCanal(DATA,'drive');
-  const lv25=sumCanal(DATA25p,'livraison'), lv26=sumCanal(DATA,'livraison');
-  const ki25=sumCanal(DATA25p,'kiosk'), ki26=sumCanal(DATA,'kiosk');
-  const co25=sumCanal(DATA25p,'comptoir'), co26=sumCanal(DATA,'comptoir');
+  const ca25=sumHT(DATA25p), ca26=sumHT(DATAp);
+  const t25=sum(DATA25p,'tickets_nb'), t26=sum(DATAp,'tickets_nb');
+  const dr25=sumCanal(DATA25p,'drive'), dr26=sumCanal(DATAp,'drive');
+  const lv25=sumCanal(DATA25p,'livraison'), lv26=sumCanal(DATAp,'livraison');
+  const ki25=sumCanal(DATA25p,'kiosk'), ki26=sumCanal(DATAp,'kiosk');
+  const co25=sumCanal(DATA25p,'comptoir'), co26=sumCanal(DATAp,'comptoir');
   // Voitures drive (nombre)
-  const vdr25=sum(DATA25p,'drive_voitures'), vdr26=sum(DATA,'drive_voitures');
+  const vdr25=sum(DATA25p,'drive_voitures'), vdr26=sum(DATAp,'drive_voitures');
   // Corrections / Remises (montants cumulés)
-  const corrM25=sum(DATA25p,'corrections_montant'), corrM26=sum(DATA,'corrections_montant');
-  const remM25=sum(DATA25p,'remises_montant'), remM26=sum(DATA,'remises_montant');
-  const corr25=avg(DATA25p,'corrections_pct'), corr26=avg(DATA,'corrections_pct');
-  const rem25=avg(DATA25p,'remises_pct'), rem26=avg(DATA,'remises_pct');
+  const corrM25=sum(DATA25p,'corrections_montant'), corrM26=sum(DATAp,'corrections_montant');
+  const remM25=sum(DATA25p,'remises_montant'), remM26=sum(DATAp,'remises_montant');
+  const corr25=avg(DATA25p,'corrections_pct'), corr26=avg(DATAp,'corrections_pct');
+  const rem25=avg(DATA25p,'remises_pct'), rem26=avg(DATAp,'remises_pct');
   // Annulations / Commandes ouvertes / Repas employés (montants cumulés)
-  const ann25=sum(DATA25p,'annulations_montant'), ann26=sum(DATA,'annulations_montant');
-  const co_25=sum(DATA25p,'commandes_ouvertes_montant'), co_26=sum(DATA,'commandes_ouvertes_montant');
-  const emp25=sum(DATA25p,'repas_employes_montant'), emp26=sum(DATA,'repas_employes_montant');
+  const ann25=sum(DATA25p,'annulations_montant'), ann26=sum(DATAp,'annulations_montant');
+  const co_25=sum(DATA25p,'commandes_ouvertes_montant'), co_26=sum(DATAp,'commandes_ouvertes_montant');
+  const emp25=sum(DATA25p,'repas_employes_montant'), emp26=sum(DATAp,'repas_employes_montant');
   const tm25=t25?ca25/t25:0, tm26=t26?ca26/t26:0;
   const n25=DATA25p.filter(d=>caHT(d)>0).length || DATA25p.length;
   const n26=DATA.filter(d=>caHT(d)>0).length || DATA.length;
@@ -3670,7 +3740,7 @@ function renderComparaison() {
   // Helper % d'écart
   const ecP = (a,b)=> (b&&b!==0) ? ((a-b)/b*100) : null;
 
-  el.innerHTML = `
+  el.innerHTML = filtreBar + `
   <!-- KPIs comparaison complets -->
   <div class="kpi-grid" style="margin-bottom:20px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
     ${[
