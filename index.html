@@ -2747,12 +2747,21 @@ function getSeedForResto(year) {
 function applyRestoFilter() {
   const ALL25 = window._ALL_DATA25 || getSeedForResto(2025);
   const ALL26 = window._ALL_DATA26 || getSeedForResto(2026);
+  // Déduplication par resto+date (garde la version avec ca_ht si conflit)
+  const dedup = arr => {
+    const map = {};
+    arr.forEach(d => {
+      const k = (d.restaurant||'BK526')+'|'+d.date;
+      if(!map[k] || (d.ca_ht!=null && map[k].ca_ht==null)) map[k] = d;
+    });
+    return Object.values(map);
+  };
   if(!ACTIVE_RESTO || ACTIVE_RESTO==='ALL') {
-    DATA25 = ALL25;
-    DATA   = ALL26;
+    DATA25 = dedup(ALL25);
+    DATA   = dedup(ALL26);
   } else {
-    DATA25 = ALL25.filter(d=>d.restaurant===ACTIVE_RESTO);
-    DATA   = ALL26.filter(d=>d.restaurant===ACTIVE_RESTO);
+    DATA25 = dedup(ALL25.filter(d=>d.restaurant===ACTIVE_RESTO));
+    DATA   = dedup(ALL26.filter(d=>d.restaurant===ACTIVE_RESTO));
     console.log('[filter] ACTIVE_RESTO='+ACTIVE_RESTO+' → DATA26='+DATA.length+' DATA25='+DATA25.length);
   }
 }
@@ -3546,7 +3555,9 @@ function renderComparaison() {
   const corr25=avg(DATA25,'corrections_pct'), corr26=avg(DATA,'corrections_pct');
   const rem25=avg(DATA25,'remises_pct'), rem26=avg(DATA,'remises_pct');
   const tm25=t25?ca25/t25:0, tm26=t26?ca26/t26:0;
-  const n25=DATA25.length, n26=DATA.length;
+  // Nombre de journées RÉELLES (avec un CA HT) — pas les lignes vides/doublons
+  const n25=DATA25.filter(d=>caHT_n1(d)>0).length || DATA25.length;
+  const n26=DATA.filter(d=>caHT(d)>0).length || DATA.length;
 
   // Tableau comparaison par mois — tous indicateurs
   const moisNoms = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
