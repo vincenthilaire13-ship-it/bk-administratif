@@ -977,14 +977,14 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 <div class="hr-hdr">
   <div><div class="hr-hdr-title">BK St Clément de Rivière</div><div class="hr-hdr-sub">Planning · Base min + CA 15min · Sem. 13–19 avr. 2026</div></div>
   <div class="hr-nav">
-    <div class="hr-nt hr-on" onclick="show('planning')">Planning</div>
-    <div class="hr-nt" onclick="show('ca')">CA prévisionnel</div>
-    <div class="hr-nt" onclick="show('np')">Non productifs</div>
-    <div class="hr-nt" onclick="show('grille')">Grille CA</div>
+    <div class="hr-nt hr-on" onclick="hrShow('planning')">Planning</div>
+    <div class="hr-nt" onclick="hrShow('ca')">CA prévisionnel</div>
+    <div class="hr-nt" onclick="hrShow('np')">Non productifs</div>
+    <div class="hr-nt" onclick="hrShow('grille')">Grille CA</div>
   </div>
   <div class="hr-hdr-r">
     <button class="hr-btn" onclick="alert('Export PDF à venir')">⬇ PDF</button>
-    <button class="hr-btn hr-btn-ac" onclick="show('ca')">+ Générer</button>
+    <button class="hr-btn hr-btn-ac" onclick="hrShow('ca')">+ Générer</button>
   </div>
 </div>
 
@@ -1009,6 +1009,13 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       <select id="hrx-vue-sel" onchange="hrSetVue(this.value)">
         <option value="jour">Jour</option>
         <option value="semaine">Semaine</option>
+      </select>
+    </div>
+    <div class="hr-cc"><label>Source du CA</label>
+      <select id="hrx-src-sel" onchange="hrSetSource(this.value)">
+        <option value="auto">Auto (réel sinon N-1)</option>
+        <option value="reel">Réel uniquement</option>
+        <option value="n1">Prévision N-1</option>
       </select>
     </div>
     <div class="hr-cc" id="hrx-jour-wrap"><label>Jour</label>
@@ -5809,6 +5816,34 @@ const GRILLE_DEFAULT = GRILLE.map(r=>[...r]); // Base 30min
 let GRILLE_EDIT = GRILLE.map(r=>[...r]);
 let grilleMode = 30; // Base = 30min
 
+// ── Séparation par restaurant : chaque resto a sa grille et sa base min ──
+// On mémorise les versions personnalisées ; au changement de resto on recharge.
+const BASEMIN_DEFAULT = BASE_MIN.map(b=>[...b]);
+let GRILLE_BY_RESTO = {};   // { 'BK526': [[...]], ... }
+let BASEMIN_BY_RESTO = {};  // { 'BK526': [[...]], ... }
+let HR_GRILLE_RESTO = 'BK526'; // resto dont la grille/base est active
+
+function hrCurrentResto(){
+  // resto actif = celui sélectionné dans l'appli, sinon celui des données horaires
+  return (window.ACTIVE_RESTO && window.ACTIVE_RESTO!=='ALL') ? window.ACTIVE_RESTO
+       : (window.HR_RESTO || 'BK526');
+}
+// Charge la grille + base du resto donné (ou défaut si jamais personnalisé)
+function hrSwitchRestoGrille(resto){
+  // Sauver l'état courant pour l'ancien resto
+  if(HR_GRILLE_RESTO){
+    GRILLE_BY_RESTO[HR_GRILLE_RESTO] = GRILLE_EDIT.map(r=>[...r]);
+    BASEMIN_BY_RESTO[HR_GRILLE_RESTO] = BASE_MIN.map(b=>[...b]);
+  }
+  HR_GRILLE_RESTO = resto;
+  // Charger l'état du nouveau resto (ou défaut)
+  GRILLE_EDIT = (GRILLE_BY_RESTO[resto] || GRILLE_DEFAULT).map(r=>[...r]);
+  BASE_MIN    = (BASEMIN_BY_RESTO[resto] || BASEMIN_DEFAULT).map(b=>[...b]);
+  // Mettre GRILLE (utilisée par getEff) à jour
+  GRILLE.length = 0; GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
+}
+window.hrSwitchRestoGrille = hrSwitchRestoGrille;
+
 // ca_csv = CA brut CSV (toujours en 15min)
 // converti en unité de la grille active (grilleMode, base=30min)
 function getEff(ca_csv){
@@ -5869,7 +5904,7 @@ function col(l){const u=(l||'').toUpperCase(),k=Object.keys(C).find(k=>u.include
 // ── BASE MINIMUM (PDF lundi 15 juin) ─────────────────────────────────────────
 // [poste, debut_min, fin_min, type]
 function hm(h,m=0){const hh=h<5?h+24:h;return hh*60+m;}
-const BASE_MIN=[
+let BASE_MIN=[
   // NP fixes
   ['OUVERTURE MANA', hm(8,0),   hm(14,30), 'np'],
   ['OUVERTURE MANA', hm(15,0),  hm(17,0),  'np'],
@@ -6198,12 +6233,15 @@ function applyGrille(){
   // Mettre à jour GRILLE utilisée par getEff
   GRILLE.length = 0;
   GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
+  // Mémoriser cette grille pour le restaurant actif
+  GRILLE_BY_RESTO[HR_GRILLE_RESTO] = GRILLE_EDIT.map(r=>[...r]);
   // Régénérer tous les plannings
   for(let d=0;d<CA_DAYS.length;d++) ROWS_BY_DAY[d]=buildRows(CA_DAYS[d]);
   renderGrille();
   hrShow('planning');
   renderAll();
-  alert('✓ Grille appliquée ! Planning recalculé.');
+  const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+  alert('✓ Grille appliquée pour '+(noms[HR_GRILLE_RESTO]||HR_GRILLE_RESTO)+' ! Planning recalculé.');
 }
 
 function resetGrille(){
@@ -6350,14 +6388,16 @@ function hrFillDaySelect(){
 
 // Génère le planning depuis une date importée
 function hrGenFromDate(date){
-  if(!HR_DATA[date]) return;
-  const ca = HR_DATA[date];
+  const resto = hrCurrentResto();
+  if(resto !== HR_GRILLE_RESTO) hrSwitchRestoGrille(resto);
+  const r = hrCourbeJour(date);
+  const ca = r.ca || {};
   const total = Object.values(ca).reduce((a,b)=>a+b,0);
   editDay = 0;
   CA_DAYS[0] = ca;
   ROWS_BY_DAY[0] = buildRows(ca);
   DAY_TOTALS[0] = Math.round(total);
-  DAY_LABELS[0] = date;
+  DAY_LABELS[0] = date + (r.source==='N-1' ? ' (prév. N-1)' : '');
   curDay = 0;
   buildCAGrid();
   hrShow('planning');
@@ -6385,9 +6425,8 @@ function hrSetVue(v){
   if(v==='semaine'){
     hrFillWeekSelect();
   } else {
-    // revenir au jour sélectionné
     const sel=document.getElementById('hrx-ca-day-sel');
-    if(sel && sel.value && HR_DATA[sel.value]) hrGenFromDate(sel.value);
+    if(sel && sel.value) hrGenFromDate(sel.value);
   }
 }
 window.hrSetVue=hrSetVue;
@@ -6417,21 +6456,71 @@ window.hrFillWeekSelect=hrFillWeekSelect;
 
 // Génère le planning de toute une semaine (lundi → dimanche)
 function hrGenFromWeek(lundi){
+  const resto = hrCurrentResto();
+  if(resto !== HR_GRILLE_RESTO) hrSwitchRestoGrille(resto);
   const jours=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
   const base=new Date(lundi);
   for(let i=0;i<7;i++){
     const dt=new Date(base); dt.setDate(base.getDate()+i);
     const iso=dt.toISOString().slice(0,10);
-    const ca=HR_DATA[iso]||{};
+    const r=hrCourbeJour(iso);
+    const ca=r.ca||{};
     CA_DAYS[i]=ca;
     ROWS_BY_DAY[i]=buildRows(ca);
     DAY_TOTALS[i]=Math.round(Object.values(ca).reduce((a,b)=>a+b,0));
-    DAY_LABELS[i]=jours[i]+' '+iso.slice(8,10)+'/'+iso.slice(5,7);
+    DAY_LABELS[i]=jours[i]+' '+iso.slice(8,10)+'/'+iso.slice(5,7)+(r.source==='N-1'?'*':'');
   }
   curDay=0; editDay=0;
   buildCAGrid(); hrShow('planning'); renderAll();
 }
 window.hrGenFromWeek=hrGenFromWeek;
+
+// ── PRÉVISION N-1 : courbe d'un jour selon la source choisie ──────────────────
+// Mode : 'auto' (réel sinon N-1), 'reel' (réel seul), 'n1' (toujours N-1)
+var HR_SRC = window.HR_SRC || 'auto';
+function hrSetSource(v){
+  HR_SRC = v; window.HR_SRC = v;
+  const vue = document.getElementById('hrx-vue-sel');
+  if(vue && vue.value==='semaine'){
+    const s=document.getElementById('hrx-sem-sel'); if(s&&s.value) hrGenFromWeek(s.value);
+  } else {
+    const s=document.getElementById('hrx-ca-day-sel'); if(s&&s.value) hrGenFromDate(s.value);
+  }
+}
+window.hrSetSource = hrSetSource;
+// Cherche le même jour de semaine, année -1
+function hrN1(dateISO){
+  const dt=new Date(dateISO);
+  const an1=new Date(dt); an1.setFullYear(dt.getFullYear()-1);
+  const cibleJour=dt.getDay();
+  for(let off=0; off<=4; off++){
+    for(const s of [1,-1]){
+      const c=new Date(an1); c.setDate(an1.getDate()+off*s);
+      if(c.getDay()!==cibleJour) continue;
+      const iso=c.toISOString().slice(0,10);
+      if(HR_DATA[iso]) return {ca:HR_DATA[iso], source:'N-1', dateSource:iso};
+    }
+  }
+  return null;
+}
+// Renvoie {ca, source:'réel'|'N-1'|'aucune', dateSource}
+function hrCourbeJour(dateISO){
+  if(HR_SRC==='reel'){
+    if(HR_DATA[dateISO]) return {ca:HR_DATA[dateISO], source:'réel', dateSource:dateISO};
+    return {ca:{}, source:'aucune', dateSource:null};
+  }
+  if(HR_SRC==='n1'){
+    const r=hrN1(dateISO);
+    return r || {ca:{}, source:'aucune', dateSource:null};
+  }
+  // auto
+  if(HR_DATA[dateISO]) return {ca:HR_DATA[dateISO], source:'réel', dateSource:dateISO};
+  const r=hrN1(dateISO);
+  return r || {ca:{}, source:'aucune', dateSource:null};
+}
+window.hrCourbeJour=hrCourbeJour;
+
+
 
 // ── IMPORT MULTI-FICHIERS (glisser-déposer) ──────────────────────────────────
 function hrLog(html){
