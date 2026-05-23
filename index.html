@@ -410,7 +410,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
           <option value="2025-12">Décembre 2025</option>
         </select>
         <select class="form-input" id="hist-filtre" style="width:170px" onchange="loadHistorique()">
-          <option value="ca">CA TTC</option>
+          <option value="ca">CA HT</option>
           <option value="tickets">Tickets</option>
           <option value="drive">Drive voitures</option>
           <option value="corrections">Corrections €</option>
@@ -485,7 +485,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
               <div class="sub-title">CA</div>
               <div class="form-row-4" style="margin-bottom:16px">
                 <div class="form-group"><label class="form-label">CA HT (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-ht"></div>
-                <div class="form-group"><label class="form-label">CA TTC (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-ttc"></div>
+                <div class="form-group" style="display:none"><label class="form-label">CA TTC (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-ttc"></div>
                 <div class="form-group"><label class="form-label">Tickets</label><input type="number" class="form-input" id="s-tickets"></div>
                 <div class="form-group"><label class="form-label">Ticket moy. (€)</label><input type="number" step="0.01" class="form-input" id="s-tm"></div>
               </div>
@@ -1099,7 +1099,7 @@ create policy "mise a jour" on journees for update using (true);</pre>
     <div class="alert alert-err" id="modal-err">Erreur d'enregistrement.</div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Date *</label><input type="date" class="form-input" id="m-date" required></div>
-      <div class="form-group"><label class="form-label">CA TTC (€) *</label><input type="number" step="0.01" class="form-input" id="m-ca" required placeholder="19766.93"></div>
+      <div class="form-group"><label class="form-label">CA HT (€) *</label><input type="number" step="0.01" class="form-input" id="m-ca" required placeholder="17000"></div>
     </div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Tickets</label><input type="number" class="form-input" id="m-tickets" placeholder="938"></div>
@@ -2975,7 +2975,7 @@ function buildJourneeSelect() {
   const sel = document.getElementById('select-journee');
   sel.innerHTML = '<option value="">Choisir une journée...</option>';
   [...DATA].reverse().forEach(d=>{
-    sel.innerHTML += `<option value="${d.date}">${formatDate(d.date)} ${jourSemaine(d.date)} — ${fmt(d.ca_ttc)}€</option>`;
+    sel.innerHTML += `<option value="${d.date}">${formatDate(d.date)} ${jourSemaine(d.date)} — ${fmt(caHT(d))}€ HT</option>`;
   });
 }
 
@@ -2988,13 +2988,15 @@ function loadJournee(mode) {
 }
 
 function renderJournee(d) {
-  const ecN1 = d.ca_n1 ? ((d.ca_ttc-d.ca_n1)/d.ca_n1*100) : null;
+  const caht = caHT(d);
+  const caht_n1 = caHT_n1(d);
+  const ecN1 = caht_n1 ? ((caht-caht_n1)/caht_n1*100) : null;
   const ecT = d.tickets_n1&&d.tickets_nb ? ((d.tickets_nb-d.tickets_n1)/d.tickets_n1*100) : null;
   const ecDr = d.drive_n1&&d.drive_voitures ? ((d.drive_voitures-d.drive_n1)/d.drive_n1*100) : null;
   const ecLv = d.livraison_n1&&d.livraison_commandes ? ((d.livraison_commandes-d.livraison_n1)/d.livraison_n1*100) : null;
-  const tM = d.tickets_nb ? (d.ca_ttc/d.tickets_nb).toFixed(2) : '—';
-  const drM = d.drive_voitures&&d.drive_ttc ? (d.drive_ttc/d.drive_voitures).toFixed(2) : '—';
-  const lvM = d.livraison_commandes&&d.livraison_ttc ? (d.livraison_ttc/d.livraison_commandes).toFixed(2) : '—';
+  const tM = d.tickets_nb ? (caht/d.tickets_nb).toFixed(2) : '—';
+  const drM = d.drive_voitures&&canalHT(d,'drive') ? (canalHT(d,'drive')/d.drive_voitures).toFixed(2) : '—';
+  const lvM = d.livraison_commandes&&canalHT(d,'livraison') ? (canalHT(d,'livraison')/d.livraison_commandes).toFixed(2) : '—';
 
   const als = [];
   if(ecN1!==null) { if(ecN1<SEUILS.n1_rouge) als.push({t:'bad',m:`CA en forte baisse vs N-1 : ${ecN1.toFixed(1)}% — Journée critique`}); else if(ecN1<SEUILS.n1_warn) als.push({t:'warn',m:`CA en baisse vs N-1 : ${ecN1.toFixed(1)}%`}); else als.push({t:'ok',m:`CA vs N-1 : +${ecN1.toFixed(1)}% — Bonne journée`}); }
@@ -3017,23 +3019,22 @@ function renderJournee(d) {
   if(d.annulations_nb>0) als.push({t:'warn',m:`${d.annulations_nb} annulation(s) — ${d.annulations_montant?fmt(d.annulations_montant)+' €':''}`});
 
   const rows = [
-    ['CA TTC',fmt(d.ca_ttc)+' €',d.ca_n1?fmt(d.ca_n1)+' €':'—','—',ecN1!==null?chipEc(ecN1):'—'],
-    ['CA HT',d.ca_ht?fmt(d.ca_ht)+' €':'—','—','—','—'],
-    ['CA Prévu',d.ca_prevu?fmt(d.ca_prevu)+' €':'—','—','—',d.ca_prevu?chipEc(((d.ca_ttc-d.ca_prevu)/d.ca_prevu)*100):'—'],
+    ['CA HT',fmt(caht)+' €',caht_n1?fmt(caht_n1)+' €':'—','—',ecN1!==null?chipEc(ecN1):'—'],
+    ['CA Prévu',d.ca_prevu?fmt(d.ca_prevu)+' €':'—','—','—',d.ca_prevu?chipEc(((caht-d.ca_prevu)/d.ca_prevu)*100):'—'],
     ['Tickets',d.tickets_nb||'—',d.tickets_n1||'—','—',ecT!==null?chipEc(ecT):'—'],
-    ['Ticket moyen TTC',tM+' €','—','≥'+SEUILS.ticket_min+' €',chipS(parseFloat(tM),SEUILS.ticket_min,null,'h')],
+    ['Ticket moyen HT',tM+' €','—','≥'+SEUILS.ticket_min+' €',chipS(parseFloat(tM),SEUILS.ticket_min,null,'h')],
     ['─────── DRIVE ───────','','','',''],
     ['Voitures drive',d.drive_voitures||'—',d.drive_n1||'—','≥'+SEUILS.drive_min,chipS(d.drive_voitures,SEUILS.drive_min,null,'h')],
     ['Ticket moyen drive',drM+' €','—','≥'+SEUILS.drive_ticket_min+' €',chipS(parseFloat(drM),SEUILS.drive_ticket_min,null,'h')],
-    ['CA drive TTC',d.drive_ttc?fmt(d.drive_ttc)+' €':'—','—','—','—'],
+    ['CA drive HT',canalHT(d,'drive')?fmt(canalHT(d,'drive'))+' €':'—','—','—','—'],
     ['─────── LIVRAISON ───────','','','',''],
     ['Commandes livraison',d.livraison_commandes||'—',d.livraison_n1||'—','≥'+SEUILS.livraison_min,chipS(d.livraison_commandes,SEUILS.livraison_min,null,'h')],
     ['Ticket moyen livraison',lvM+' €','—','—','—'],
-    ['CA livraison TTC',d.livraison_ttc?fmt(d.livraison_ttc)+' €':'—','—','—','—'],
+    ['CA livraison HT',canalHT(d,'livraison')?fmt(canalHT(d,'livraison'))+' €':'—','—','—','—'],
     ['─────── CANAUX ───────','','','',''],
-    ['Kiosk CA TTC',d.kiosk_ttc?fmt(d.kiosk_ttc)+' €':'—','—','—','—'],
-    ['Comptoir CA TTC',d.comptoir_ttc?fmt(d.comptoir_ttc)+' €':'—','—','—','—'],
-    ['Click & Collect TTC',d.cc_ttc?fmt(d.cc_ttc)+' €':'—','—','—','—'],
+    ['Kiosk CA HT',canalHT(d,'kiosk')?fmt(canalHT(d,'kiosk'))+' €':'—','—','—','—'],
+    ['Comptoir CA HT',canalHT(d,'comptoir')?fmt(canalHT(d,'comptoir'))+' €':'—','—','—','—'],
+    ['Click & Collect HT',canalHT(d,'cc')?fmt(canalHT(d,'cc'))+' €':'—','—','—','—'],
     ['─────── CORRECTIONS ───────','','','',''],
     ['Nb corrections',d.corrections_nb||'—','—','—','—'],
     ['Corrections montant',d.corrections_montant?fmt(d.corrections_montant)+' €':'—','—','—','—'],
@@ -3082,7 +3083,7 @@ function renderJournee(d) {
   document.getElementById('journee-content').innerHTML = `
   <div class="kpi-grid">
     <div class="kpi ${ecN1===null?'neutral':ecN1>0?'ok':ecN1>-5?'warn':'bad'}">
-      <div class="kpi-label">CA TTC</div><div class="kpi-val">${fmt(d.ca_ttc)} €</div>
+      <div class="kpi-label">CA HT</div><div class="kpi-val">${fmt(caht)} €</div>
       ${ecN1!==null?`<div class="kpi-delta ${ecN1>0?'up':'down'}">${ecN1>0?'+':''}${ecN1.toFixed(1)}% vs N-1</div>`:''}
     </div>
     <div class="kpi ${ecT===null?'neutral':ecT>-5?'ok':'warn'}">
@@ -3174,18 +3175,21 @@ function loadHistorique() {
   const n1Map = {}; // date N-1 indexée par jour du mois (MM-DD)
   fdN1.forEach(d=>{ n1Map[d.date.slice(5)] = d; });
 
-  const fmap={ca:'ca_ttc',tickets:'tickets_nb',drive:'drive_voitures',corrections:'corrections_montant',remises:'remises_pct',livraisons:'livraison_ttc'};
-  const flabels={ca:'CA TTC',tickets:'Tickets',drive:'Drive voitures',corrections:'Corrections €',remises:'Remises %',livraisons:'Livraison CA'};
+  const fmap={ca:'_caht',tickets:'tickets_nb',drive:'drive_voitures',corrections:'corrections_montant',remises:'remises_pct',livraisons:'_lvht'};
+  const flabels={ca:'CA HT',tickets:'Tickets',drive:'Drive voitures',corrections:'Corrections €',remises:'Remises %',livraisons:'Livraison CA HT'};
   const clrs={ca:'#f5a623',tickets:'#60a5fa',drive:'#60a5fa',corrections:'#f87171',remises:'#fbbf24',livraisons:'#3ecf8e'};
   const TC='#6b6b7a', GC='rgba(255,255,255,.04)';
+  // Champs HT calculés pour le graphe/tableau historique
+  fd.forEach(d=>{ d._caht = caHT(d); d._lvht = canalHT(d,'livraison'); });
+  fdN1.forEach(d=>{ d._caht = caHT_n1(d); d._lvht = canalHT(d,'livraison'); });
 
   // Totaux pour le résumé
-  const totCA = fd.reduce((a,b)=>a+(b.ca_ttc||0),0);
-  const totCA_n1 = fdN1.reduce((a,b)=>a+(b.ca_ttc||0),0);
+  const totCA = fd.reduce((a,b)=>a+caHT(b),0);
+  const totCA_n1 = fdN1.reduce((a,b)=>a+caHT_n1(b),0);
   const totDr = fd.reduce((a,b)=>a+(b.drive_voitures||0),0);
   const totDr_n1 = fdN1.reduce((a,b)=>a+(b.drive_voitures||0),0);
-  const totLv = fd.reduce((a,b)=>a+(b.livraison_ttc||0),0);
-  const totLv_n1 = fdN1.reduce((a,b)=>a+(b.livraison_ttc||0),0);
+  const totLv = fd.reduce((a,b)=>a+canalHT(b,'livraison'),0);
+  const totLv_n1 = fdN1.reduce((a,b)=>a+canalHT(b,'livraison'),0);
   const totCorr = fd.reduce((a,b)=>a+(b.corrections_montant||0),0);
   const totCorr_n1 = fdN1.reduce((a,b)=>a+(b.corrections_montant||0),0);
   const avgCorr = fd.filter(d=>d.corrections_pct).reduce((a,b)=>a+(b.corrections_pct||0),0)/(fd.filter(d=>d.corrections_pct).length||1);
@@ -3251,9 +3255,9 @@ function loadHistorique() {
         <tr>
           <th rowspan="2">Date</th>
           <th rowspan="2">Jour</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">CA TTC</th>
+          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">CA HT</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Drive (voitures)</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Livraison</th>
+          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Livraison HT</th>
           <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border)">Corrections €</th>
           <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border)">Remises %</th>
           <th rowspan="2">Statut</th>
@@ -3270,15 +3274,15 @@ function loadHistorique() {
         ${fd.map(d=>{
           const jourKey = d.date.slice(5); // MM-DD
           const n1 = n1Map[jourKey];
-          const ecCA2 = n1?.ca_ttc ? ((d.ca_ttc-n1.ca_ttc)/n1.ca_ttc*100) : null;
+          const ecCA2 = caHT_n1(n1||{}) ? ((caHT(d)-caHT_n1(n1))/caHT_n1(n1)*100) : null;
           const ecDr = n1?.drive_voitures ? ((d.drive_voitures-n1.drive_voitures)/n1.drive_voitures*100) : null;
-          const ecLv = n1?.livraison_ttc ? ((d.livraison_ttc-n1.livraison_ttc)/n1.livraison_ttc*100) : null;
-          const dCa = d.ca_ttc;
-          const n1Ca = n1?.ca_ttc;
+          const ecLv = (n1&&canalHT(n1,'livraison')) ? ((canalHT(d,'livraison')-canalHT(n1,'livraison'))/canalHT(n1,'livraison')*100) : null;
+          const dCa = caHT(d);
+          const n1Ca = n1?caHT_n1(n1):null;
           const dDr = d.drive_voitures;
           const n1Dr = n1?.drive_voitures;
-          const dLv = d.livraison_ttc;
-          const n1Lv = n1?.livraison_ttc;
+          const dLv = canalHT(d,'livraison');
+          const n1Lv = n1?canalHT(n1,'livraison'):null;
           // Statut global journée
           const ok = ecCA2!==null&&ecCA2>=-5 && (d.corrections_pct||0)<=SEUILS.corrections_max && (d.remises_pct||0)<=SEUILS.remises_max;
           const bad = (ecCA2!==null&&ecCA2<SEUILS.n1_rouge) || (d.corrections_pct||0)>=SEUILS.corrections_rouge || (d.remises_pct||0)>=SEUILS.remises_rouge;
@@ -3361,13 +3365,16 @@ function renderComparaison() {
   const m25 = byMonth(DATA25);
   const m26 = byMonth(DATA.filter(d=>d.date.startsWith('2026')));
 
-  // KPIs globaux
-  const ca25=sum(DATA25,'ca_ttc'), ca26=sum(DATA,'ca_ttc');
+  // KPIs globaux (HT)
+  const sumHT = arr => arr.reduce((a,b)=>a+caHT(b),0);
+  const sumHTn1 = arr => arr.reduce((a,b)=>a+caHT_n1(b),0);
+  const sumCanal = (arr,c) => arr.reduce((a,b)=>a+canalHT(b,c),0);
+  const ca25=sumHTn1(DATA25), ca26=sumHT(DATA);
   const t25=sum(DATA25,'tickets_nb'), t26=sum(DATA,'tickets_nb');
-  const dr25=sum(DATA25,'drive_ttc'), dr26=sum(DATA,'drive_ttc');
-  const lv25=sum(DATA25,'livraison_ttc'), lv26=sum(DATA,'livraison_ttc');
-  const ki25=sum(DATA25,'kiosk_ttc'), ki26=sum(DATA,'kiosk_ttc');
-  const co25=sum(DATA25,'comptoir_ttc'), co26=sum(DATA,'comptoir_ttc');
+  const dr25=sumCanal(DATA25,'drive'), dr26=sumCanal(DATA,'drive');
+  const lv25=sumCanal(DATA25,'livraison'), lv26=sumCanal(DATA,'livraison');
+  const ki25=sumCanal(DATA25,'kiosk'), ki26=sumCanal(DATA,'kiosk');
+  const co25=sumCanal(DATA25,'comptoir'), co26=sumCanal(DATA,'comptoir');
   const corr25=avg(DATA25,'corrections_pct'), corr26=avg(DATA,'corrections_pct');
   const rem25=avg(DATA25,'remises_pct'), rem26=avg(DATA,'remises_pct');
   const tm25=t25?ca25/t25:0, tm26=t26?ca26/t26:0;
@@ -3382,11 +3389,11 @@ function renderComparaison() {
     const d25 = m25[m]||[], d26 = m26[m]||[];
     if(!d25.length && !d26.length) return;
     const label = moisNoms[parseInt(m)-1];
-    const ca_25=sum(d25,'ca_ttc'), ca_26=sum(d26,'ca_ttc');
+    const ca_25=sumHTn1(d25), ca_26=sumHT(d26);
     const t_25=sum(d25,'tickets_nb'), t_26=sum(d26,'tickets_nb');
-    const dr_25=sum(d25,'drive_ttc'), dr_26=sum(d26,'drive_ttc');
-    const lv_25=sum(d25,'livraison_ttc'), lv_26=sum(d26,'livraison_ttc');
-    const ki_25=sum(d25,'kiosk_ttc'), ki_26=sum(d26,'kiosk_ttc');
+    const dr_25=sumCanal(d25,'drive'), dr_26=sumCanal(d26,'drive');
+    const lv_25=sumCanal(d25,'livraison'), lv_26=sumCanal(d26,'livraison');
+    const ki_25=sumCanal(d25,'kiosk'), ki_26=sumCanal(d26,'kiosk');
     const corr_25=avg(d25,'corrections_pct'), corr_26=avg(d26,'corrections_pct');
     const rem_25=avg(d25,'remises_pct'), rem_26=avg(d26,'remises_pct');
     const tm_25=t_25?ca_25/t_25:0, tm_26=t_26?ca_26/t_26:0;
@@ -3489,8 +3496,8 @@ function renderComparaison() {
       <thead>
         <tr>
           <th rowspan="2">Mois</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">CA TTC</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Ticket moyen</th>
+          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">CA HT</th>
+          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Ticket moyen HT</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Drive</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Livraison</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Corrections</th>
@@ -3552,9 +3559,9 @@ function closeModal() { document.getElementById('modal').classList.remove('open'
 
 async function saveModal() {
   const row = {
-    restaurant:'SAINT CLEMENT',
+    restaurant: CURRENT_USER?.resto || 'BK526',
     date:document.getElementById('m-date').value,
-    ca_ttc:pf('m-ca'), tickets_nb:pi('m-tickets'),
+    ca_ht:pf('m-ca'), tickets_nb:pi('m-tickets'),
     ca_n1:pf('m-ca-n1'), drive_voitures:pi('m-drive'),
     livraison_commandes:pi('m-livraison'),
     corrections_pct:pf('m-corr'), remises_pct:pf('m-rem'),
@@ -4122,8 +4129,8 @@ async function lireTousPDFs(files) {
     ? formatDate(MGR_EXTRACTED.date)+' — '+jourSemaine(new Date(MGR_EXTRACTED.date))
     : '—';
   document.getElementById('mgr-date-label').textContent = dateLabel;
-  document.getElementById('mgr-ca-label').textContent = MGR_EXTRACTED.ca_ttc
-    ? 'CA TTC : '+fmt(MGR_EXTRACTED.ca_ttc)+' €  ·  '+(MGR_EXTRACTED.tickets_nb||'—')+' tickets'
+  document.getElementById('mgr-ca-label').textContent = (MGR_EXTRACTED.ca_ht||MGR_EXTRACTED.ca_ttc)
+    ? 'CA HT : '+fmt(caHT(MGR_EXTRACTED))+' €  ·  '+(MGR_EXTRACTED.tickets_nb||'—')+' tickets'
     : (ventesData ? 'Ventes horaire chargées' : 'PDF chargé');
 
   // Résumé des fichiers
@@ -4162,8 +4169,8 @@ async function extrairePDFManager(file) {
 
     const dateLabel = MGR_EXTRACTED.date ? formatDate(MGR_EXTRACTED.date)+' — '+jourSemaine(new Date(MGR_EXTRACTED.date)) : '—';
     document.getElementById('mgr-date-label').textContent = dateLabel;
-    document.getElementById('mgr-ca-label').textContent = MGR_EXTRACTED.ca_ttc
-      ? 'CA TTC : '+fmt(MGR_EXTRACTED.ca_ttc)+' €  ·  '+(MGR_EXTRACTED.tickets_nb||'—')+' tickets'
+    document.getElementById('mgr-ca-label').textContent = (MGR_EXTRACTED.ca_ht||MGR_EXTRACTED.ca_ttc)
+      ? 'CA HT : '+fmt(caHT(MGR_EXTRACTED))+' €  ·  '+(MGR_EXTRACTED.tickets_nb||'—')+' tickets'
       : 'PDF lu — complétez les informations';
 
     populateManagerSelect();
