@@ -2829,44 +2829,15 @@ async function saveConfig() {
 }
 
 async function loadAll() {
-  // Toujours partir des seeds locaux comme base
+  // Données complètes et propres (HT) intégrées dans le code — source unique de vérité.
+  // On n'utilise PAS les lignes Supabase pour l'affichage : elles sont en ancien format
+  // (_ttc) et incomplètes, ce qui fausserait la répartition par canal et les comparaisons.
   const seed25 = getSeedForResto(2025);
   const seed26 = getSeedForResto(2026);
-
-  if(SB) {
-    try {
-      const {data, error} = await SB.from('journees').select('*').order('date',{ascending:true});
-      if(!error && data && data.length > 0) {
-        // Fusion : on part des seeds (HT complets). Une ligne Supabase ne remplace
-        // le seed QUE si elle contient un vrai ca_ht (donnée HT propre).
-        const merge = (seeds, sbData) => {
-          const map = {};
-          seeds.forEach(d => { map[(d.restaurant||'BK526')+'|'+d.date] = d; });
-          sbData.forEach(d => {
-            const key = (d.restaurant||'BK526')+'|'+d.date;
-            if(d.ca_ht!=null) map[key] = d;        // Supabase HT prioritaire
-            else if(!map[key]) map[key] = d;       // sinon, garder seed; ajouter si absent
-          });
-          return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date));
-        };
-        window._ALL_DATA25 = merge(seed25, data.filter(d=>d.date.startsWith('2025')));
-        window._ALL_DATA26 = merge(seed26, data.filter(d=>d.date.startsWith('2026')));
-        console.log('[loadAll] Supabase: '+data.length+' lignes. Fusion: 2025='+window._ALL_DATA25.length+' 2026='+window._ALL_DATA26.length);
-        // Restos présents dans Supabase
-        const restos = [...new Set(data.map(d=>d.restaurant))];
-        console.log('[loadAll] Restos Supabase:', restos);
-      } else {
-        // Supabase vide ou erreur → seeds seuls
-        window._ALL_DATA25 = seed25;
-        window._ALL_DATA26 = seed26;
-      }
-    } catch(e) {
-      window._ALL_DATA25 = seed25;
-      window._ALL_DATA26 = seed26;
-    }
-  } else {
-    window._ALL_DATA25 = seed25;
-    window._ALL_DATA26 = seed26;
+  window._ALL_DATA25 = seed25;
+  window._ALL_DATA26 = seed26;
+  if(SB){
+    document.getElementById('db-status').textContent = 'Connecté';
   }
   applyRestoFilter();
   document.getElementById('last-update').textContent = 'Màj '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
