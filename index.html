@@ -284,17 +284,17 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-full-only" style="display:none" onclick="nav('journee')"><span>📅</span><span>Journée</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('historique')"><span>📈</span><span>Historique</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('comparaison')"><span>🔄</span><span>Comparaison N-1</span></div>
-    <div class="nav-section role-dir-only" style="display:none">Saisie</div>
-    <div class="nav-item role-dir-only" style="display:none" onclick="nav('saisie')"><span>📥</span><span>Importer PDF</span></div>
+    <div class="nav-section role-superadmin-only" style="display:none">Saisie</div>
+    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('saisie')"><span>📥</span><span>Importer PDF</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('import-masse')"><span>⚡</span><span>Import massif</span></div>
-    <div class="nav-section role-mgr-only" style="display:none">Journée</div>
-    <div class="nav-item role-mgr-only" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
-    <div class="nav-section role-full-only" style="display:none">Analyse</div>
-    <div class="nav-item role-full-only" style="display:none" onclick="nav('managers')"><span>👥</span><span>Suivi managers</span></div>
-    <div class="nav-item role-full-only" style="display:none" onclick="nav('ventes')"><span>⏱️</span><span>Ventes demi-heure</span></div>
-    <div class="nav-item role-dir-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
-    <div class="nav-section role-full-only" style="display:none">Config</div>
-    <div class="nav-item role-full-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
+    <div class="nav-section role-mgrspace" style="display:none">Ma journée</div>
+    <div class="nav-item role-mgrspace" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
+    <div class="nav-section role-superadmin-only" style="display:none">Analyse</div>
+    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('managers')"><span>👥</span><span>Suivi managers</span></div>
+    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('ventes')"><span>⏱️</span><span>Ventes demi-heure</span></div>
+    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
+    <div class="nav-section role-admin-only" style="display:none">Config</div>
+    <div class="nav-item role-admin-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('acces')"><span>🔑</span><span>Gestion accès</span></div>
   </nav>
@@ -2689,6 +2689,14 @@ function nav(id) {
   if(id==='seuils') renderSeuils();
   if(id==='acces') renderAcces();
   if(id==='managers') renderManagers();
+  if(id==='manager'){
+    showMgrSection('home');
+    const nameEl = document.getElementById('mgr-hello-name');
+    if(nameEl) nameEl.textContent = CURRENT_USER?.nom||'';
+    const dateEl = document.getElementById('mgr-hello-date');
+    if(dateEl) dateEl.textContent = new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    populateManagerSelect();
+  }
   if(id==='annulations'){renderAnnulationsHistorique();populateAnnManagerSelect();}
 }
 
@@ -4005,15 +4013,22 @@ function setSession(user) {
 
 function applyRoleUI(role) {
   const isManager     = role==='manager';
-  const isDirecteur   = ['directeur','superviseur','admin'].includes(role);
+  const isDirecteur   = role==='directeur';
+  const isSuperOrAdmin= ['superviseur','admin'].includes(role);
+  const isFull        = ['directeur','superviseur','admin'].includes(role);
   const isAdmin       = role==='admin';
   const isDirOnly     = ['directeur','admin'].includes(role);
   const isMulti       = ['superviseur','admin'].includes(role);
 
-  document.querySelectorAll('.role-full-only').forEach(el=>el.style.display=isDirecteur?'':'none');
+  // role-full-only : les 4 vues d'analyse + sections, visibles directeur/superviseur/admin
+  document.querySelectorAll('.role-full-only').forEach(el=>el.style.display=isFull?'':'none');
   document.querySelectorAll('.role-mgr-only').forEach(el =>el.style.display=isManager ?'':'none');
   document.querySelectorAll('.role-dir-only').forEach(el =>el.style.display=isDirOnly ?'':'none');
   document.querySelectorAll('.role-admin-only').forEach(el=>el.style.display=isAdmin  ?'':'none');
+  // role-superadmin-only : réservé superviseur+admin (PAS le directeur) — ex. Suivi managers, Ventes
+  document.querySelectorAll('.role-superadmin-only').forEach(el=>el.style.display=isSuperOrAdmin?'':'none');
+  // role-mgrspace : l'espace "Ma journée" — visible manager ET directeur
+  document.querySelectorAll('.role-mgrspace').forEach(el=>el.style.display=(isManager||isDirecteur)?'':'none');
 
   // Sélecteur resto dans topbar
   const sw = document.getElementById('resto-switcher');
@@ -4022,7 +4037,6 @@ function applyRoleUI(role) {
   // Initialiser ACTIVE_RESTO selon le rôle (sans render — loadConfig s'en charge)
   if(isMulti) {
     ACTIVE_RESTO = 'ALL';
-    // Activer bouton "Tous" visuellement
     setTimeout(()=>{
       ['BK500','BK509','BK526','ALL'].forEach(id=>{
         const btn=document.getElementById('sw-'+id);
