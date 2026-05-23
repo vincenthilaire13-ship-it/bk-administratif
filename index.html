@@ -1016,7 +1016,14 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       </select>
     </div>
     <button class="hr-btn hr-btn-ac" onclick="generateFromCA()" style="padding:8px 20px;">Générer le planning →</button>
+    <div class="hr-cc">
+      <label>Importer CA réel (PDF ou CSV)</label>
+      <label class="hr-btn" style="cursor:pointer;display:inline-block">📂 Choisir un fichier
+        <input type="file" accept=".pdf,.csv,.txt" style="display:none" onchange="hrImportCSV(this)">
+      </label>
+    </div>
   </div>
+  <div class="hr-ssub" style="margin-top:-6px;font-size:11px">Importe le « Rapport des ventes horaire par quart d'heure » (PDF) : l'appli détecte le restaurant et lit le CA HT par tranche de 15 min, puis recalcule le planning. Un CSV (heure ; montant) fonctionne aussi.</div>
   <div class="hr-ca-grid" id="hrx-ca-grid"></div>
 </div>
 
@@ -6238,7 +6245,165 @@ function renderAll(){renderDays();renderMetrics();renderTimeline();}
 
 window.__hrInit=function(){ if(window.__hrDone)return; window.__hrDone=true; buildCAGrid();renderGrille();renderNP();renderAll(); };
 
+
+// ── IMPORT CA PAR TRANCHE (CSV) ───────────────────────────────────────────────
+function hrImportCSV(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  const nom = file.name.toLowerCase();
+  // PDF → parseur ventes au quart d'heure
+  if(nom.endsWith('.pdf') || file.type==='application/pdf'){
+    const r = new FileReader();
+    r.onload = async function(e){
+      try{
+        const res = await hrParsePDF(e.target.result);
+        if(res.type==='synthese'){
+          alert('Ce PDF est une SYNTHÈSE CA, pas un rapport horaire au quart d\'heure.\nUtilise l\'espace « Ma journée » → Importer la Synthèse CA pour ce document.');
+          return;
+        }
+        if(res.nbTranches===0){
+          alert('Aucune tranche horaire reconnue dans ce PDF.\nVérifie qu\'il s\'agit bien du « Rapport des ventes horaire par quart d\'heure ».');
+          return;
+        }
+        hrApplyParsed(res);
+      }catch(err){ alert('Erreur lecture PDF : '+err.message); console.error(err); }
+    };
+    r.readAsArrayBuffer(file);
+    return;
+  }
+  // CSV / TXT
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const text = e.target.result;
+      const lines = text.split(/\r?\n/).filter(l=>l.trim());
+      const ca = {};
+      let sep = text.indexOf(';')>=0 ? ';' : (text.indexOf('\t')>=0?'\t':',');
+      lines.forEach(line=>{
+        const cols = line.split(sep).map(c=>c.trim());
+        let heure=null, montant=null;
+        cols.forEach(c=>{
+          const hm = c.match(/^(\d{1,2})[:hH](\d{2})$/);
+          if(hm && heure===null){ heure = String(hm[1]).padStart(2,'0')+':'+hm[2]; }
+          else {
+            const num = parseFloat(c.replace(/\s/g,'').replace(',','.'));
+            if(!isNaN(num) && montant===null && c!==cols[0]) montant = num;
+          }
+        });
+        if(heure!==null && montant!==null){
+          const [hh,mm] = heure.split(':').map(Number);
+          const q = Math.floor(mm/15)*15;
+          const key = String(hh).padStart(2,'0')+':'+String(q).padStart(2,'0');
+          ca[key] = (ca[key]||0) + montant;
+        }
+      });
+      const nbTranches = Object.keys(ca).length;
+      if(nbTranches===0){ alert('Aucune tranche horaire reconnue.\nFormat attendu : une ligne par tranche, avec l heure (ex 12:15) et le montant.'); return; }
+      hrApplyParsed({ca, total:Object.values(ca).reduce((a,b)=>a+b,0), nbTranches, resto:null, date:null, type:'horaire'});
+    }catch(err){ alert('Erreur lecture fichier : '+err.message); }
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+// Applique un résultat parsé (CA par tranche) au planning du jour en cours
+function hrApplyParsed(res){
+  ROWS_BY_DAY[editDay] = buildRows(res.ca);
+  DAY_TOTALS[editDay] = Math.round(res.total);
+  CA_DAYS[editDay] = res.ca;
+  curDay = editDay;
+  hrShow('planning'); renderAll();
+  // Message de confirmation avec resto détecté
+  let msg = '✓ '+res.nbTranches+' tranches importées. CA HT total : '+Math.round(res.total).toLocaleString('fr')+' €.';
+  if(res.resto){
+    const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+    msg += '\nRestaurant détecté : '+(noms[res.resto]||res.resto);
+  }
+  if(res.date) msg += '\nDate : '+res.date;
+  msg += '\nPlanning recalculé.';
+  alert(msg);
+}
+window.hrImportCSV=hrImportCSV;
+window.hrApplyParsed=hrApplyParsed;
+
 window.hrShow=hrShow;
+window.generateFromCA=generateFromCA;
+window.loadCADay=loadCADay;
+window.applyGrille=applyGrille;
+window.resetGrille=resetGrille;
+window.switchGrilleMode=switchGrilleMode;
+window.updateCell=updateCell;
+window.updateSeuil=updateSeuil;
+window.updBar=updBar;
+window.addGrilleRow=addGrilleRow;
+window.removeGrilleRow=removeGrilleRow;
+// ── PARSEUR PDF : VENTES PAR QUART D'HEURE (CA HT total/tranche) ──────────────
+// Détecte aussi le restaurant et le type de document.
+function hrDetectResto(txt){
+  const t = txt.toUpperCase();
+  if(t.includes('SAINT CLEMENT')||t.includes('ST CLEMENT')||t.includes('CLEMENT')) return 'BK526';
+  if(t.includes('VEDAS')||t.includes('SAINT JEAN')||t.includes('ST JEAN')) return 'BK509';
+  if(t.includes('ARENES')||t.includes('ARENE')||t.includes('ARÈNES')||t.includes('ARÈNE')) return 'BK500';
+  return null;
+}
+function hrDetectType(txt){
+  const t = txt.toUpperCase();
+  if(t.includes("QUART D'HEURE")||t.includes('QUART D HEURE')||t.includes('VENTES HORAIRE')) return 'horaire';
+  if(t.includes('SYNTHESE')||t.includes('SYNTHÈSE')) return 'synthese';
+  return 'inconnu';
+}
+// Lit les items pdf.js avec coordonnées, renvoie {resto, date, ca:{HH:MM:montant}, total}
+async function hrParsePDF(arrayBuffer){
+  const pdfjsLib = window['pdfjs-dist/build/pdf'];
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+  let allText = '';
+  const items = []; // {str, x, y, page}
+  for(let p=1;p<=pdf.numPages;p++){
+    const page = await pdf.getPage(p);
+    const vp = page.getViewport({scale:1});
+    const tc = await page.getTextContent();
+    tc.items.forEach(it=>{
+      const raw = (it.str||'').trim();
+      const x = it.transform[4];
+      const yTop = vp.height - it.transform[5];
+      allText += ' '+raw;
+      if(!raw) return;
+      // Si l'item contient plusieurs nombres séparés par espace, les éclater
+      // en répartissant la largeur (approximatif mais suffisant pour le tri x)
+      const parts = raw.split(/\s+/);
+      if(parts.length>1){
+        const wItem = (it.width||0);
+        parts.forEach((pt,k)=>{
+          items.push({str:pt, x:x + (wItem*k/parts.length), y:yTop, page:p});
+        });
+      } else {
+        items.push({str:raw, x, y:yTop, page:p});
+      }
+    });
+  }
+  const resto = hrDetectResto(allText);
+  const type = hrDetectType(allText);
+  let date=null;
+  const md = allText.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2})/);
+  if(md) date = '20'+md[3]+'-'+md[2]+'-'+md[1];
+
+  const W = 1080;
+  const ca = {};
+  const heures = items.filter(it=>/^\d{1,2}:\d{2}$/.test(it.str) && it.x<140);
+  // Montant HT total par tranche : décimal n.nn dans la colonne "Total HT" (~90% largeur)
+  const montants = items.filter(it=>/^\d+\.\d{2}$/.test(it.str) && it.x>0.87*W && it.x<0.93*W);
+  heures.forEach(h=>{
+    const cand = montants
+      .filter(m=>m.page===h.page && Math.abs(m.y-h.y)<18)
+      .map(m=>({d:Math.abs(m.y-h.y), v:parseFloat(m.str)}))
+      .sort((a,b)=>a.d-b.d);
+    if(cand.length) ca[h.str] = cand[0].v;
+  });
+  const total = Object.values(ca).reduce((a,b)=>a+b,0);
+  return {resto, type, date, ca, total, nbTranches:Object.keys(ca).length};
+}
+
+window.hrParsePDF=hrParsePDF;
+
 })();
 </script>
 </body>
