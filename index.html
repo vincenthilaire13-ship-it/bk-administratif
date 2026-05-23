@@ -835,7 +835,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
           <div class="mgr-sub">Un seul fichier CSV avec tout l'historique (ex : janvier 2025 → mai 2026). Les chiffres sont lus en HT, instantané, sans IA.</div>
 
           <div style="margin-bottom:14px">
-            <label class="form-label">🏪 Restaurant concerné</label>
+            <label class="form-label">🏪 Restaurant <span style="font-weight:400;color:var(--muted);font-size:10px">(détecté automatiquement — modifiable si besoin)</span></label>
             <select class="form-input" id="csv-resto" style="max-width:300px">
               <option value="BK526">🌿 BK 526 — Saint-Clément-Rivière</option>
               <option value="BK509">🏪 BK 509 — Saint-Jean-de-Védas</option>
@@ -851,7 +851,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
                style="min-height:130px">
             <div class="drop-zone-icon" style="font-size:38px">📄</div>
             <div class="drop-zone-text" style="font-size:14px">Glissez le <span>fichier CSV ici</span></div>
-            <div style="font-size:11px;color:var(--muted);margin-top:6px">Séparateur point-virgule · Colonnes CA_NET_HT · 1 ligne = 1 journée</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">Le restaurant est reconnu automatiquement d'après le nom du fichier</div>
           </div>
           <input type="file" id="csv-file-input" accept=".csv,.txt" style="display:none" onchange="handleCsvFile(this.files[0])">
 
@@ -5149,9 +5149,24 @@ function parseCsvLine(line, sep) {
   return out.map(s=>s.trim());
 }
 
+function detectRestoFromFilename(filename) {
+  const f = (filename||'').toUpperCase();
+  // BK 526 — Saint-Clément
+  if(f.includes('SAINT_CLEMENT') || f.includes('SAINT-CLEMENT') || f.includes('CLEMENT') || f.includes('AVENUE') || f.includes('526')) return 'BK526';
+  // BK 509 — Saint-Jean-de-Védas
+  if(f.includes('SAINT_JEAN') || f.includes('SAINT-JEAN') || f.includes('VEDAS') || f.includes('VÉDAS') || f.includes('509')) return 'BK509';
+  // BK 500 — Arènes (Perpignan)
+  if(f.includes('ARENES') || f.includes('ARÈNES') || f.includes('PRES_D_ARENES') || f.includes('PERPIGNAN') || f.includes('500')) return 'BK500';
+  return null;
+}
+
 async function handleCsvFile(file) {
   if(!file) return;
-  const resto = document.getElementById('csv-resto').value;
+  // Détection automatique du resto via le nom du fichier
+  const detected = detectRestoFromFilename(file.name);
+  const restoSelect = document.getElementById('csv-resto');
+  if(detected && restoSelect) restoSelect.value = detected;
+  const resto = restoSelect.value;
   const status = document.getElementById('csv-status');
   status.style.display = 'block';
   status.style.color = 'var(--muted2)';
@@ -5220,7 +5235,15 @@ async function handleCsvFile(file) {
   status.style.color='var(--green)';
   status.textContent = `✓ ${rows.length} journées lues${skipped?' ('+skipped+' lignes ignorées)':''}`;
 
-  document.getElementById('csv-preview').innerHTML = `
+  const detectBanner = detected
+    ? `<div style="background:rgba(62,207,142,.12);border:1px solid rgba(62,207,142,.3);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--green)">
+         🎯 Restaurant détecté automatiquement : <b>${restoNom}</b> — vérifie que c'est correct avant d'enregistrer.
+       </div>`
+    : `<div style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#fbbf24">
+         ⚠️ Restaurant non détecté depuis le nom du fichier. Vérifie bien le menu déroulant ci-dessus (<b>${restoNom}</b>) avant d'enregistrer.
+       </div>`;
+
+  document.getElementById('csv-preview').innerHTML = detectBanner + `
     <div class="table-card">
       <div class="table-header"><span class="table-title">Aperçu — ${restoNom}</span></div>
       <div style="padding:14px 16px;font-size:12px;color:var(--muted2);line-height:1.8">
