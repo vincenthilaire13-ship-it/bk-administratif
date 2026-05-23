@@ -300,6 +300,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
+    <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires-import')"><span>📥</span><span>Importer horaires</span></div>
     <div class="nav-section role-admin-only" style="display:none">Config</div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
@@ -1004,7 +1005,13 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
   <div class="hr-stitle">CA prévisionnel</div>
   <div class="hr-ssub">CA HT réel par tranche 15min. La base minimum terrain est toujours garantie.</div>
   <div class="hr-ca-ctrl">
-    <div class="hr-cc"><label>Jour</label>
+    <div class="hr-cc"><label>Vue</label>
+      <select id="hrx-vue-sel" onchange="hrSetVue(this.value)">
+        <option value="jour">Jour</option>
+        <option value="semaine">Semaine</option>
+      </select>
+    </div>
+    <div class="hr-cc" id="hrx-jour-wrap"><label>Jour</label>
       <select id="hrx-ca-day-sel" onchange="loadCADay()">
         <option value="0">Lundi 13 avril — 12 870 €</option>
         <option value="1">Mardi 14 avril — 13 884 €</option>
@@ -1015,6 +1022,9 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
         <option value="6">Dimanche 19 avril — 19 592 €</option>
       </select>
     </div>
+    <div class="hr-cc" id="hrx-sem-wrap" style="display:none"><label>Semaine</label>
+      <select id="hrx-sem-sel" onchange="hrGenFromWeek(this.value)"></select>
+    </div>
     <button class="hr-btn hr-btn-ac" onclick="generateFromCA()" style="padding:8px 20px;">Générer le planning →</button>
     <div class="hr-cc">
       <label>Importer CA réel (PDF ou CSV)</label>
@@ -1023,7 +1033,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       </label>
     </div>
   </div>
-  <div class="hr-ssub" style="margin-top:-6px;font-size:11px">Importe le « Rapport des ventes horaire par quart d'heure » (PDF) : l'appli détecte le restaurant et lit le CA HT par tranche de 15 min, puis recalcule le planning. Un CSV (heure ; montant) fonctionne aussi.</div>
+  <div class="hr-ssub" style="margin-top:-6px;font-size:11px">Importe soit le « Rapport ventes horaire par quart d'heure » d'un jour (PDF), soit l'export CSV multi-jours (colonnes DATEFISCALE / HEURE / MONTANTHT_TOTAL) : l'appli charge tous les jours et tu choisis la date dans la liste. Le restaurant est détecté automatiquement.</div>
   <div class="hr-ca-grid" id="hrx-ca-grid"></div>
 </div>
 
@@ -1057,6 +1067,39 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 </div>
     </section>
 
+    <!-- IMPORTER HORAIRES (glisser-déposer) -->
+    <section class="section" id="sec-horaires-import">
+      <div style="max-width:760px">
+        <div class="table-card" style="margin-bottom:16px">
+          <div class="table-header"><span class="table-title">📥 Importer les ventes par quart d'heure</span></div>
+          <div style="padding:16px">
+            <p style="font-size:13px;color:var(--muted2);margin-bottom:16px;line-height:1.6">
+              Glisse ici tes fichiers de <strong>ventes par quart d'heure</strong> (CSV de période, ou PDF d'un jour).
+              Le restaurant est reconnu automatiquement à partir du fichier. Pour Près des Arènes (2 fichiers),
+              dépose-les l'un après l'autre, ils se cumulent.
+            </p>
+            <div id="hr-drop" 
+              style="border:2px dashed var(--border);border-radius:14px;padding:42px 20px;text-align:center;cursor:pointer;transition:all .15s;background:rgba(255,255,255,.02)"
+              onclick="document.getElementById('hr-drop-input').click()">
+              <div style="font-size:42px;margin-bottom:10px">📂</div>
+              <div style="font-size:15px;font-weight:600;margin-bottom:4px">Glisse tes fichiers ici</div>
+              <div style="font-size:12px;color:var(--muted)">ou clique pour choisir — CSV ou PDF, plusieurs fichiers possibles</div>
+              <input type="file" id="hr-drop-input" accept=".csv,.txt,.pdf" multiple style="display:none" onchange="hrDropFiles(this.files)">
+            </div>
+            <div id="hr-drop-log" style="margin-top:16px"></div>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-header"><span class="table-title">Données chargées</span></div>
+          <div id="hr-loaded-state" style="padding:16px;font-size:13px;color:var(--muted2)">Aucun fichier importé pour le moment.</div>
+        </div>
+
+        <div style="margin-top:16px;text-align:center">
+          <button class="btn btn-accent" onclick="nav('horaires')" style="padding:10px 24px">→ Aller au planning</button>
+        </div>
+      </div>
+    </section>
 
         <!-- GESTION ACCÈS -->
     <section class="section" id="sec-acces">
@@ -2767,7 +2810,7 @@ const SEED_BK500_2026 = [
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','import-masse':'Import massif (Admin)'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)'};
 function nav(id) {
   const targetSec = document.getElementById('sec-'+id);
   if(!targetSec) { console.warn("nav: section sec-"+id+" introuvable"); return; }
@@ -2794,6 +2837,7 @@ function nav(id) {
   }
   if(id==='annulations'){renderAnnulationsHistorique();populateAnnManagerSelect();}
   if(id==='horaires'){ if(window.__hrInit) try{window.__hrInit();}catch(e){console.warn('init horaires',e);} }
+  if(id==='horaires-import'){ if(window.hrInitDropZone) try{window.hrInitDropZone();window.hrRefreshLoadedState&&window.hrRefreshLoadedState();}catch(e){console.warn('init import',e);} }
 }
 
 // ══ INIT & LOAD ══
@@ -6247,6 +6291,219 @@ window.__hrInit=function(){ if(window.__hrDone)return; window.__hrDone=true; bui
 
 
 // ── IMPORT CA PAR TRANCHE (CSV) ───────────────────────────────────────────────
+// Stockage des courbes horaires par restaurant :
+//   HR_ALL = { 'BK526': {'YYYY-MM-DD': {'HH:MM':montantHT}}, 'BK500': {...}, ... }
+// HR_DATA = vue du restaurant actuellement affiché.
+var HR_ALL = window.HR_ALL || {};
+var HR_DATA = window.HR_DATA || {};
+var HR_RESTO = null;
+
+// Charge un CSV au format DATEFISCALE;HEURE;...;MONTANTHT_TOTAL;...
+// FUSIONNE avec les données déjà chargées pour le même restaurant (utile pour
+// Près des Arènes qui arrive en deux fichiers).
+function hrLoadCSVmulti(text, resto){
+  const lines = text.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length) return 0;
+  const header = lines[0].split(';').map(h=>h.trim().toUpperCase());
+  const iDate = header.indexOf('DATEFISCALE');
+  const iHeure = header.indexOf('HEURE');
+  const iTot = header.indexOf('MONTANTHT_TOTAL');
+  if(iDate<0||iHeure<0||iTot<0) return 0;
+  const key = resto || 'INCONNU';
+  if(!HR_ALL[key]) HR_ALL[key] = {};
+  const data = HR_ALL[key]; // on ajoute aux données existantes de ce resto
+  for(let i=1;i<lines.length;i++){
+    const c = lines[i].split(';');
+    if(c.length<=iTot) continue;
+    const date = (c[iDate]||'').trim();
+    const heure = (c[iHeure]||'').trim();
+    const montant = parseFloat((c[iTot]||'0').replace(/\s/g,'').replace(',','.'))||0;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{1,2}:\d{2}$/.test(heure)) continue;
+    const [hh,mm] = heure.split(':').map(Number);
+    const q = String(hh).padStart(2,'0')+':'+String(Math.floor(mm/15)*15).padStart(2,'0');
+    if(!data[date]) data[date] = {};
+    data[date][q] = montant; // dernière valeur fait foi (réimport = mise à jour)
+  }
+  HR_DATA = data;          // vue active = ce resto
+  HR_RESTO = key;
+  window.HR_DATA = data;
+  window.HR_ALL = HR_ALL;
+  return Object.keys(data).length;
+}
+
+// Remplit le sélecteur de jour avec les dates importées + génère le dernier jour
+function hrFillDaySelect(){
+  const sel = document.getElementById('hrx-ca-day-sel');
+  if(!sel) return;
+  const dates = Object.keys(HR_DATA).sort();
+  if(!dates.length) return;
+  const fdate = d => { const jours=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']; const mois=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.']; const [y,m,j]=d.split('-'); const dt=new Date(d); return jours[dt.getDay()]+' '+parseInt(j)+' '+mois[parseInt(m)-1]+' '+y; };
+  sel.innerHTML = dates.map(d=>{
+    const tot = Math.round(Object.values(HR_DATA[d]).reduce((a,b)=>a+b,0));
+    return `<option value="${d}">${fdate(d)} — ${tot.toLocaleString('fr')} €</option>`;
+  }).join('');
+  sel.setAttribute('onchange','hrGenFromDate(this.value)');
+  const last = dates[dates.length-1];
+  sel.value = last;
+  hrGenFromDate(last);
+}
+
+// Génère le planning depuis une date importée
+function hrGenFromDate(date){
+  if(!HR_DATA[date]) return;
+  const ca = HR_DATA[date];
+  const total = Object.values(ca).reduce((a,b)=>a+b,0);
+  editDay = 0;
+  CA_DAYS[0] = ca;
+  ROWS_BY_DAY[0] = buildRows(ca);
+  DAY_TOTALS[0] = Math.round(total);
+  DAY_LABELS[0] = date;
+  curDay = 0;
+  buildCAGrid();
+  hrShow('planning');
+  renderAll();
+}
+window.hrGenFromDate = hrGenFromDate;
+
+// ── MODE SEMAINE ──────────────────────────────────────────────────────────────
+// Numéro de semaine ISO d'une date 'YYYY-MM-DD'
+function hrIsoWeek(s){
+  const dt=new Date(s); const day=(dt.getDay()+6)%7;
+  dt.setDate(dt.getDate()-day+3);
+  const firstThu=new Date(dt.getFullYear(),0,4);
+  return 1+Math.round(((dt-firstThu)/86400000-3+((firstThu.getDay()+6)%7))/7);
+}
+// Lundi (YYYY-MM-DD) de la semaine contenant la date
+function hrMonday(s){
+  const dt=new Date(s); const day=(dt.getDay()+6)%7;
+  dt.setDate(dt.getDate()-day);
+  return dt.toISOString().slice(0,10);
+}
+function hrSetVue(v){
+  document.getElementById('hrx-jour-wrap').style.display = v==='jour'?'':'none';
+  document.getElementById('hrx-sem-wrap').style.display  = v==='semaine'?'':'none';
+  if(v==='semaine'){
+    hrFillWeekSelect();
+  } else {
+    // revenir au jour sélectionné
+    const sel=document.getElementById('hrx-ca-day-sel');
+    if(sel && sel.value && HR_DATA[sel.value]) hrGenFromDate(sel.value);
+  }
+}
+window.hrSetVue=hrSetVue;
+
+// Remplit la liste des semaines à partir des dates importées
+function hrFillWeekSelect(){
+  const sel=document.getElementById('hrx-sem-sel');
+  if(!sel) return;
+  const dates=Object.keys(HR_DATA).sort();
+  if(!dates.length){ sel.innerHTML='<option>— importez d\'abord un CSV —</option>'; return; }
+  // Regrouper par lundi de semaine
+  const semaines={};
+  dates.forEach(d=>{ const lun=hrMonday(d); if(!semaines[lun]) semaines[lun]=[]; semaines[lun].push(d); });
+  const luns=Object.keys(semaines).sort();
+  const moisC=['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
+  const lbl=d=>{const [y,m,j]=d.split('-');return parseInt(j)+' '+moisC[parseInt(m)-1];};
+  sel.innerHTML=luns.map(lun=>{
+    const js=semaines[lun]; const dim=js[js.length-1];
+    const tot=Math.round(js.reduce((a,d)=>a+Object.values(HR_DATA[d]).reduce((x,y)=>x+y,0),0));
+    return `<option value="${lun}">Sem. ${hrIsoWeek(lun)} · ${lbl(lun)} → ${lbl(dim)} — ${tot.toLocaleString('fr')} €</option>`;
+  }).join('');
+  const lastLun=luns[luns.length-1];
+  sel.value=lastLun;
+  hrGenFromWeek(lastLun);
+}
+window.hrFillWeekSelect=hrFillWeekSelect;
+
+// Génère le planning de toute une semaine (lundi → dimanche)
+function hrGenFromWeek(lundi){
+  const jours=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const base=new Date(lundi);
+  for(let i=0;i<7;i++){
+    const dt=new Date(base); dt.setDate(base.getDate()+i);
+    const iso=dt.toISOString().slice(0,10);
+    const ca=HR_DATA[iso]||{};
+    CA_DAYS[i]=ca;
+    ROWS_BY_DAY[i]=buildRows(ca);
+    DAY_TOTALS[i]=Math.round(Object.values(ca).reduce((a,b)=>a+b,0));
+    DAY_LABELS[i]=jours[i]+' '+iso.slice(8,10)+'/'+iso.slice(5,7);
+  }
+  curDay=0; editDay=0;
+  buildCAGrid(); hrShow('planning'); renderAll();
+}
+window.hrGenFromWeek=hrGenFromWeek;
+
+// ── IMPORT MULTI-FICHIERS (glisser-déposer) ──────────────────────────────────
+function hrLog(html){
+  const el=document.getElementById('hr-drop-log');
+  if(el) el.innerHTML = html + el.innerHTML;
+}
+function hrRefreshLoadedState(){
+  const el=document.getElementById('hr-loaded-state');
+  if(!el) return;
+  const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément',INCONNU:'Restaurant non identifié'};
+  const keys=Object.keys(HR_ALL);
+  if(!keys.length){ el.innerHTML='Aucun fichier importé pour le moment.'; return; }
+  el.innerHTML = keys.map(k=>{
+    const dates=Object.keys(HR_ALL[k]).sort();
+    if(!dates.length) return '';
+    return `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="font-weight:600">${noms[k]||k}</span>
+      <span style="color:var(--muted)">${dates.length} jours · ${dates[0]} → ${dates[dates.length-1]}</span>
+    </div>`;
+  }).join('');
+}
+async function hrDropFiles(fileList){
+  const files=Array.from(fileList||[]);
+  if(!files.length) return;
+  for(const file of files){
+    const nom=file.name.toLowerCase();
+    try{
+      if(nom.endsWith('.pdf')){
+        const ab=await file.arrayBuffer();
+        const res=await hrParsePDF(ab);
+        if(res.type==='synthese'){ hrLog(`<div style="color:var(--orange,#fbbf24);font-size:12px;margin-bottom:6px">⚠ ${file.name} : c'est une synthèse CA, pas un rapport horaire. Ignoré.</div>`); continue; }
+        if(res.nbTranches===0){ hrLog(`<div style="color:#f87171;font-size:12px;margin-bottom:6px">✗ ${file.name} : aucune tranche lue.</div>`); continue; }
+        // Ranger ce jour dans HR_ALL du resto détecté
+        const key=res.resto||'INCONNU';
+        if(!HR_ALL[key]) HR_ALL[key]={};
+        if(res.date){ HR_ALL[key][res.date]=res.ca; }
+        window.HR_ALL=HR_ALL;
+        const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+        hrLog(`<div style="color:#3ecf8e;font-size:12px;margin-bottom:6px">✓ ${file.name} — ${noms[key]||key}, jour ${res.date||'?'}, ${Math.round(res.total).toLocaleString('fr')} €</div>`);
+      } else {
+        const text=await file.text();
+        if(/DATEFISCALE/i.test(text) && /MONTANTHT_TOTAL/i.test(text)){
+          const resto=hrDetectResto(file.name)||hrDetectResto(text);
+          const n=hrLoadCSVmulti(text,resto);
+          const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+          hrLog(`<div style="color:#3ecf8e;font-size:12px;margin-bottom:6px">✓ ${file.name} — ${noms[resto]||resto||'resto ?'}, ${n} jours chargés (cumul)</div>`);
+        } else {
+          hrLog(`<div style="color:#f87171;font-size:12px;margin-bottom:6px">✗ ${file.name} : format CSV non reconnu (colonnes DATEFISCALE / MONTANTHT_TOTAL attendues).</div>`);
+        }
+      }
+    }catch(err){ hrLog(`<div style="color:#f87171;font-size:12px;margin-bottom:6px">✗ ${file.name} : ${err.message}</div>`); }
+  }
+  // Mettre à jour les sélecteurs avec le dernier resto chargé
+  if(HR_RESTO && HR_ALL[HR_RESTO]){ HR_DATA=HR_ALL[HR_RESTO]; window.HR_DATA=HR_DATA; }
+  hrFillDaySelect(); hrFillWeekSelect();
+  hrRefreshLoadedState();
+}
+window.hrDropFiles=hrDropFiles;
+window.hrRefreshLoadedState=hrRefreshLoadedState;
+
+// Activer le glisser-déposer sur la zone (une fois le DOM prêt)
+function hrInitDropZone(){
+  const z=document.getElementById('hr-drop');
+  if(!z || z.__init) return; z.__init=true;
+  ['dragenter','dragover'].forEach(ev=>z.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();z.style.borderColor='var(--accent)';z.style.background='rgba(245,166,35,.06)';}));
+  ['dragleave','drop'].forEach(ev=>z.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();z.style.borderColor='var(--border)';z.style.background='rgba(255,255,255,.02)';}));
+  z.addEventListener('drop',e=>{ if(e.dataTransfer&&e.dataTransfer.files) hrDropFiles(e.dataTransfer.files); });
+}
+window.hrInitDropZone=hrInitDropZone;
+
+
+
 function hrImportCSV(input){
   const file = input.files && input.files[0];
   if(!file) return;
@@ -6276,6 +6533,22 @@ function hrImportCSV(input){
   reader.onload = function(e){
     try{
       const text = e.target.result;
+      // Format multi-jours (export ventes par quart d'heure sur une période) ?
+      if(/DATEFISCALE/i.test(text) && /MONTANTHT_TOTAL/i.test(text)){
+        const resto = hrDetectResto(file.name) || hrDetectResto(text);
+        const nbJours = hrLoadCSVmulti(text, resto);
+        if(nbJours===0){ alert('Format multi-jours détecté mais lecture impossible. Vérifie les colonnes DATEFISCALE / HEURE / MONTANTHT_TOTAL.'); return; }
+        hrFillDaySelect();
+        hrFillWeekSelect();
+        const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+        const dates = Object.keys(HR_DATA).sort();
+        alert('✓ '+nbJours+' jours de courbes horaires chargés'
+          + (resto?('\nRestaurant : '+(noms[resto]||resto)):'')
+          + '\nPériode : '+dates[0]+' → '+dates[dates.length-1]
+          + '\n\nChoisis une date dans la liste « Jour » pour générer son planning.');
+        hrShow('ca');
+        return;
+      }
       const lines = text.split(/\r?\n/).filter(l=>l.trim());
       const ca = {};
       let sep = text.indexOf(';')>=0 ? ';' : (text.indexOf('\t')>=0?'\t':',');
