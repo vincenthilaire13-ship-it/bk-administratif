@@ -2889,46 +2889,88 @@ function renderDashboard() {
     return;
   }
   const last = DATA[DATA.length-1];
-  const totCA = DATA.reduce((a,b)=>a+caHT(b),0);
-  const totCA25 = DATA.reduce((a,b)=>a+caHT_n1(b),0);
-  const totT = DATA.reduce((a,b)=>a+(b.tickets_nb||0),0);
-  const totT25 = DATA.reduce((a,b)=>a+(b.tickets_n1||0),0);
-  const dD = DATA.filter(d=>d.drive_voitures);
-  const avgDr = dD.length ? Math.round(dD.reduce((a,b)=>a+b.drive_voitures,0)/dD.length) : 0;
-  const cD = DATA.filter(d=>d.corrections_pct);
-  const avgCorr = cD.length ? (cD.reduce((a,b)=>a+b.corrections_pct,0)/cD.length).toFixed(1) : 0;
-  const rD = DATA.filter(d=>d.remises_pct);
-  const avgRem = rD.length ? (rD.reduce((a,b)=>a+b.remises_pct,0)/rD.length).toFixed(1) : 0;
-  const avgTM = totT ? (totCA/totT).toFixed(2) : 0;
-  const ecN1 = totCA25 ? ((totCA-totCA25)/totCA25*100).toFixed(1) : null;
-  // Valeurs 2025 pour affichage sous les KPIs
-  const avgDr25 = DATA25.filter(d=>d.drive_voitures).length ?
-    Math.round(DATA25.filter(d=>d.drive_voitures).reduce((a,b)=>a+b.drive_voitures,0)/DATA25.filter(d=>d.drive_voitures).length) : null;
-  const avgCorr25 = DATA25.filter(d=>d.corrections_pct).length ?
-    (DATA25.filter(d=>d.corrections_pct).reduce((a,b)=>a+b.corrections_pct,0)/DATA25.filter(d=>d.corrections_pct).length).toFixed(1) : null;
-  const avgRem25 = DATA25.filter(d=>d.remises_pct).length ?
-    (DATA25.filter(d=>d.remises_pct).reduce((a,b)=>a+b.remises_pct,0)/DATA25.filter(d=>d.remises_pct).length).toFixed(1) : null;
-  const avgTM25 = totT25 && totCA25 ? (totCA25/totT25).toFixed(2) : null;
-  const ecT = totT25 ? ((totT-totT25)/totT25*100).toFixed(1) : null;
+
+  // ── Période 2026 réellement couverte (du 1er jour au dernier jour enregistré) ──
+  const dates26 = DATA.map(d=>d.date).sort();
+  const firstDate = dates26[0];
+  const lastDate  = dates26[dates26.length-1];
+  const lastMMDD  = lastDate.slice(5); // borne "même période" pour 2025
+
+  // ── 2025 comparé sur la MÊME période (jusqu'au même jour/mois) ──
+  const DATA25_periode = DATA25.filter(d => d.date.slice(5) <= lastMMDD);
+
+  // ── Sommes / moyennes 2026 ──
+  const totCA   = DATA.reduce((a,b)=>a+caHT(b),0);
+  const totT    = DATA.reduce((a,b)=>a+(b.tickets_nb||0),0);
+  const avgTM   = totT ? (totCA/totT) : 0;
+  const dD      = DATA.filter(d=>d.drive_voitures);
+  const totDr   = dD.reduce((a,b)=>a+b.drive_voitures,0);
+  const avgDr   = dD.length ? Math.round(totDr/dD.length) : 0;
+  const totCorr = DATA.reduce((a,b)=>a+(b.corrections_montant||0),0);
+  const rD      = DATA.filter(d=>d.remises_pct);
+  const avgRem  = rD.length ? (rD.reduce((a,b)=>a+b.remises_pct,0)/rD.length) : 0;
+
+  // ── Sommes / moyennes 2025 (même période) — vraies données 2025 ──
+  const totCA25   = DATA25_periode.reduce((a,b)=>a+caHT(b),0);
+  const totT25    = DATA25_periode.reduce((a,b)=>a+(b.tickets_nb||0),0);
+  const avgTM25   = totT25 ? (totCA25/totT25) : 0;
+  const dD25      = DATA25_periode.filter(d=>d.drive_voitures);
+  const totDr25   = dD25.reduce((a,b)=>a+b.drive_voitures,0);
+  const avgDr25   = dD25.length ? Math.round(totDr25/dD25.length) : 0;
+  const totCorr25 = DATA25_periode.reduce((a,b)=>a+(b.corrections_montant||0),0);
+  const rD25      = DATA25_periode.filter(d=>d.remises_pct);
+  const avgRem25  = rD25.length ? (rD25.reduce((a,b)=>a+b.remises_pct,0)/rD25.length) : 0;
+
+  // ── % d'écart (helper) ──
+  const ec = (a,b) => (b && b!==0) ? ((a-b)/b*100) : null;
+  const ecCA   = ec(totCA,totCA25);
+  const ecTM   = ec(avgTM,avgTM25);
+  const ecT    = ec(totT,totT25);
+  const ecDr   = ec(totDr,totDr25);
+  const ecCorr = ec(totCorr,totCorr25);
+  const ecRem  = ec(avgRem,avgRem25);
+  const ecTxt  = v => v===null ? '' : (v>0?'+':'')+v.toFixed(1)+'% vs 2025';
+
+  // ── Contrôle : CA 2026 ne doit JAMAIS être identique à 2025 ──
+  const caIdentique = totCA25>0 && Math.abs(totCA-totCA25)<1;
+
+  // ── Détection des jours manquants dans la période 2026 ──
+  const setDates = new Set(dates26);
+  const manquants = [];
+  let cur = new Date(firstDate), fin = new Date(lastDate);
+  while(cur <= fin) {
+    const iso = cur.toISOString().slice(0,10);
+    if(!setDates.has(iso)) manquants.push(iso);
+    cur.setDate(cur.getDate()+1);
+  }
 
   const kpis = [
-    {l:'CA HT cumulé',v:fmt(totCA)+' €',n1:totCA25?fmt(totCA25)+' €':null,d:ecN1?(ecN1>0?'+':'')+ecN1+'% vs 2025':DATA.length+' jours',cls:ecN1===null?'neutral':ecN1>0?'ok':ecN1>-5?'warn':'bad',up:!ecN1||ecN1>0},
-    {l:'Ticket moyen HT',v:avgTM+' €',n1:avgTM25?avgTM25+' €':null,d:'objectif ≥'+SEUILS.ticket_min+' €',cls:parseFloat(avgTM)>=SEUILS.ticket_min?'ok':'warn',up:true},
-    {l:'Tickets / jour',v:Math.round(totT/DATA.length),n1:totT25&&DATA25.length?Math.round(totT25/DATA25.length)+' tickets/j':null,d:ecT?(ecT>0?'+':'')+ecT+'% vs 2025':'',cls:ecT&&parseFloat(ecT)<-5?'warn':'ok',up:!ecT||parseFloat(ecT)>0},
-    {l:'Drive moy/jour',v:avgDr+' voitures',n1:avgDr25?avgDr25+' voitures':null,d:avgDr>=SEUILS.drive_min?'✓ Objectif atteint':'⚠ Sous seuil '+SEUILS.drive_min,cls:avgDr>=SEUILS.drive_min?'ok':'warn',up:avgDr>=SEUILS.drive_min},
-    {l:'Corrections moy',v:avgCorr+'%',n1:avgCorr25?avgCorr25+'%':null,d:(parseFloat(avgCorr)<=SEUILS.corrections_max?'✓ ':parseFloat(avgCorr)<=SEUILS.corrections_rouge?'⚠ ':'🚨 ')+'seuil '+SEUILS.corrections_max+'%',cls:parseFloat(avgCorr)<=SEUILS.corrections_max?'ok':parseFloat(avgCorr)<=SEUILS.corrections_rouge?'warn':'bad',up:false},
-    {l:'Remises moy',v:avgRem+'%',n1:avgRem25?avgRem25+'%':null,d:(parseFloat(avgRem)<=SEUILS.remises_max?'✓ Sous seuil':'⚠ Dépasse '+SEUILS.remises_max+'%'),cls:parseFloat(avgRem)<=SEUILS.remises_max?'ok':'warn',up:false},
+    {l:'CA HT cumulé',v:fmt(totCA)+' €',n1:totCA25?fmt(totCA25)+' €':null,d:ecTxt(ecCA),cls:ecCA===null?'neutral':ecCA>0?'ok':ecCA>-5?'warn':'bad',up:ecCA===null||ecCA>0},
+    {l:'Ticket moyen HT',v:avgTM.toFixed(2)+' €',n1:avgTM25?avgTM25.toFixed(2)+' €':null,d:ecTxt(ecTM),cls:ecTM===null?'neutral':ecTM>0?'ok':'warn',up:ecTM===null||ecTM>0},
+    {l:'Tickets clients',v:totT.toLocaleString('fr-FR'),n1:totT25?totT25.toLocaleString('fr-FR'):null,d:ecTxt(ecT),cls:ecT===null?'neutral':ecT>-5?'ok':'warn',up:ecT===null||ecT>0},
+    {l:'Voitures drive',v:totDr.toLocaleString('fr-FR'),n1:totDr25?totDr25.toLocaleString('fr-FR'):null,d:ecTxt(ecDr),cls:ecDr===null?'neutral':ecDr>0?'ok':'warn',up:ecDr===null||ecDr>0},
+    {l:'Corrections €',v:fmt(totCorr)+' €',n1:totCorr25?fmt(totCorr25)+' €':null,d:ecTxt(ecCorr),cls:ecCorr===null?'neutral':ecCorr<=0?'ok':'warn',up:ecCorr!==null&&ecCorr<=0},
+    {l:'Remises moy',v:avgRem.toFixed(1)+'%',n1:avgRem25?avgRem25.toFixed(1)+'%':null,d:ecTxt(ecRem),cls:ecRem===null?'neutral':ecRem<=0?'ok':'warn',up:ecRem!==null&&ecRem<=0},
     {l:'Dernière journée',v:formatDate(last.date),n1:null,d:fmt(caHT(last))+' € HT',cls:'neutral',up:true},
-    {l:'Journées enreg.',v:DATA.length,n1:DATA25.length?DATA25.length+' en 2025':null,d:'dans la base',cls:'neutral',up:true},
+    {l:'Journées enreg.',v:DATA.length+' jours',n1:'jusqu\'au '+formatDate(lastDate),d:DATA25.length?DATA25.length+' jours en 2025':'',cls:'neutral',up:true},
   ];
 
-  document.getElementById('dash-kpis').innerHTML = kpis.map(k=>`
+  // ── Bandeau d'alertes ──
+  let alertesHtml = '';
+  if(caIdentique) {
+    alertesHtml += `<div style="background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.4);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#f87171">🚨 Anomalie : le CA 2026 est identique au CA 2025. Vérifiez les données.</div>`;
+  }
+  if(manquants.length) {
+    const apercu = manquants.slice(0,8).map(formatDate).join(', ');
+    alertesHtml += `<div style="background:rgba(251,191,36,.13);border:1px solid rgba(251,191,36,.35);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#fbbf24">⚠ ${manquants.length} jour(s) manquant(s) en 2026 : ${apercu}${manquants.length>8?' …':''}</div>`;
+  }
+  document.getElementById('dash-kpis').innerHTML = alertesHtml + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;grid-column:1/-1">` + kpis.map(k=>`
     <div class="kpi ${k.cls}">
       <div class="kpi-label">${k.l} <span style="font-size:8px;color:var(--muted);font-weight:400;text-transform:uppercase;letter-spacing:.08em">2026</span></div>
       <div class="kpi-val">${k.v}</div>
       ${k.n1?`<div style="font-size:10px;color:var(--muted2);margin-top:2px">2025 : ${k.n1}</div>`:''}
       ${k.d?`<div class="kpi-delta ${k.up?'up':'down'}">${k.d}</div>`:''}
-    </div>`).join('');
+    </div>`).join('') + `</div>`;
 
   renderCharts();
   renderCanaux();
