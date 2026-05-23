@@ -3405,19 +3405,25 @@ function loadHistorique() {
         <tr>
           <th rowspan="2">Date</th>
           <th rowspan="2">Jour</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">CA HT</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Drive (voitures)</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Livraison HT</th>
-          <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border)">Corrections €</th>
-          <th colspan="2" style="text-align:center;border-bottom:1px solid var(--border)">Remises %</th>
+          ${colCA?`<th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">CA HT</th>`:''}
+          ${colDrive?`<th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Drive (voitures)</th>`:''}
+          ${colLv?`<th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Livraison HT</th>`:''}
+          ${colCorr?`<th colspan="2" style="text-align:center;border-bottom:1px solid var(--border)">Corrections €</th>`:''}
+          ${colRem?`<th colspan="2" style="text-align:center;border-bottom:1px solid var(--border)">Remises %</th>`:''}
+          ${colAnnul?`<th colspan="2" style="text-align:center;border-bottom:1px solid var(--border)">Annulations</th>`:''}
+          ${colCO?`<th colspan="2" style="text-align:center;border-bottom:1px solid var(--border)">Cmd ouvertes</th>`:''}
+          ${colEmp?`<th colspan="2" style="text-align:center;border-bottom:1px solid var(--border)">Repas emp.</th>`:''}
           <th rowspan="2">Statut</th>
         </tr>
         <tr>
-          <th class="num">${yr}</th><th class="num" style="color:var(--muted)">${yrN1}</th><th class="num">Δ</th>
-          <th class="num">${yr}</th><th class="num" style="color:var(--muted)">${yrN1}</th><th class="num">Δ</th>
-          <th class="num">${yr}</th><th class="num" style="color:var(--muted)">${yrN1}</th><th class="num">Δ</th>
-          <th class="num">${yr}%</th><th class="num" style="color:var(--muted)">${yrN1}%</th>
-          <th class="num">${yr}%</th><th class="num" style="color:var(--muted)">${yrN1}%</th>
+          ${colCA?`<th class="num">${yr}</th><th class="num" style="color:var(--muted)">${yrN1}</th><th class="num">Δ</th>`:''}
+          ${colDrive?`<th class="num">${yr}</th><th class="num" style="color:var(--muted)">${yrN1}</th><th class="num">Δ</th>`:''}
+          ${colLv?`<th class="num">${yr}</th><th class="num" style="color:var(--muted)">${yrN1}</th><th class="num">Δ</th>`:''}
+          ${colCorr?`<th class="num">${yr}</th><th class="num" style="color:var(--muted)">${yrN1}</th>`:''}
+          ${colRem?`<th class="num">${yr}%</th><th class="num" style="color:var(--muted)">${yrN1}%</th>`:''}
+          ${colAnnul?`<th class="num">Nb</th><th class="num">€</th>`:''}
+          ${colCO?`<th class="num">Nb</th><th class="num">€</th>`:''}
+          ${colEmp?`<th class="num">${yr}%</th><th class="num">€</th>`:''}
         </tr>
       </thead>
       <tbody>
@@ -3439,38 +3445,50 @@ function loadHistorique() {
           return `<tr style="cursor:pointer" onclick="nav('journee');setTimeout(()=>{document.getElementById('select-journee').value='${d.date}';loadJournee()},100)">
             <td style="color:var(--accent)">${formatDate(d.date)}</td>
             <td style="color:var(--muted2)">${jourSemaine(d.date)}</td>
-            <td class="num" style="font-weight:500">${fmt(dCa)} €</td>
+            ${colCA?`<td class="num" style="font-weight:500">${fmt(dCa)} €</td>
             <td class="num" style="color:var(--muted)">${n1Ca?fmt(n1Ca)+' €':'—'}</td>
-            <td class="num">${ecCA2!==null?chipEc(ecCA2):'—'}</td>
-            <td class="num">${dDr!=null?dDr+' voit.':'—'}</td>
+            <td class="num">${ecCA2!==null?chipEc(ecCA2):'—'}</td>`:''}
+            ${colDrive?`<td class="num">${dDr!=null?dDr+' voit.':'—'}</td>
             <td class="num" style="color:var(--muted)">${n1Dr!=null?n1Dr+' voit.':'—'}</td>
-            <td class="num">${ecDr!==null?chipEc(ecDr):'—'}</td>
-            <td class="num">${dLv?fmt(dLv)+' €':'—'}</td>
+            <td class="num">${ecDr!==null?chipEc(ecDr):'—'}</td>`:''}
+            ${colLv?`<td class="num">${dLv?fmt(dLv)+' €':'—'}</td>
             <td class="num" style="color:var(--muted)">${n1Lv?fmt(n1Lv)+' €':'—'}</td>
-            <td class="num">${ecLv!==null?chipEc(ecLv):'—'}</td>
-            <td class="num">${d.corrections_montant!=null?chipS(d.corrections_pct,SEUILS.corrections_max,SEUILS.corrections_rouge,'l')+' '+fmt(d.corrections_montant)+' €':'—'}</td>
-            <td class="num" style="color:var(--muted)">${n1?.corrections_montant!=null?fmt(n1.corrections_montant)+' €':'—'}</td>
-            <td class="num">${d.remises_pct?chipS(d.remises_pct,SEUILS.remises_max,SEUILS.remises_rouge,'l')+' '+d.remises_pct+'%':'—'}</td>
-            <td class="num" style="color:var(--muted)">${n1?.remises_pct?n1.remises_pct+'%':'—'}</td>
+            <td class="num">${ecLv!==null?chipEc(ecLv):'—'}</td>`:''}
+            ${colCorr?`<td class="num">${d.corrections_montant!=null?chipS(d.corrections_pct,SEUILS.corrections_max,SEUILS.corrections_rouge,'l')+' '+fmt(d.corrections_montant)+' €':'—'}</td>
+            <td class="num" style="color:var(--muted)">${n1?.corrections_montant!=null?fmt(n1.corrections_montant)+' €':'—'}</td>`:''}
+            ${colRem?`<td class="num">${d.remises_pct?chipS(d.remises_pct,SEUILS.remises_max,SEUILS.remises_rouge,'l')+' '+d.remises_pct+'%':'—'}</td>
+            <td class="num" style="color:var(--muted)">${n1?.remises_pct?n1.remises_pct+'%':'—'}</td>`:''}
+            ${colAnnul?`<td class="num">${d.annulations_nb!=null?d.annulations_nb:'—'}</td>
+            <td class="num">${d.annulations_montant!=null?fmt(d.annulations_montant)+' €':'—'}</td>`:''}
+            ${colCO?`<td class="num">${d.commandes_ouvertes_nb!=null?d.commandes_ouvertes_nb:'—'}</td>
+            <td class="num">${d.commandes_ouvertes_montant!=null?fmt(d.commandes_ouvertes_montant)+' €':'—'}</td>`:''}
+            ${colEmp?`<td class="num">${d.repas_employes_pct!=null?d.repas_employes_pct+'%':'—'}</td>
+            <td class="num">${d.repas_employes_montant!=null?fmt(d.repas_employes_montant)+' €':'—'}</td>`:''}
             <td>${bad?'🚨':ok?'✅':'⚠️'}</td>
           </tr>`;
         }).join('')}
         <!-- Ligne totaux -->
         <tr class="total-row">
           <td colspan="2" style="font-weight:600">TOTAL / MOY.</td>
-          <td class="num">${fmt(totCA)} €</td>
+          ${colCA?`<td class="num">${fmt(totCA)} €</td>
           <td class="num" style="color:var(--muted)">${totCA_n1?fmt(totCA_n1)+' €':'—'}</td>
-          <td class="num">${ecCA!==null?chipEc(ecCA):'—'}</td>
-          <td class="num">${totDr.toLocaleString('fr-FR')} voit.</td>
+          <td class="num">${ecCA!==null?chipEc(ecCA):'—'}</td>`:''}
+          ${colDrive?`<td class="num">${totDr.toLocaleString('fr-FR')} voit.</td>
           <td class="num" style="color:var(--muted)">${totDr_n1?totDr_n1.toLocaleString('fr-FR')+' voit.':'—'}</td>
-          <td class="num">${totDr_n1?chipEc((totDr/fd.length-totDr_n1/fdN1.length)/(totDr_n1/fdN1.length)*100):'—'}</td>
-          <td class="num">${fmt(totLv)} €</td>
+          <td class="num">${totDr_n1?chipEc((totDr/fd.length-totDr_n1/fdN1.length)/(totDr_n1/fdN1.length)*100):'—'}</td>`:''}
+          ${colLv?`<td class="num">${fmt(totLv)} €</td>
           <td class="num" style="color:var(--muted)">${totLv_n1?fmt(totLv_n1)+' €':'—'}</td>
-          <td class="num">${totLv_n1?chipEc((totLv/fd.length-totLv_n1/fdN1.length)/(totLv_n1/fdN1.length)*100):'—'}</td>
-          <td class="num">${fmt(totCorr)} €</td>
-          <td class="num" style="color:var(--muted)">${totCorr_n1?fmt(totCorr_n1)+' €':'—'}</td>
-          <td class="num">${avgRem.toFixed(2)}%</td>
-          <td class="num" style="color:var(--muted)">${avgRem_n1?avgRem_n1.toFixed(2)+'%':'—'}</td>
+          <td class="num">${totLv_n1?chipEc((totLv/fd.length-totLv_n1/fdN1.length)/(totLv_n1/fdN1.length)*100):'—'}</td>`:''}
+          ${colCorr?`<td class="num">${fmt(totCorr)} €</td>
+          <td class="num" style="color:var(--muted)">${totCorr_n1?fmt(totCorr_n1)+' €':'—'}</td>`:''}
+          ${colRem?`<td class="num">${avgRem.toFixed(2)}%</td>
+          <td class="num" style="color:var(--muted)">${avgRem_n1?avgRem_n1.toFixed(2)+'%':'—'}</td>`:''}
+          ${colAnnul?`<td class="num">${fd.reduce((a,b)=>a+(b.annulations_nb||0),0)}</td>
+          <td class="num">${fmt(fd.reduce((a,b)=>a+(b.annulations_montant||0),0))} €</td>`:''}
+          ${colCO?`<td class="num">${fd.reduce((a,b)=>a+(b.commandes_ouvertes_nb||0),0)}</td>
+          <td class="num">${fmt(fd.reduce((a,b)=>a+(b.commandes_ouvertes_montant||0),0))} €</td>`:''}
+          ${colEmp?`<td class="num">—</td>
+          <td class="num">${fmt(fd.reduce((a,b)=>a+(b.repas_employes_montant||0),0))} €</td>`:''}
           <td>—</td>
         </tr>
       </tbody>
