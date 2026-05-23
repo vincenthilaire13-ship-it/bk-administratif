@@ -3910,11 +3910,10 @@ async function lireTicket(input, key) {
 
   // OCR via Claude API pour extraire date/heure/montant
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
+    const resp = await fetch('/api/ia',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
         max_tokens:200,
         messages:[{role:'user',content:[
           {type:'image',source:{type:'base64',media_type:file.type||'image/jpeg',data:base64}},
@@ -4326,16 +4325,19 @@ Consignes de rédaction :
 
 Réponds UNIQUEMENT en HTML simple, sans balises <html> ni <body>, en utilisant ces balises : <h4> pour les titres de sections, <p>, <ul>/<li>, <strong>. Pour signaler un statut, utilise <span class="ia-flag ok">OK</span>, <span class="ia-flag warn">VIGILANCE</span> ou <span class="ia-flag bad">ALERTE</span>. N'ajoute aucun texte hors HTML, pas de bloc de code, pas de \`\`\`.`;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages",{
+  const response = await fetch("/api/ia",{
     method:"POST",
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      model:"claude-sonnet-4-20250514",
       max_tokens:1600,
       messages:[{role:"user",content:prompt}]
     })
   });
-  if(!response.ok) throw new Error("API "+response.status);
+  if(!response.ok){
+    let msg = "API "+response.status;
+    try { const er = await response.json(); if(er && er.error) msg = er.error; } catch(e){}
+    throw new Error(msg);
+  }
   const data = await response.json();
   let out = (data.content||[]).map(b=>b.type==='text'?b.text:'').join('\n').trim();
   out = out.replace(/```html|```/g,'').trim();
@@ -5163,11 +5165,10 @@ async function extrairePDF() {
     });
 
     // Appel API Claude
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('/api/ia', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
         max_tokens: 1500,
         messages: [{
           role: 'user',
