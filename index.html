@@ -5828,7 +5828,7 @@ let grilleMode = 30; // Base = 30min
 
 // ── Séparation par restaurant : chaque resto a sa grille et sa base min ──
 // On mémorise les versions personnalisées ; au changement de resto on recharge.
-const BASEMIN_DEFAULT = BASE_MIN.map(b=>[...b]);
+let BASEMIN_DEFAULT = null; // initialisé après la déclaration de BASE_MIN
 let GRILLE_BY_RESTO = {};   // { 'BK526': [[...]], ... }
 let BASEMIN_BY_RESTO = {};  // { 'BK526': [[...]], ... }
 let HR_GRILLE_RESTO = 'BK526'; // resto dont la grille/base est active
@@ -5971,6 +5971,8 @@ let BASE_MIN=[
   ['EMPORTER',       hm(19,0),  hm(23,0),  'base'],
   ['DRIVE',          hm(19,30), hm(24,0),  'base'],
 ];
+// Mémoriser la base minimum par défaut (maintenant que BASE_MIN existe)
+BASEMIN_DEFAULT = BASE_MIN.map(b=>[...b]);
 
 // ── CA RÉELS 15min ───────────────────────────────────────────────────────────
 const CA_DAYS=[
