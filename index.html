@@ -3746,9 +3746,9 @@ function renderComparaison() {
 
   <!-- Répartition canaux -->
   <div class="table-card" style="margin-bottom:20px">
-    <div class="table-header"><span class="table-title">Répartition par canal — 2025 vs 2026</span><span style="font-size:10px;color:var(--muted)">Montants moyens / jour sur la période</span></div>
+    <div class="table-header"><span class="table-title">Répartition par canal — 2025 vs 2026</span><span style="font-size:10px;color:var(--muted)">Totaux réels sur la période</span></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Canal</th><th class="num">2025 moy/j</th><th class="num">2025 %</th><th class="num">2026 moy/j</th><th class="num">2026 %</th><th class="num">Évolution</th></tr></thead>
+      <thead><tr><th>Canal</th><th class="num">2025 total</th><th class="num">2025 %</th><th class="num">2026 total</th><th class="num">2026 %</th><th class="num">Évolution</th></tr></thead>
       <tbody>
         ${[
           ['Kiosk',ki25,ki26],
@@ -3759,16 +3759,15 @@ function renderComparaison() {
           ['Deliveroo',deli25,deli26],
           ['BK Livraison',bkl25,bkl26],
         ].map(([label,v25,v26])=>{
-          const j25=n25?v25/n25:0, j26=n26?v26/n26:0;
           const p25=ca25?(v25/ca25*100):0, p26=ca26?(v26/ca26*100):0;
           const has25=v25>0, has26=v26>0;
           return `<tr>
             <td>${label}</td>
-            <td class="num" style="color:var(--muted)">${has25?fmt(j25)+' €':'—'}</td>
+            <td class="num" style="color:var(--muted)">${has25?fmt(v25)+' €':'—'}</td>
             <td class="num" style="color:var(--muted)">${has25?p25.toFixed(1)+'%':'—'}</td>
-            <td class="num">${has26?fmt(j26)+' €':'—'}</td>
+            <td class="num">${has26?fmt(v26)+' €':'—'}</td>
             <td class="num">${has26?p26.toFixed(1)+'%':'—'}</td>
-            <td class="num">${(has25&&has26)?chip(pct(j26,j25)):'—'}</td>
+            <td class="num">${(has25&&has26)?chip(pct(v26,v25)):'—'}</td>
           </tr>`;
         }).join('')}
       </tbody>
