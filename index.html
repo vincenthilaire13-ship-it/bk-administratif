@@ -828,6 +828,39 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
           <!-- Résultats -->
           <div id="masse-results" style="margin-top:14px"></div>
         </div>
+
+        <!-- IMPORT CSV HISTORIQUE -->
+        <div class="mgr-card" style="margin-top:18px">
+          <div class="mgr-title">📊 Import CSV — Historique</div>
+          <div class="mgr-sub">Un seul fichier CSV avec tout l'historique (ex : janvier 2025 → mai 2026). Les chiffres sont lus en HT, instantané, sans IA.</div>
+
+          <div style="margin-bottom:14px">
+            <label class="form-label">🏪 Restaurant concerné</label>
+            <select class="form-input" id="csv-resto" style="max-width:300px">
+              <option value="BK526">🌿 BK 526 — Saint-Clément-Rivière</option>
+              <option value="BK509">🏪 BK 509 — Saint-Jean-de-Védas</option>
+              <option value="BK500">🏟️ BK 500 — Arènes</option>
+            </select>
+          </div>
+
+          <div class="drop-zone" id="csv-drop-zone"
+               onclick="document.getElementById('csv-file-input').click()"
+               ondragover="event.preventDefault();this.classList.add('drag-over')"
+               ondragleave="this.classList.remove('drag-over')"
+               ondrop="handleCsvDrop(event)"
+               style="min-height:130px">
+            <div class="drop-zone-icon" style="font-size:38px">📄</div>
+            <div class="drop-zone-text" style="font-size:14px">Glissez le <span>fichier CSV ici</span></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">Séparateur point-virgule · Colonnes CA_NET_HT · 1 ligne = 1 journée</div>
+          </div>
+          <input type="file" id="csv-file-input" accept=".csv,.txt" style="display:none" onchange="handleCsvFile(this.files[0])">
+
+          <div id="csv-status" style="font-size:12px;color:var(--muted2);margin-top:10px;display:none"></div>
+          <div id="csv-preview" style="margin-top:14px"></div>
+          <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px;margin-top:12px;display:none" id="csv-confirm-btn" onclick="confirmCsvImport()">
+            💾 Enregistrer ces journées
+          </button>
+        </div>
       </div>
     </section>
 
@@ -5083,6 +5116,192 @@ function fillImportFields(d) {
     if(d.panier_moyen_ht) tmEl.value = Number(d.panier_moyen_ht).toFixed(2);
     else if(d.ca_ht && d.tickets_nb) tmEl.value = (d.ca_ht / d.tickets_nb).toFixed(2);
   }
+}
+
+// ══ IMPORT CSV HISTORIQUE ══
+let CSV_PARSED = null; // lignes prêtes à enregistrer
+
+function handleCsvDrop(e) {
+  e.preventDefault();
+  document.getElementById('csv-drop-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if(file) handleCsvFile(file);
+}
+
+function csvNum(s) {
+  if(s===null || s===undefined) return null;
+  s = String(s).trim().replace(/\s/g,'').replace(',', '.');
+  if(s==='') return null;
+  const v = parseFloat(s);
+  return isNaN(v) ? null : v;
+}
+
+function parseCsvLine(line, sep) {
+  // gère les guillemets simples ; CSV BK est sans quotes mais on sécurise
+  const out = []; let cur = ''; let q = false;
+  for(let i=0;i<line.length;i++){
+    const c = line[i];
+    if(c === '"'){ q = !q; }
+    else if(c === sep && !q){ out.push(cur); cur=''; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out.map(s=>s.trim());
+}
+
+async function handleCsvFile(file) {
+  if(!file) return;
+  const resto = document.getElementById('csv-resto').value;
+  const status = document.getElementById('csv-status');
+  status.style.display = 'block';
+  status.style.color = 'var(--muted2)';
+  status.textContent = '⏳ Lecture du fichier…';
+  document.getElementById('csv-preview').innerHTML = '';
+  document.getElementById('csv-confirm-btn').style.display = 'none';
+  CSV_PARSED = null;
+
+  let text;
+  try { text = await file.text(); }
+  catch(e){ status.style.color='var(--red)'; status.textContent='✗ Lecture impossible : '+e.message; return; }
+
+  // Détection séparateur
+  const firstLine = text.split(/\r?\n/)[0] || '';
+  const sep = (firstLine.split(';').length >= firstLine.split(',').length) ? ';' : ',';
+
+  const lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
+  if(lines.length < 2){ status.style.color='var(--red)'; status.textContent='✗ Fichier vide ou sans données.'; return; }
+
+  const header = parseCsvLine(lines[0], sep).map(h=>h.toUpperCase().replace(/^\uFEFF/,''));
+  const idx = name => header.indexOf(name);
+  const col = (cols, name) => { const i = idx(name); return i>=0 ? cols[i] : null; };
+
+  // Vérif colonnes essentielles
+  if(idx('DATE') < 0 || idx('CA_NET_HT') < 0){
+    status.style.color='var(--red)';
+    status.textContent='✗ Colonnes attendues manquantes (il faut au minimum DATE et CA_NET_HT). Colonnes trouvées : '+header.join(', ');
+    return;
+  }
+
+  const rows = [];
+  let skipped = 0;
+  for(let i=1;i<lines.length;i++){
+    const c = parseCsvLine(lines[i], sep);
+    const date = (col(c,'DATE')||'').trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)){ skipped++; continue; }
+    const comptoir = (csvNum(col(c,'CA_NET_HT_COMPTOIR_PLACE'))||0) + (csvNum(col(c,'CA_NET_HT_COMPTOIR_EMPORTER'))||0);
+    const tac = csvNum(col(c,'TAC'));
+    rows.push({
+      restaurant: resto,
+      date: date,
+      ca_ht: csvNum(col(c,'CA_NET_HT')),
+      ca_ttc: csvNum(col(c,'CA_BRUT_TTC')),
+      tickets_nb: tac!=null ? Math.round(tac) : null,
+      // HT par canal rangé dans les colonnes _ttc existantes (stratégie A : déjà du HT)
+      kiosk_ttc: csvNum(col(c,'CA_NET_HT_KIOSK')),
+      drive_ttc: csvNum(col(c,'CA_NET_HT_DRIVE')),
+      livraison_ttc: csvNum(col(c,'CA_NET_HT_DELIVERY')),
+      comptoir_ttc: comptoir>0 ? Math.round(comptoir*100)/100 : null,
+      corrections_montant: csvNum(col(c,'CORRECTION')),
+      corrections_pct: csvNum(col(c,'TAUX_CORRECTION')),
+      annulations_montant: csvNum(col(c,'ANNULATION')),
+      remises_montant: csvNum(col(c,'REMISE')),
+      remises_pct: csvNum(col(c,'TAUX_REMISE')),
+      commentaire: ''
+    });
+  }
+
+  if(!rows.length){ status.style.color='var(--red)'; status.textContent='✗ Aucune ligne valide trouvée.'; return; }
+
+  CSV_PARSED = rows;
+  const dates = rows.map(r=>r.date).sort();
+  const totCA = rows.reduce((a,b)=>a+(b.ca_ht||0),0);
+  const restoNom = RESTAURANTS[resto]?.nom || resto;
+
+  status.style.color='var(--green)';
+  status.textContent = `✓ ${rows.length} journées lues${skipped?' ('+skipped+' lignes ignorées)':''}`;
+
+  document.getElementById('csv-preview').innerHTML = `
+    <div class="table-card">
+      <div class="table-header"><span class="table-title">Aperçu — ${restoNom}</span></div>
+      <div style="padding:14px 16px;font-size:12px;color:var(--muted2);line-height:1.8">
+        <div><b style="color:var(--text)">${rows.length}</b> journées · du <b style="color:var(--text)">${formatDate(dates[0])}</b> au <b style="color:var(--text)">${formatDate(dates[dates.length-1])}</b></div>
+        <div>CA HT cumulé : <b style="color:var(--text)">${fmt(totCA)} €</b></div>
+        <div style="margin-top:6px;color:var(--muted)">Les journées existantes seront mises à jour (le CSV fait foi).</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;font-size:11px;border-collapse:collapse">
+          <thead><tr style="border-bottom:1px solid var(--border2);color:var(--muted)">
+            <th style="text-align:left;padding:6px 10px">Date</th>
+            <th style="text-align:right;padding:6px 10px">CA HT</th>
+            <th style="text-align:right;padding:6px 10px">Tickets</th>
+            <th style="text-align:right;padding:6px 10px">Kiosk</th>
+            <th style="text-align:right;padding:6px 10px">Drive</th>
+            <th style="text-align:right;padding:6px 10px">Corr.%</th>
+          </tr></thead>
+          <tbody>
+            ${rows.slice(0,5).map(r=>`<tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:6px 10px">${formatDate(r.date)}</td>
+              <td style="text-align:right;padding:6px 10px">${fmt(r.ca_ht)} €</td>
+              <td style="text-align:right;padding:6px 10px">${r.tickets_nb??'—'}</td>
+              <td style="text-align:right;padding:6px 10px">${fmt(r.kiosk_ttc)} €</td>
+              <td style="text-align:right;padding:6px 10px">${fmt(r.drive_ttc)} €</td>
+              <td style="text-align:right;padding:6px 10px">${r.corrections_pct??'—'}%</td>
+            </tr>`).join('')}
+            ${rows.length>5?`<tr><td colspan="6" style="padding:6px 10px;color:var(--muted);text-align:center">… et ${rows.length-5} autres journées</td></tr>`:''}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  document.getElementById('csv-confirm-btn').style.display = 'block';
+}
+
+async function confirmCsvImport() {
+  if(!CSV_PARSED || !CSV_PARSED.length) return;
+  const btn = document.getElementById('csv-confirm-btn');
+  const status = document.getElementById('csv-status');
+  btn.disabled = true;
+  const total = CSV_PARSED.length;
+
+  if(SB) {
+    // Enregistrement Supabase par lots de 100
+    let done = 0, errors = 0;
+    for(let i=0;i<CSV_PARSED.length;i+=100){
+      const batch = CSV_PARSED.slice(i,i+100);
+      const {error} = await SB.from('journees').upsert(batch,{onConflict:'restaurant,date'});
+      if(error){ errors++; console.error('Lot CSV', i, error); }
+      done += batch.length;
+      status.style.display='block'; status.style.color='var(--muted2)';
+      status.textContent = `⏳ Enregistrement… ${done}/${total}`;
+      btn.textContent = `⏳ ${done}/${total}`;
+    }
+    if(errors){
+      status.style.color='var(--red)';
+      status.textContent = `✗ ${errors} lot(s) en erreur. Vérifie que les colonnes existent dans Supabase (voir console).`;
+      btn.disabled = false; btn.textContent='💾 Réessayer';
+      return;
+    }
+    // Recharger les données depuis la base
+    if(typeof loadAll === 'function') await loadAll();
+  } else {
+    // Mode local (sans DB) : injecter dans les données en mémoire
+    const all26 = window._ALL_DATA26 || [];
+    const all25 = window._ALL_DATA25 || [];
+    CSV_PARSED.forEach(row=>{
+      const target = row.date.startsWith('2025') ? all25 : all26;
+      const ix = target.findIndex(d=>d.restaurant===row.restaurant && d.date===row.date);
+      if(ix>=0) target[ix] = {...target[ix], ...row};
+      else target.push(row);
+    });
+    window._ALL_DATA25 = all25; window._ALL_DATA26 = all26;
+    applyRestoFilter();
+  }
+
+  status.style.color='var(--green)';
+  status.textContent = `✓ ${total} journées enregistrées pour ${RESTAURANTS[CSV_PARSED[0].restaurant]?.nom||CSV_PARSED[0].restaurant} !`;
+  btn.textContent = '✓ Terminé';
+  CSV_PARSED = null;
+  renderDashboard();
+  setTimeout(()=>{ btn.style.display='none'; document.getElementById('csv-preview').innerHTML=''; }, 2500);
 }
 
 // INIT
