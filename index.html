@@ -189,27 +189,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 .file-item-del{cursor:pointer;color:var(--muted);font-size:14px;flex-shrink:0}
 .file-item-del:hover{color:var(--red)}
 .mgr-alert-ok{background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);color:var(--green);padding:10px 14px;border-radius:var(--radius-sm);font-size:11px;display:none;margin-top:12px}
-
-/* ANALYSE IA */
-.ia-spin{width:26px;height:26px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:iaspin .7s linear infinite}
-@keyframes iaspin{to{transform:rotate(360deg)}}
-.ia-panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
-.ia-panel-hdr{display:flex;align-items:center;gap:11px;padding:16px 20px;background:linear-gradient(90deg,rgba(245,166,35,.10),transparent);border-bottom:1px solid var(--border)}
-.ia-panel-ico{width:34px;height:34px;border-radius:9px;background:var(--accent);color:#000;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
-.ia-panel-title{font-family:var(--font-head);font-size:14px;font-weight:700;color:var(--text)}
-.ia-panel-sub{font-size:11px;color:var(--muted)}
-.ia-panel-body{padding:20px 22px;font-size:13px;line-height:1.7;color:var(--text)}
-.ia-panel-body h4{font-family:var(--font-head);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--accent);margin:18px 0 8px;display:flex;align-items:center;gap:7px}
-.ia-panel-body h4:first-child{margin-top:0}
-.ia-panel-body ul{margin:0 0 10px;padding-left:20px}
-.ia-panel-body li{margin-bottom:6px}
-.ia-panel-body p{margin-bottom:10px}
-.ia-panel-body strong{font-weight:600;color:var(--text)}
-.ia-panel-body .ia-flag{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;font-weight:600;margin-right:4px}
-.ia-panel-body .ia-flag.ok{background:rgba(62,207,142,.14);color:var(--green)}
-.ia-panel-body .ia-flag.warn{background:rgba(251,191,36,.14);color:var(--yellow)}
-.ia-panel-body .ia-flag.bad{background:rgba(248,113,113,.14);color:var(--red)}
-.ia-cta{background:rgba(245,166,35,.07);border:1px solid rgba(245,166,35,.25);border-radius:var(--radius-sm);padding:12px 16px;margin:14px 0;font-size:12px}
 </style>
 </head>
 <body>
@@ -305,7 +284,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-full-only" style="display:none" onclick="nav('journee')"><span>📅</span><span>Journée</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('historique')"><span>📈</span><span>Historique</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('comparaison')"><span>🔄</span><span>Comparaison N-1</span></div>
-    <div class="nav-item role-full-only" style="display:none" onclick="nav('analyse-ia')"><span>🧠</span><span>Analyse IA</span></div>
     <div class="nav-section role-dir-only" style="display:none">Saisie</div>
     <div class="nav-item role-dir-only" style="display:none" onclick="nav('saisie')"><span>📥</span><span>Importer PDF</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('import-masse')"><span>⚡</span><span>Import massif</span></div>
@@ -362,7 +340,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       <div class="chart-grid">
         <div class="chart-card full">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-            <div class="chart-label" id="label-ca" style="margin-bottom:0">CA TTC — 2026 vs 2025</div>
+            <div class="chart-label" id="label-ca" style="margin-bottom:0">CA HT — 2026 vs 2025</div>
             <div class="legend">
               <span class="legend-item"><span class="legend-sq" style="background:#3ecf8e"></span>2026</span>
               <span class="legend-item"><span class="legend-sq" style="background:#60a5fa"></span>2025</span>
@@ -380,8 +358,13 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
         </div>
       </div>
       <div class="table-card">
-        <div class="table-header"><span class="table-title">Répartition par canal (cumul)</span></div>
+        <div class="table-header"><span class="table-title">Répartition par canal (cumul HT)</span></div>
         <div style="padding:16px 18px" id="canaux-bars"></div>
+      </div>
+
+      <div class="table-card" id="comparaison-restos-card" style="display:none">
+        <div class="table-header"><span class="table-title">⚖️ Comparaison des 3 restaurants — CA HT cumulé</span></div>
+        <div style="padding:16px 18px" id="comparaison-restos"></div>
       </div>
     </section>
 
@@ -452,73 +435,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       <div id="comp-content"></div>
     </section>
 
-    <!-- ANALYSE IA -->
-    <section class="section" id="sec-analyse-ia">
-      <div style="max-width:880px">
-        <div class="table-card" style="margin-bottom:18px">
-          <div class="table-header"><span class="table-title">🧠 Analyse intelligente de la Synthèse CA</span></div>
-          <div style="padding:18px 20px">
-            <div style="font-size:12px;color:var(--muted2);margin-bottom:16px;line-height:1.6">
-              Dépose la Synthèse CA du jour (PDF) — l'IA lit le document, analyse en profondeur les corrections, annulations, sauces offertes, repas employés, la répartition par canal et les écarts de caisse, puis compare avec l'historique du restaurant. Tu peux aussi analyser une journée déjà enregistrée.
-            </div>
-
-            <!-- Zone de dépôt -->
-            <div class="drop-zone" id="ia-drop-zone"
-                 onclick="document.getElementById('ia-file-input').click()"
-                 ondragover="event.preventDefault();this.classList.add('drag-over')"
-                 ondragleave="this.classList.remove('drag-over')"
-                 ondrop="iaHandleDrop(event)">
-              <div class="drop-zone-icon">📄</div>
-              <div class="drop-zone-text">Cliquez ou <span>glissez la Synthèse CA ici</span></div>
-              <div style="font-size:10px;color:var(--muted);margin-top:4px">PDF · analyse IA complète</div>
-            </div>
-            <input type="file" id="ia-file-input" accept=".pdf" style="display:none" onchange="iaHandleFile(this.files[0])">
-
-            <!-- OU journée existante -->
-            <div style="display:flex;align-items:center;gap:12px;margin:14px 0">
-              <div style="flex:1;height:1px;background:var(--border)"></div>
-              <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em">ou</span>
-              <div style="flex:1;height:1px;background:var(--border)"></div>
-            </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-              <div class="form-group" style="flex:1;min-width:200px;margin:0">
-                <label class="form-label">Analyser une journée enregistrée</label>
-                <select class="form-input" id="ia-journee-select"><option value="">— choisir une journée —</option></select>
-              </div>
-              <button class="btn btn-accent" style="padding:9px 18px" onclick="iaAnalyseExisting()">🧠 Analyser</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Chargement -->
-        <div id="ia-loading" style="display:none;text-align:center;padding:30px;color:var(--muted2);font-size:12px">
-          <div class="ia-spin" style="margin:0 auto 12px"></div>
-          <div id="ia-loading-text">Lecture du PDF…</div>
-        </div>
-
-        <!-- Erreur -->
-        <div id="ia-error" style="display:none;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);padding:12px 16px;border-radius:var(--radius-sm);font-size:12px;margin-bottom:18px"></div>
-
-        <!-- Résultat -->
-        <div id="ia-result" style="display:none">
-          <!-- KPIs rapides -->
-          <div class="kpi-grid" id="ia-kpis" style="margin-bottom:18px"></div>
-
-          <!-- Analyse rédigée -->
-          <div class="ia-panel">
-            <div class="ia-panel-hdr">
-              <div class="ia-panel-ico">✨</div>
-              <div>
-                <div class="ia-panel-title">Analyse IA</div>
-                <div class="ia-panel-sub" id="ia-panel-sub">—</div>
-              </div>
-            </div>
-            <div class="ia-panel-body" id="ia-analysis-body"></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- SAISIE / IMPORT PDF -->
     <section class="section" id="sec-saisie">
       <div style="max-width:680px">
@@ -574,7 +490,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
                 <div class="form-group"><label class="form-label">Ticket moy. (€)</label><input type="number" step="0.01" class="form-input" id="s-tm"></div>
               </div>
 
-              <div class="sub-title">Canaux TTC</div>
+              <div class="sub-title">Canaux HT</div>
               <div class="form-row-4" style="margin-bottom:16px">
                 <div class="form-group"><label class="form-label">Drive (€)</label><input type="number" step="0.01" class="form-input" id="s-drive-ca"></div>
                 <div class="form-group"><label class="form-label">Voitures drive</label><input type="number" class="form-input" id="s-drive-vol"></div>
@@ -2584,7 +2500,7 @@ const SEED_BK500_2026 = [];
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1','analyse-ia':'Analyse IA',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',ventes:'Ventes par demi-heure',annulations:'Annulations','import-masse':'Import massif (Admin)'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',ventes:'Ventes par demi-heure',annulations:'Annulations','import-masse':'Import massif (Admin)'};
 function nav(id) {
   const targetSec = document.getElementById('sec-'+id);
   if(!targetSec) { console.warn("nav: section sec-"+id+" introuvable"); return; }
@@ -2597,7 +2513,6 @@ function nav(id) {
   document.getElementById('page-title').textContent = TITLES[id]||id;
   if(id==='historique') loadHistorique();
   if(id==='comparaison') renderComparaison();
-  if(id==='analyse-ia') initAnalyseIA();
   if(id==='journee') buildJourneeSelect();
   if(id==='seuils') renderSeuils();
   if(id==='acces') renderAcces();
@@ -2770,11 +2685,12 @@ function renderDashboard() {
       </div>`;
     killChart('ca'); killChart('drive'); killChart('corr');
     document.getElementById('canaux-bars').innerHTML = '';
+    renderComparaisonRestos();
     return;
   }
   const last = DATA[DATA.length-1];
-  const totCA = DATA.reduce((a,b)=>a+(b.ca_ttc||0),0);
-  const totCA25 = DATA.reduce((a,b)=>a+(b.ca_n1||0),0);
+  const totCA = DATA.reduce((a,b)=>a+caHT(b),0);
+  const totCA25 = DATA.reduce((a,b)=>a+caHT_n1(b),0);
   const totT = DATA.reduce((a,b)=>a+(b.tickets_nb||0),0);
   const totT25 = DATA.reduce((a,b)=>a+(b.tickets_n1||0),0);
   const dD = DATA.filter(d=>d.drive_voitures);
@@ -2796,13 +2712,13 @@ function renderDashboard() {
   const ecT = totT25 ? ((totT-totT25)/totT25*100).toFixed(1) : null;
 
   const kpis = [
-    {l:'CA TTC cumulé',v:fmt(totCA)+' €',n1:totCA25?fmt(totCA25)+' €':null,d:ecN1?(ecN1>0?'+':'')+ecN1+'% vs 2025':DATA.length+' jours',cls:ecN1===null?'neutral':ecN1>0?'ok':ecN1>-5?'warn':'bad',up:!ecN1||ecN1>0},
-    {l:'Ticket moyen',v:avgTM+' €',n1:avgTM25?avgTM25+' €':null,d:'objectif ≥'+SEUILS.ticket_min+' €',cls:parseFloat(avgTM)>=SEUILS.ticket_min?'ok':'warn',up:true},
+    {l:'CA HT cumulé',v:fmt(totCA)+' €',n1:totCA25?fmt(totCA25)+' €':null,d:ecN1?(ecN1>0?'+':'')+ecN1+'% vs 2025':DATA.length+' jours',cls:ecN1===null?'neutral':ecN1>0?'ok':ecN1>-5?'warn':'bad',up:!ecN1||ecN1>0},
+    {l:'Ticket moyen HT',v:avgTM+' €',n1:avgTM25?avgTM25+' €':null,d:'objectif ≥'+SEUILS.ticket_min+' €',cls:parseFloat(avgTM)>=SEUILS.ticket_min?'ok':'warn',up:true},
     {l:'Tickets / jour',v:Math.round(totT/DATA.length),n1:totT25&&DATA25.length?Math.round(totT25/DATA25.length)+' tickets/j':null,d:ecT?(ecT>0?'+':'')+ecT+'% vs 2025':'',cls:ecT&&parseFloat(ecT)<-5?'warn':'ok',up:!ecT||parseFloat(ecT)>0},
     {l:'Drive moy/jour',v:avgDr+' voitures',n1:avgDr25?avgDr25+' voitures':null,d:avgDr>=SEUILS.drive_min?'✓ Objectif atteint':'⚠ Sous seuil '+SEUILS.drive_min,cls:avgDr>=SEUILS.drive_min?'ok':'warn',up:avgDr>=SEUILS.drive_min},
     {l:'Corrections moy',v:avgCorr+'%',n1:avgCorr25?avgCorr25+'%':null,d:(parseFloat(avgCorr)<=SEUILS.corrections_max?'✓ ':parseFloat(avgCorr)<=SEUILS.corrections_rouge?'⚠ ':'🚨 ')+'seuil '+SEUILS.corrections_max+'%',cls:parseFloat(avgCorr)<=SEUILS.corrections_max?'ok':parseFloat(avgCorr)<=SEUILS.corrections_rouge?'warn':'bad',up:false},
     {l:'Remises moy',v:avgRem+'%',n1:avgRem25?avgRem25+'%':null,d:(parseFloat(avgRem)<=SEUILS.remises_max?'✓ Sous seuil':'⚠ Dépasse '+SEUILS.remises_max+'%'),cls:parseFloat(avgRem)<=SEUILS.remises_max?'ok':'warn',up:false},
-    {l:'Dernière journée',v:formatDate(last.date),n1:null,d:fmt(last.ca_ttc)+' €',cls:'neutral',up:true},
+    {l:'Dernière journée',v:formatDate(last.date),n1:null,d:fmt(caHT(last))+' € HT',cls:'neutral',up:true},
     {l:'Journées enreg.',v:DATA.length,n1:DATA25.length?DATA25.length+' en 2025':null,d:'dans la base',cls:'neutral',up:true},
   ];
 
@@ -2816,11 +2732,12 @@ function renderDashboard() {
 
   renderCharts();
   renderCanaux();
+  renderComparaisonRestos();
 }
 
 function renderCanaux() {
   const t = {kiosk:0,drive:0,lv:0,comp:0,cc:0};
-  DATA.forEach(d=>{t.kiosk+=(d.kiosk_ttc||0);t.drive+=(d.drive_ttc||0);t.lv+=(d.livraison_ttc||0);t.comp+=(d.comptoir_ttc||0);t.cc+=(d.cc_ttc||0);});
+  DATA.forEach(d=>{t.kiosk+=canalHT(d,'kiosk');t.drive+=canalHT(d,'drive');t.lv+=canalHT(d,'livraison');t.comp+=canalHT(d,'comptoir');t.cc+=canalHT(d,'cc');});
   const tot = Object.values(t).reduce((a,b)=>a+b,1);
   const bars = [{n:'Kiosk',ca:t.kiosk,c:'#f5a623'},{n:'Drive',ca:t.drive,c:'#60a5fa'},{n:'Home Delivery',ca:t.lv,c:'#3ecf8e'},{n:'Comptoir',ca:t.comp,c:'#f87171'},{n:'Click & Collect',ca:t.cc,c:'#a78bfa'}];
   document.getElementById('canaux-bars').innerHTML = bars.map(b=>`
@@ -2828,8 +2745,53 @@ function renderCanaux() {
       <div class="canal-name">${b.n}</div>
       <div class="canal-bar-bg"><div class="canal-bar" style="width:${(b.ca/tot*100).toFixed(1)}%;background:${b.c}"></div></div>
       <div class="canal-pct">${(b.ca/tot*100).toFixed(1)}%</div>
-      <div class="canal-val">${fmt(b.ca)} €</div>
+      <div class="canal-val">${fmt(b.ca)} € HT</div>
     </div>`).join('');
+}
+
+function renderComparaisonRestos() {
+  const card = document.getElementById('comparaison-restos-card');
+  const box = document.getElementById('comparaison-restos');
+  if(!card || !box) return;
+  // Visible seulement en vue multi-restos (Tous)
+  if(ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') { card.style.display='none'; return; }
+  const all = window._ALL_DATA26 || [];
+  if(!all.length) { card.style.display='none'; return; }
+  card.style.display='block';
+
+  const restos = ['BK500','BK509','BK526'];
+  const couleurs = {BK500:'#f5a623', BK509:'#60a5fa', BK526:'#3ecf8e'};
+  const stats = restos.map(r=>{
+    const rows = all.filter(d=>d.restaurant===r);
+    const ca = rows.reduce((a,b)=>a+caHT(b),0);
+    const ca25 = rows.reduce((a,b)=>a+caHT_n1(b),0);
+    const t = rows.reduce((a,b)=>a+(b.tickets_nb||0),0);
+    const ec = ca25 ? ((ca-ca25)/ca25*100) : null;
+    const tm = t ? ca/t : null;
+    return {r, nom:(RESTAURANTS[r]?.nom||r), jours:rows.length, ca, ca25, ec, tm, c:couleurs[r]};
+  }).filter(s=>s.jours>0);
+
+  if(!stats.length) { card.style.display='none'; return; }
+  const maxCA = Math.max(...stats.map(s=>s.ca), 1);
+
+  box.innerHTML = stats.map(s=>{
+    const ecTxt = s.ec!==null ? `<span class="chip ${s.ec>0?'chip-ok':s.ec>-5?'chip-warn':'chip-bad'}">${s.ec>0?'+':''}${s.ec.toFixed(1)}% vs 2025</span>` : '';
+    return `
+    <div style="margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="width:11px;height:11px;border-radius:50%;background:${s.c};display:inline-block"></span>
+          <span style="font-weight:700;font-size:13px">${s.nom}</span>
+          <span style="font-size:10px;color:var(--muted)">${s.jours} j · TM ${s.tm?s.tm.toFixed(2):'—'} €</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${ecTxt}
+          <span style="font-family:var(--font-head);font-weight:700;font-size:14px">${fmt(s.ca)} € HT</span>
+        </div>
+      </div>
+      <div class="canal-bar-bg"><div class="canal-bar" style="width:${(s.ca/maxCA*100).toFixed(1)}%;background:${s.c}"></div></div>
+    </div>`;
+  }).join('');
 }
 
 // ══ CHARTS ══
@@ -2896,8 +2858,12 @@ function renderCharts() {
   const G = GRANULARITE;
   const grp = G==='semaine' ? groupByWeek : groupByMonth;
 
-  const g26_ca = grp(DATA,   'ca_ttc',          'sum');
-  const g25_ca = grp(DATA25, 'ca_ttc',          'sum');
+  // Champs HT calculés à la volée pour le groupage
+  const D26 = DATA.map(d=>({...d, _caht: caHT(d)}));
+  const D25 = DATA25.map(d=>({...d, _caht: caHT_n1(d)}));
+
+  const g26_ca = grp(D26,    '_caht',           'sum');
+  const g25_ca = grp(D25,    '_caht',           'sum');
   const g26_dr = grp(DATA,   'drive_voitures',  'sum');
   const g25_dr = grp(DATA25, 'drive_voitures',  'sum');
   const g26_co = grp(DATA,   'corrections_pct', 'avg');
@@ -2909,7 +2875,7 @@ function renderCharts() {
   const v26_dr   = g26_dr.map(w=>w.value);
   const v25_dr   = g25_dr.map(w=>w.value);
 
-  const labelCA    = G==='semaine' ? 'CA TTC par semaine — 2026 vs 2025 (S1→S52)' : 'CA TTC par mois — 2026 vs 2025';
+  const labelCA    = G==='semaine' ? 'CA HT par semaine — 2026 vs 2025 (S1→S52)' : 'CA HT par mois — 2026 vs 2025';
   const labelDrive = G==='semaine' ? 'Voitures drive par semaine — 2026 vs 2025'  : 'Voitures drive par mois — 2026 vs 2025';
   document.getElementById('label-ca').textContent    = labelCA;
   document.getElementById('label-drive').textContent = labelDrive;
@@ -3568,8 +3534,9 @@ async function saveModal() {
 
 async function saveSaisie(e) {
   e.preventDefault();
+  const restoId = (document.getElementById('s-resto')?.value) || CURRENT_USER?.resto || 'BK526';
   const row = {
-    restaurant:'SAINT CLEMENT',
+    restaurant: restoId,
     date:document.getElementById('s-date').value,
     ca_ht:pf('s-ca-ht'), ca_ttc:pf('s-ca-ttc'),
     ca_n1:pf('s-ca-n1'), ca_prevu:pf('s-ca-prevu'),
@@ -3620,6 +3587,17 @@ async function upsert(row, okId, errId) {
 const pf = id => { const v=parseFloat(document.getElementById(id)?.value); return isNaN(v)?null:v; };
 const pi = id => { const v=parseInt(document.getElementById(id)?.value); return isNaN(v)?null:v; };
 const fmt = v => v?Math.round(v).toLocaleString('fr-FR'):'0';
+// ══ HELPERS HT ══ (CA en hors taxes ; les anciennes données par canal sont en TTC → ÷1,10)
+const TVA = 1.10;
+const caHT = d => (d.ca_ht!=null ? d.ca_ht : (d.ca_ttc!=null ? d.ca_ttc/TVA : 0));
+const caHT_n1 = d => (d.ca_n1!=null ? d.ca_n1/TVA : 0); // N-1 stocké en TTC → HT estimé
+const canalHT = (d,canal) => {
+  // canal: 'kiosk'|'drive'|'livraison'|'comptoir'|'cc'
+  const ht = d[canal+'_ht'];
+  if(ht!=null) return ht;
+  const ttc = d[canal+'_ttc'];
+  return ttc!=null ? ttc/TVA : 0;
+};
 const formatDate = s => { if(!s)return''; const p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; };
 const jourSemaine = s => ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][new Date(s).getDay()];
 const chipEc = v => `<span class="chip ${v>0?'chip-ok':v>-5?'chip-warn':'chip-bad'}">${v>0?'+':''}${parseFloat(v).toFixed(1)}%</span>`;
@@ -3910,10 +3888,11 @@ async function lireTicket(input, key) {
 
   // OCR via Claude API pour extraire date/heure/montant
   try {
-    const resp = await fetch('/api/ia',{
+    const resp = await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
         max_tokens:200,
         messages:[{role:'user',content:[
           {type:'image',source:{type:'base64',media_type:file.type||'image/jpeg',data:base64}},
@@ -4161,230 +4140,6 @@ async function extrairePDFManager(file) {
     e.style.display = 'block';
     console.error(err);
   }
-}
-
-// ════════════════════════════════════════════════════════════════
-// ══ MODULE ANALYSE IA — lecture PDF + analyse Claude ══
-// ════════════════════════════════════════════════════════════════
-
-// Lit le texte brut d'un PDF (réutilise pdf.js déjà chargé)
-async function iaLirePDF(file) {
-  const pdfjsLib = window['pdfjs-dist/build/pdf'];
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  const ab = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({data:ab}).promise;
-  let txt = '';
-  for(let p=1;p<=pdf.numPages;p++){
-    const page = await pdf.getPage(p);
-    const tc = await page.getTextContent();
-    txt += tc.items.map(t=>t.str).join(' ') + ' ';
-  }
-  return txt;
-}
-
-// Initialise la vue (remplit le select des journées du resto courant)
-function initAnalyseIA() {
-  const sel = document.getElementById('ia-journee-select');
-  if(!sel) return;
-  sel.innerHTML = '<option value="">— choisir une journée —</option>';
-  [...DATA].reverse().forEach(d=>{
-    sel.innerHTML += `<option value="${d.date}">${formatDate(d.date)} ${jourSemaine(d.date)} — ${fmt(d.ca_ttc)}€</option>`;
-  });
-}
-
-// Drag & drop
-function iaHandleDrop(e){
-  e.preventDefault();
-  document.getElementById('ia-drop-zone').classList.remove('drag-over');
-  if(e.dataTransfer.files.length) iaHandleFile(e.dataTransfer.files[0]);
-}
-
-// Dépôt d'un PDF → lecture → parsing → analyse
-async function iaHandleFile(file){
-  if(!file) return;
-  iaShowError('');
-  iaSetLoading(true,'Lecture du PDF…');
-  document.getElementById('ia-result').style.display='none';
-  try {
-    const txt = await iaLirePDF(file);
-    if(!(txt.includes('Synthèse CA')||txt.includes('TOTAL DRIVE')||txt.includes('TOTAL KIOSK'))){
-      iaSetLoading(false);
-      iaShowError("Ce PDF ne ressemble pas à une Synthèse CA. Vérifie le fichier.");
-      return;
-    }
-    const d = parserSynthesCA(txt);
-    if(d && !d.restaurant) d.restaurant = (typeof ACTIVE_RESTO!=='undefined' && ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') ? ACTIVE_RESTO : (CURRENT_USER?.resto||null);
-    if(!d || !d.ca_ttc){
-      iaSetLoading(false);
-      iaShowError("Impossible d'extraire les données de ce PDF.");
-      return;
-    }
-    iaRenderKpis(d);
-    iaSetLoading(true,'Analyse en cours par l\'IA…');
-    const analyse = await iaCallClaude(d);
-    iaSetLoading(false);
-    iaRenderAnalysis(d, analyse, false);
-  } catch(err){
-    iaSetLoading(false);
-    iaShowError('Erreur : '+err.message);
-    console.error(err);
-  }
-}
-
-// Analyse d'une journée déjà enregistrée
-async function iaAnalyseExisting(){
-  const v = document.getElementById('ia-journee-select').value;
-  if(!v){ iaShowError('Choisis une journée à analyser.'); return; }
-  const d = DATA.find(x=>x.date===v);
-  if(!d){ iaShowError('Journée introuvable.'); return; }
-  iaShowError('');
-  document.getElementById('ia-result').style.display='none';
-  iaRenderKpis(d);
-  iaSetLoading(true,'Analyse en cours par l\'IA…');
-  try {
-    const analyse = await iaCallClaude(d);
-    iaSetLoading(false);
-    iaRenderAnalysis(d, analyse, true);
-  } catch(err){
-    iaSetLoading(false);
-    iaShowError('Erreur : '+err.message);
-    console.error(err);
-  }
-}
-
-// Construit le contexte historique (même resto, jusqu'à 30 derniers jours avant la date)
-function iaContexteHistorique(d){
-  const memeJour = (s)=> jourSemaine(s)===jourSemaine(d.date);
-  const passe = DATA.filter(x=>x.date < d.date).slice(-30);
-  if(!passe.length) return null;
-  const moy = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
-  const cas = passe.map(x=>x.ca_ttc).filter(Boolean);
-  const corr = passe.map(x=>x.corrections_pct).filter(v=>v||v===0);
-  const rem = passe.map(x=>x.remises_pct).filter(v=>v||v===0);
-  // moyenne du même jour de semaine
-  const memeJ = passe.filter(x=>memeJour(x.date)).map(x=>x.ca_ttc).filter(Boolean);
-  return {
-    nb_jours: passe.length,
-    ca_moyen: moy(cas),
-    ca_min: cas.length?Math.min(...cas):null,
-    ca_max: cas.length?Math.max(...cas):null,
-    corrections_pct_moyen: moy(corr),
-    remises_pct_moyen: moy(rem),
-    ca_moyen_meme_jour: moy(memeJ),
-    jour_semaine: ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'][new Date(d.date).getDay()]
-  };
-}
-
-// Appel à l'API Claude
-async function iaCallClaude(d){
-  const hist = iaContexteHistorique(d);
-  const restoNom = (RESTAURANTS[d.restaurant]||{}).nom || d.restaurant || 'le restaurant';
-  const ticket = d.tickets_nb ? (d.ca_ttc/d.tickets_nb).toFixed(2) : null;
-
-  const payload = {
-    restaurant: restoNom,
-    date: d.date,
-    jour_semaine: hist ? hist.jour_semaine : null,
-    ca_ttc: d.ca_ttc, ca_ht: d.ca_ht, ca_n1: d.ca_n1,
-    tickets_nb: d.tickets_nb, ticket_moyen_ttc: ticket,
-    canaux: {
-      kiosk_ttc: d.kiosk_ttc, drive_ttc: d.drive_ttc, drive_voitures: d.drive_voitures,
-      livraison_ttc: d.livraison_ttc, livraison_commandes: d.livraison_commandes,
-      comptoir_ttc: d.comptoir_ttc, click_collect_ttc: d.cc_ttc
-    },
-    encaissements: { cb:d.cb, especes:d.especes, uber_eats:d.uber_eats, deliveroo:d.deliveroo, bk_livraison:d.bk_livraison },
-    ecart_caisse: d.erreur_caisse,
-    corrections: { nb:d.corrections_nb, montant:d.corrections_montant, pct:d.corrections_pct },
-    remises: { nb:d.remises_nb, montant:d.remises_montant, pct:d.remises_pct },
-    sauces_offertes: { nb:d.sauces_nb, montant:d.sauces_montant, pct:d.sauces_pct },
-    annulations: { nb:d.annulations_nb, montant:d.annulations_montant },
-    commandes_ouvertes: { nb:d.commandes_ouvertes_nb, montant:d.commandes_ouvertes_montant },
-    repas_employes: { nb:d.repas_employes_nb, montant:d.repas_employes_montant, pct:d.repas_employes_pct }
-  };
-
-  const seuilsTxt = `Seuils d'alerte configurés : corrections max ${SEUILS.corrections_max}% (rouge ≥${SEUILS.corrections_rouge}%), remises max ${SEUILS.remises_max}% (rouge ≥${SEUILS.remises_rouge}%), sauces max ${SEUILS.sauces_max}%, repas employés max ${SEUILS.repas_max}%, drive objectif ≥${SEUILS.drive_min} voitures.`;
-
-  const histTxt = hist
-    ? `Historique du restaurant (${hist.nb_jours} derniers jours) : CA moyen ${Math.round(hist.ca_moyen)}€ (mini ${Math.round(hist.ca_min)}€, maxi ${Math.round(hist.ca_max)}€). CA moyen un ${hist.jour_semaine} : ${hist.ca_moyen_meme_jour?Math.round(hist.ca_moyen_meme_jour)+'€':'n/d'}. Corrections moyennes ${hist.corrections_pct_moyen?hist.corrections_pct_moyen.toFixed(2):'n/d'}%, remises moyennes ${hist.remises_pct_moyen?hist.remises_pct_moyen.toFixed(2):'n/d'}%.`
-    : "Pas d'historique disponible pour comparaison.";
-
-  const prompt = `Tu es un analyste opérationnel expert en restauration rapide (Burger King), qui assiste un directeur de restaurants. Analyse la Synthèse CA journalière ci-dessous pour ${restoNom} et produis un compte rendu clair, concret et actionnable, en français.
-
-DONNÉES DE LA JOURNÉE (JSON) :
-${JSON.stringify(payload,null,2)}
-
-${seuilsTxt}
-
-${histTxt}
-
-Consignes de rédaction :
-- Sois précis et chiffré, va droit au but. Le directeur connaît le métier.
-- Mets en évidence ce qui sort de l'ordinaire (bon ou mauvais) par rapport à l'historique et aux seuils.
-- Analyse en particulier : les corrections, les annulations, les sauces offertes, les remises, les repas employés (risque de fraude/abus ou de perte de marge si élevés), l'écart de caisse, et la répartition par canal (Kiosk, Drive, Livraison, Comptoir, Click & Collect).
-- Termine par 2 à 4 recommandations opérationnelles concrètes.
-
-Réponds UNIQUEMENT en HTML simple, sans balises <html> ni <body>, en utilisant ces balises : <h4> pour les titres de sections, <p>, <ul>/<li>, <strong>. Pour signaler un statut, utilise <span class="ia-flag ok">OK</span>, <span class="ia-flag warn">VIGILANCE</span> ou <span class="ia-flag bad">ALERTE</span>. N'ajoute aucun texte hors HTML, pas de bloc de code, pas de \`\`\`.`;
-
-  const response = await fetch("/api/ia",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({
-      max_tokens:1600,
-      messages:[{role:"user",content:prompt}]
-    })
-  });
-  if(!response.ok){
-    let msg = "API "+response.status;
-    try { const er = await response.json(); if(er && er.error) msg = er.error; } catch(e){}
-    throw new Error(msg);
-  }
-  const data = await response.json();
-  let out = (data.content||[]).map(b=>b.type==='text'?b.text:'').join('\n').trim();
-  out = out.replace(/```html|```/g,'').trim();
-  return out;
-}
-
-// Affichage des KPI rapides
-function iaRenderKpis(d){
-  const ticket = d.tickets_nb ? (d.ca_ttc/d.tickets_nb).toFixed(2) : '—';
-  const ecart = d.erreur_caisse||0;
-  const corrCls = d.corrections_pct>=SEUILS.corrections_rouge?'bad':d.corrections_pct>=SEUILS.corrections_max?'warn':'ok';
-  const ecartCls = Math.abs(ecart)>=5?'bad':Math.abs(ecart)>=1?'warn':'ok';
-  const cards = [
-    {l:'CA TTC', v:fmt(d.ca_ttc)+'€', s:'HT '+fmt(d.ca_ht)+'€', c:'neutral'},
-    {l:'Transactions', v:(d.tickets_nb||'—'), s:'Ticket moyen '+ticket+'€', c:'neutral'},
-    {l:'Corrections', v:(d.corrections_pct!=null?d.corrections_pct+'%':'—'), s:fmt(d.corrections_montant)+'€ · '+(d.corrections_nb||0)+' op.', c:corrCls},
-    {l:'Repas employés', v:(d.repas_employes_nb||0), s:fmt(d.repas_employes_montant)+'€', c:(d.repas_employes_pct>=SEUILS.repas_max?'warn':'ok')},
-    {l:'Annulations', v:(d.annulations_nb||0), s:fmt(Math.abs(d.annulations_montant||0))+'€', c:(d.annulations_nb>0?'warn':'ok')},
-    {l:'Écart caisse', v:(ecart>=0?'+':'')+ecart.toFixed(2)+'€', s:'comptage', c:ecartCls}
-  ];
-  document.getElementById('ia-kpis').innerHTML = cards.map(c=>`
-    <div class="kpi ${c.c}">
-      <div class="kpi-label">${c.l}</div>
-      <div class="kpi-val">${c.v}</div>
-      <div class="kpi-delta flat" style="font-size:10px;color:var(--muted2)">${c.s}</div>
-    </div>`).join('');
-}
-
-// Affichage de l'analyse rédigée
-function iaRenderAnalysis(d, html, fromExisting){
-  const restoNom = (RESTAURANTS[d.restaurant]||{}).nom || d.restaurant || '';
-  document.getElementById('ia-panel-sub').textContent =
-    restoNom+' · '+formatDate(d.date)+' ('+jourSemaine(d.date)+')'+(fromExisting?' · journée enregistrée':' · PDF importé');
-  document.getElementById('ia-analysis-body').innerHTML = html ||
-    '<p style="color:var(--muted2)">L\'IA n\'a pas renvoyé d\'analyse. Réessaie.</p>';
-  document.getElementById('ia-result').style.display='block';
-  document.getElementById('ia-result').scrollIntoView({behavior:'smooth',block:'nearest'});
-}
-
-function iaSetLoading(on,txt){
-  document.getElementById('ia-loading').style.display = on?'block':'none';
-  if(txt) document.getElementById('ia-loading-text').textContent = txt;
-}
-function iaShowError(msg){
-  const e = document.getElementById('ia-error');
-  if(!msg){ e.style.display='none'; return; }
-  e.textContent = '✗ '+msg; e.style.display='block';
 }
 
 function parserSynthesCA(txt) {
@@ -5164,12 +4919,12 @@ async function extrairePDF() {
       r.readAsDataURL(IMPORT_FILE);
     });
 
-    // Appel API Claude
+    // Appel API Claude — VIA LE GARDIEN /api/ia (clé cachée côté serveur)
     const response = await fetch('/api/ia', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        max_tokens: 1500,
+        max_tokens: 2000,
         messages: [{
           role: 'user',
           content: [
@@ -5182,19 +4937,28 @@ async function extrairePDF() {
               text: `Tu es un expert en extraction de données depuis des Synthèses CA de restaurant Burger King.
 Extrais TOUTES les données disponibles de ce PDF et retourne UNIQUEMENT un objet JSON valide, sans texte avant ou après, sans balises markdown.
 
+IMPORTANT — montants par canal en HORS TAXES (colonne HT du PDF, PAS le TTC) :
+Le tableau du haut liste les canaux (CLICK & COLLECT, COMPTOIR, DRIVE, HOME DELIVERY, KIOSK) avec des colonnes TAC, HT, TTC, %. Prends bien la colonne HT pour les montants _ht, et le nombre de transactions de la colonne TAC pour _nb.
+
 Structure JSON attendue :
 {
   "date": "YYYY-MM-DD",
   "ca_ht": null,
   "ca_ttc": null,
   "tickets_nb": null,
-  "drive_ttc": null,
-  "drive_voitures": null,
-  "kiosk_ttc": null,
-  "livraison_ttc": null,
+  "panier_moyen_ht": null,
+  "drive_ht": null,
+  "drive_nb": null,
+  "kiosk_ht": null,
+  "kiosk_nb": null,
+  "livraison_ht": null,
   "livraison_nb": null,
-  "comptoir_ttc": null,
-  "cc_ttc": null,
+  "comptoir_ht": null,
+  "comptoir_nb": null,
+  "cc_ht": null,
+  "cc_nb": null,
+  "sur_place_ht": null,
+  "a_emporter_ht": null,
   "corrections_nb": null,
   "corrections_montant": null,
   "corrections_pct": null,
@@ -5203,16 +4967,20 @@ Structure JSON attendue :
   "remises_pct": null,
   "sauces_nb": null,
   "sauces_montant": null,
+  "sauces_pct": null,
   "annulations_nb": null,
   "annulations_montant": null,
+  "annulations_pct": null,
   "commandes_ouvertes_nb": null,
   "commandes_ouvertes_montant": null,
+  "commandes_ouvertes_pct": null,
   "repas_employes_nb": null,
   "repas_employes_montant": null,
   "repas_employes_pct": null,
   "erreur_caisse": null,
   "cb": null,
   "especes": null,
+  "ancv": null,
   "uber_eats": null,
   "deliveroo": null,
   "bk_livraison": null,
@@ -5220,9 +4988,17 @@ Structure JSON attendue :
 }
 
 Règles :
-- date au format YYYY-MM-DD (ex: 2025-05-15)
-- tous les montants en nombre décimal (ex: 14891.28)
-- null si la valeur est absente ou illisible
+- date au format YYYY-MM-DD, déduite de la période "Du JJ/MM/AA au JJ/MM/AA"
+- ca_ht = ligne TOTAL, colonne HT (ex: 12136.31)
+- ca_ttc = ligne TOTAL, colonne TTC
+- tickets_nb = ligne TOTAL, colonne TAC
+- panier_moyen_ht = ligne TOTAL, colonne P.M NET
+- chaque canal _ht = total de ce canal en colonne HT ; _nb = total de ce canal en colonne TAC
+- sur_place_ht / a_emporter_ht = bloc "Mode de consommation", colonne CA HT (SP = sur place, AE = à emporter)
+- annulations / corrections / remises / sauces / commandes ouvertes / repas employés : prendre Nbr, Montant et % CA
+- encaissements (cb, especes, ancv, uber_eats, deliveroo, bk_livraison, trd) = colonne "Compté/Déposé"
+- erreur_caisse = ligne TOTAL CA ENCAISSE, colonne "Ecart comptage"
+- tous les montants en nombre décimal, null si absent
 - UNIQUEMENT le JSON, rien d'autre`
             }
           ]
@@ -5230,7 +5006,11 @@ Règles :
       })
     });
 
-    if(!response.ok) throw new Error('API error ' + response.status);
+    if(!response.ok) {
+      let msg = 'Erreur ' + response.status;
+      try { const ej = await response.json(); if(ej && ej.error) msg = ej.error; } catch(e){}
+      throw new Error(msg);
+    }
     const data = await response.json();
     const text = data.content.map(c => c.text||'').join('');
     const clean = text.replace(/```json|```/g,'').trim();
@@ -5266,13 +5046,14 @@ function fillImportFields(d) {
   set('s-ca-ht',         d.ca_ht);
   set('s-ca-ttc',        d.ca_ttc);
   set('s-tickets',       d.tickets_nb);
-  set('s-drive-ca',      d.drive_ttc);
-  set('s-drive-vol',     d.drive_voitures);
-  set('s-kiosk-ca',      d.kiosk_ttc);
-  set('s-lv-ca',         d.livraison_ttc);
+  // Canaux en HT (avec repli sur l'ancien _ttc si jamais présent)
+  set('s-drive-ca',      d.drive_ht      ?? d.drive_ttc);
+  set('s-drive-vol',     d.drive_nb      ?? d.drive_voitures);
+  set('s-kiosk-ca',      d.kiosk_ht      ?? d.kiosk_ttc);
+  set('s-lv-ca',         d.livraison_ht  ?? d.livraison_ttc);
   set('s-lv-nb',         d.livraison_nb);
-  set('s-comptoir-ca',   d.comptoir_ttc);
-  set('s-cc-ca',         d.cc_ttc);
+  set('s-comptoir-ca',   d.comptoir_ht   ?? d.comptoir_ttc);
+  set('s-cc-ca',         d.cc_ht         ?? d.cc_ttc);
   set('s-corr-nb',       d.corrections_nb);
   set('s-corr-mnt',      d.corrections_montant);
   set('s-corr-pct',      d.corrections_pct);
@@ -5296,10 +5077,11 @@ function fillImportFields(d) {
   set('s-bkliv',         d.bk_livraison);
   set('s-trd',           d.trd);
 
-  // Ticket moyen calculé
-  if(d.ca_ttc && d.tickets_nb) {
-    const tmEl = document.getElementById('s-tm');
-    if(tmEl) tmEl.value = (d.ca_ttc / d.tickets_nb).toFixed(2);
+  // Ticket moyen HT calculé (priorité au panier moyen HT fourni)
+  const tmEl = document.getElementById('s-tm');
+  if(tmEl) {
+    if(d.panier_moyen_ht) tmEl.value = Number(d.panier_moyen_ht).toFixed(2);
+    else if(d.ca_ht && d.tickets_nb) tmEl.value = (d.ca_ht / d.tickets_nb).toFixed(2);
   }
 }
 
