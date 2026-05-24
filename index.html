@@ -2857,6 +2857,7 @@ const ALL_SEED26 = null;
 
 function switchResto(restoId) {
   ACTIVE_RESTO = restoId;
+  window.ACTIVE_RESTO = restoId; // synchro pour la section Horaires (script séparé)
   // Mettre à jour les boutons actifs
   ['BK500','BK509','BK526','ALL'].forEach(id => {
     const btn = document.getElementById('sw-'+id);
@@ -4287,6 +4288,7 @@ function applyRoleUI(role) {
   // Initialiser ACTIVE_RESTO selon le rôle (sans render — loadConfig s'en charge)
   if(isMulti) {
     ACTIVE_RESTO = 'ALL';
+    window.ACTIVE_RESTO = 'ALL';
     setTimeout(()=>{
       ['BK500','BK509','BK526','ALL'].forEach(id=>{
         const btn=document.getElementById('sw-'+id);
@@ -4295,6 +4297,7 @@ function applyRoleUI(role) {
     },50);
   } else if(CURRENT_USER?.resto) {
     ACTIVE_RESTO = CURRENT_USER.resto;
+    window.ACTIVE_RESTO = CURRENT_USER.resto;
   }
 
   if(isManager) {
