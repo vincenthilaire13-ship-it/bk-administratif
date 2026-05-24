@@ -991,13 +991,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 <div id="hrx-sec-planning" class="hr-sec hr-on">
   <div class="hr-plan-hdr">
     <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-      <div class="hr-cc"><label>Restaurant</label>
-        <select id="hrx-resto-sel2" onchange="hrSelectResto(this.value)">
-          <option value="BK526">Saint-Clément</option>
-          <option value="BK509">Saint-Jean-de-Védas</option>
-          <option value="BK500">Près des Arènes</option>
-        </select>
-      </div>
       <div class="hr-cc"><label>Semaine</label>
         <select id="hrx-sem-sel2" onchange="hrGenFromWeek(this.value);document.getElementById('hrx-sem-sel')&&(document.getElementById('hrx-sem-sel').value=this.value)"></select>
       </div>
@@ -1016,13 +1009,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
   <div class="hr-stitle">CA prévisionnel</div>
   <div class="hr-ssub">CA HT réel par tranche 15min. La base minimum terrain est toujours garantie.</div>
   <div class="hr-ca-ctrl">
-    <div class="hr-cc"><label>Restaurant</label>
-      <select id="hrx-resto-sel" onchange="hrSelectResto(this.value)">
-        <option value="BK526">Saint-Clément</option>
-        <option value="BK509">Saint-Jean-de-Védas</option>
-        <option value="BK500">Près des Arènes</option>
-      </select>
-    </div>
     <div class="hr-cc"><label>Vue</label>
       <select id="hrx-vue-sel" onchange="hrSetVue(this.value)">
         <option value="jour">Jour</option>
@@ -6598,6 +6584,10 @@ function hrGenFromWeek(lundi){
   // Libellé semaine
   const dim=new Date(base); dim.setDate(base.getDate()+6);
   WEEK_LABEL = lundi.slice(8,10)+' '+moisC[parseInt(lundi.slice(5,7))-1]+' → '+dim.toISOString().slice(8,10)+' '+moisC[dim.getMonth()]+' '+dim.getFullYear();
+  // Mettre à jour le sous-titre du header (resto + semaine)
+  const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+  const sub=document.querySelector('#sec-horaires .hr-hdr-sub');
+  if(sub) sub.textContent=(noms[HR_RESTO]||HR_RESTO||'')+' · Semaine du '+WEEK_LABEL;
   curDay=0; editDay=0;
   buildCAGrid(); hrShow('planning'); renderAll();
 }
