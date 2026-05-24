@@ -6508,8 +6508,15 @@ function hrGenFromDate(date){
   const moisL=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   const dt=new Date(date);
   const jourTxt = joursL[dt.getDay()]+' '+parseInt(date.slice(8,10))+' '+moisL[parseInt(date.slice(5,7))-1]+' '+date.slice(0,4);
-  DAY_LABELS[0] = joursL[dt.getDay()].slice(0,3)+' '+date.slice(8,10)+'/'+date.slice(5,7) + (r.source==='N-1' ? '*' : '');
-  WEEK_LABEL = jourTxt + (r.source==='N-1'?' (prévision N-1)':'');
+  DAY_LABELS[0] = joursL[dt.getDay()].slice(0,3)+' '+date.slice(8,10)+'/'+date.slice(5,7) + (r.source!=='réel' ? '*' : '');
+  // Source de la prévision (avec année) + alerte
+  let suffix='';
+  if(r.source!=='réel' && r.dateSource){
+    const ds=new Date(r.dateSource);
+    suffix=' → d\'après '+joursL[ds.getDay()].toLowerCase()+' '+parseInt(r.dateSource.slice(8,10))+' '+moisL[parseInt(r.dateSource.slice(5,7))-1]+' '+r.dateSource.slice(0,4)+(r.ferie?' (férié)':'');
+  }
+  WEEK_LABEL = jourTxt + suffix;
+  if(r.alerte){ WEEK_LABEL += ' ⚠ '+r.alerte; }
   curDay = 0;
   if(window.hrUpdateHeader) hrUpdateHeader();
   buildCAGrid();
@@ -6630,11 +6637,59 @@ function hrSetSource(v){
 }
 window.hrSetSource = hrSetSource;
 // Cherche le même jour de semaine, année -1
+// Jours fériés français pour une année donnée (fixes + mobiles liés à Pâques)
+function hrFeries(annee){
+  // Pâques (algorithme de Gauss)
+  const a=annee%19, b=Math.floor(annee/100), c=annee%100, d=Math.floor(b/4), e=b%4,
+        f=Math.floor((b+8)/25), g=Math.floor((b-f+1)/3), h=(19*a+b-d-g+15)%30,
+        i=Math.floor(c/4), k=c%4, l=(32+2*e+2*i-h-k)%7, m=Math.floor((a+11*h+22*l)/451),
+        mois=Math.floor((h+l-7*m+114)/31), jour=((h+l-7*m+114)%31)+1;
+  const paques=new Date(annee,mois-1,jour);
+  const addj=(base,n)=>{const x=new Date(base);x.setDate(x.getDate()+n);return x.toISOString().slice(0,10);};
+  return new Set([
+    annee+'-01-01', // Jour de l'an
+    annee+'-05-01', // Fête du travail
+    annee+'-05-08', // Victoire 1945
+    annee+'-07-14', // Fête nationale
+    annee+'-08-15', // Assomption
+    annee+'-11-01', // Toussaint
+    annee+'-11-11', // Armistice
+    annee+'-12-25', // Noël
+    annee+'-12-24', // Veille de Noël (gros jour resto)
+    annee+'-12-31', // St-Sylvestre
+    addj(paques,1),  // Lundi de Pâques
+    addj(paques,39), // Ascension
+    addj(paques,50), // Lundi de Pentecôte
+  ]);
+}
+function hrEstFerie(dateISO){
+  const an=parseInt(dateISO.slice(0,4));
+  return hrFeries(an).has(dateISO);
+}
+
 function hrN1(dateISO){
   const dt=new Date(dateISO);
-  const an1=new Date(dt); an1.setFullYear(dt.getFullYear()-1);
+  const an=dt.getFullYear();
+  // CAS JOUR FÉRIÉ : priorité à la MÊME DATE de l'an dernier (la fête prime sur le jour de semaine)
+  if(hrEstFerie(dateISO)){
+    const memeDate=(an-1)+dateISO.slice(4); // ex 2026-12-25 -> 2025-12-25
+    if(HR_DATA[memeDate]) return {ca:HR_DATA[memeDate], source:'N-1 férié', dateSource:memeDate, ferie:true};
+    // sinon, chercher le même férié en 2025 (peut tomber un autre jour) puis fallback jour de semaine
+  }
+  // CAS NORMAL : même jour de semaine de l'an dernier
+  const an1=new Date(dt); an1.setFullYear(an-1);
   const cibleJour=dt.getDay();
   for(let off=0; off<=4; off++){
+    for(const s of [1,-1]){
+      const c=new Date(an1); c.setDate(an1.getDate()+off*s);
+      if(c.getDay()!==cibleJour) continue;
+      const iso=c.toISOString().slice(0,10);
+      // éviter de prendre un férié 2025 comme référence d'un jour NON férié 2026
+      if(HR_DATA[iso] && !(hrEstFerie(iso) && !hrEstFerie(dateISO))) return {ca:HR_DATA[iso], source:'N-1', dateSource:iso};
+    }
+  }
+  // fallback : n'importe quel même jour de semaine dispo
+  for(let off=0; off<=10; off++){
     for(const s of [1,-1]){
       const c=new Date(an1); c.setDate(an1.getDate()+off*s);
       if(c.getDay()!==cibleJour) continue;
@@ -6644,20 +6699,34 @@ function hrN1(dateISO){
   }
   return null;
 }
-// Renvoie {ca, source:'réel'|'N-1'|'aucune', dateSource}
+// Renvoie {ca, source, dateSource, alerte?}
 function hrCourbeJour(dateISO){
   if(HR_SRC==='reel'){
     if(HR_DATA[dateISO]) return {ca:HR_DATA[dateISO], source:'réel', dateSource:dateISO};
     return {ca:{}, source:'aucune', dateSource:null};
   }
+  let res;
   if(HR_SRC==='n1'){
-    const r=hrN1(dateISO);
-    return r || {ca:{}, source:'aucune', dateSource:null};
+    res = hrN1(dateISO) || {ca:{}, source:'aucune', dateSource:null};
+  } else {
+    // auto
+    if(HR_DATA[dateISO]) res = {ca:HR_DATA[dateISO], source:'réel', dateSource:dateISO};
+    else res = hrN1(dateISO) || {ca:{}, source:'aucune', dateSource:null};
   }
-  // auto
-  if(HR_DATA[dateISO]) return {ca:HR_DATA[dateISO], source:'réel', dateSource:dateISO};
-  const r=hrN1(dateISO);
-  return r || {ca:{}, source:'aucune', dateSource:null};
+  // Contrôle CA aberrant : si la référence est un jour à CA très bas (fermeture, grève...)
+  if(res.dateSource && res.source!=='réel'){
+    const totRef = Object.values(res.ca).reduce((a,b)=>a+b,0);
+    // moyenne du même jour de semaine sur les 4 semaines autour
+    const dt=new Date(res.dateSource); let cmp=[];
+    for(let w=-4;w<=4;w++){ if(w===0)continue; const x=new Date(dt); x.setDate(dt.getDate()+w*7); const iso=x.toISOString().slice(0,10); if(HR_DATA[iso]) cmp.push(Object.values(HR_DATA[iso]).reduce((a,b)=>a+b,0)); }
+    if(cmp.length>=3){
+      const moy=cmp.reduce((a,b)=>a+b,0)/cmp.length;
+      if(moy>0 && (totRef < moy*0.5 || totRef > moy*1.8)){
+        res.alerte = 'CA de référence inhabituel ('+Math.round(totRef).toLocaleString('fr')+' € vs ~'+Math.round(moy).toLocaleString('fr')+' € attendu)';
+      }
+    }
+  }
+  return res;
 }
 window.hrCourbeJour=hrCourbeJour;
 
