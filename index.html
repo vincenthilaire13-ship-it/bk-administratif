@@ -6278,9 +6278,20 @@ function hrAutoApply(){
   // Régénère grille + planning automatiquement (débounce pour la saisie)
   clearTimeout(_hrAutoTimer);
   _hrAutoTimer=setTimeout(()=>{
+    const restoActif = hrCurrentResto();
+    if(restoActif !== HR_GRILLE_RESTO) HR_GRILLE_RESTO = restoActif;
     GRILLE_EDIT.sort((a,b)=>a[0]-b[0]);
     GRILLE.length=0; GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
     GRILLE_BY_RESTO[HR_GRILLE_RESTO]=GRILLE_EDIT.map(r=>[...r]);
+    // Régénérer la vue courante depuis la source
+    const vue=document.getElementById('hrx-vue-sel');
+    if(vue && vue.value==='jour'){
+      const s=document.getElementById('hrx-ca-day-sel');
+      if(s && /^\d{4}-/.test(s.value)){ hrGenFromDate(s.value, true); return; }
+    } else {
+      const sem=document.getElementById('hrx-sem-sel2')||document.getElementById('hrx-sem-sel');
+      if(sem && sem.value){ hrGenFromWeek(sem.value, true); return; }
+    }
     for(let d=0;d<CA_DAYS.length;d++) ROWS_BY_DAY[d]=buildRows(CA_DAYS[d]);
     renderAll();
   },350);
@@ -6316,18 +6327,32 @@ function removeGrilleRow(idx){
 }
 
 function applyGrille(){
+  // S'assurer que la grille éditée correspond bien au resto actif (évite tout écrasement)
+  const restoActif = hrCurrentResto();
+  if(restoActif !== HR_GRILLE_RESTO){
+    // l'utilisateur édite la grille du resto actif : on aligne HR_GRILLE_RESTO dessus
+    HR_GRILLE_RESTO = restoActif;
+  }
   // Trier par seuil croissant
   GRILLE_EDIT.sort((a,b)=>a[0]-b[0]);
   // Mettre à jour GRILLE utilisée par getEff
   GRILLE.length = 0;
   GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
-  // Mémoriser cette grille pour le restaurant actif
+  // Mémoriser cette grille pour le restaurant actif AVANT régénération
   GRILLE_BY_RESTO[HR_GRILLE_RESTO] = GRILLE_EDIT.map(r=>[...r]);
-  // Régénérer tous les plannings
-  for(let d=0;d<CA_DAYS.length;d++) ROWS_BY_DAY[d]=buildRows(CA_DAYS[d]);
   renderGrille();
+  // Régénérer DEPUIS LA SOURCE la vue courante (recalcule CA_DAYS + ROWS_BY_DAY)
   hrShow('planning');
-  renderAll();
+  const vue=document.getElementById('hrx-vue-sel');
+  if(vue && vue.value==='jour'){
+    const s=document.getElementById('hrx-ca-day-sel');
+    if(s && /^\d{4}-/.test(s.value)){ hrGenFromDate(s.value, true); }
+    else { for(let d=0;d<CA_DAYS.length;d++) ROWS_BY_DAY[d]=buildRows(CA_DAYS[d]); renderAll(); }
+  } else {
+    const sem=document.getElementById('hrx-sem-sel2')||document.getElementById('hrx-sem-sel');
+    if(sem && sem.value){ hrGenFromWeek(sem.value, true); }
+    else { for(let d=0;d<CA_DAYS.length;d++) ROWS_BY_DAY[d]=buildRows(CA_DAYS[d]); renderAll(); }
+  }
   const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
   alert('✓ Grille appliquée pour '+(noms[HR_GRILLE_RESTO]||HR_GRILLE_RESTO)+' ! Planning recalculé.');
 }
@@ -6635,7 +6660,7 @@ function hrFillDaySelect(){
 }
 
 // Génère le planning depuis une date importée
-function hrGenFromDate(date){
+function hrGenFromDate(date, garderOnglet){
   const resto = hrCurrentResto();
   if(resto !== HR_GRILLE_RESTO) hrSwitchRestoGrille(resto);
   const r = hrCourbeJour(date);
@@ -6676,7 +6701,7 @@ function hrGenFromDate(date){
   }
   if(window.hrUpdateHeader) hrUpdateHeader();
   buildCAGrid();
-  hrShow('planning');
+  if(!garderOnglet) hrShow('planning');
   renderAll();
 }
 window.hrGenFromDate = hrGenFromDate;
@@ -6774,7 +6799,7 @@ var WEEK_LABEL = '';
 var DAY_SOURCES = ['','','','','','','']; // date source 2025 de chaque jour (ou réel)
 var DAY_DATES = ['','','','','','','']; // date 2026 de chaque jour
 var DAY_VAC = ['','','','','','','']; // période de vacances scolaires de chaque jour (ou '')
-function hrGenFromWeek(lundi){
+function hrGenFromWeek(lundi, garderOnglet){
   const resto = hrCurrentResto();
   if(resto !== HR_GRILLE_RESTO) hrSwitchRestoGrille(resto);
   const jours=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
@@ -6802,7 +6827,9 @@ function hrGenFromWeek(lundi){
   WEEK_LABEL = lundi.slice(8,10)+' '+moisC[parseInt(lundi.slice(5,7))-1]+' → '+dimI.slice(8,10)+' '+moisC[parseInt(dimI.slice(5,7))-1]+' '+dimI.slice(0,4);
   if(window.hrUpdateHeader) hrUpdateHeader();
   curDay=0; editDay=0;
-  buildCAGrid(); hrShow('planning'); renderAll();
+  buildCAGrid();
+  if(!garderOnglet) hrShow('planning');
+  renderAll();
 }
 window.hrGenFromWeek=hrGenFromWeek;
 
