@@ -5994,20 +5994,57 @@ const DAY_TOTALS=[12870,13884,16912,13958,19945,17663,19592];
 const PEAK=1214;
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-const DS=5*60,DE=27*60,MIN2=2*60,MAX5=5*60,STEP=15;
+const DS=5*60,DE=27*60,MIN2=2*60,MAX5=4*60,STEP=15;
 const RULER_H=[5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1,2,3];
 function fmt(min){const h=Math.floor(min/60)%24,m=min%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;}
 
+// ── PLACEMENT D'UNE COUCHE (règle Vincent) ───────────────────────────────────
+// Entrée : need = tableau de bool/0-1 par tranche de 15 min (true = besoin de
+//          niveau >= k sur cette tranche), aligné sur `slots` (minutes de début).
+// Règle :
+//   • Dès qu'un besoin apparaît à la tranche T et qu'aucune personne n'est
+//     active, on pose une personne à partir de T pour 2h MINIMUM.
+//   • Tant qu'une personne est active, un besoin qui oscille ne rajoute rien.
+//   • Si le besoin se prolonge au-delà de 2h, on étend le trait jusqu'à 4h MAX.
+//   • À 4h pile, on coupe ; si le besoin est encore là, on repose une NOUVELLE
+//     personne (nouveau trait, 2h min) à partir de la tranche courante.
+//   • La personne reste ses 2h pleines même si le besoin a disparu avant.
+function placeLayer(slots, need){
+  const out=[]; // {start, end}
+  const n=slots.length;
+  let i=0;
+  while(i<n){
+    if(!need[i]){ i++; continue; }
+    // Besoin détecté : on pose une personne à partir de slots[i]
+    const start=slots[i];
+    const minEnd=start+MIN2;        // 2h minimum garanties
+    const maxEnd=start+MAX5;        // 4h maximum strict
+    // On suit le besoin tranche par tranche tant qu'il est CONTINU.
+    // contiguousEnd = fin du besoin ininterrompu depuis le début du trait.
+    let j=i;
+    let contiguousEnd=start;
+    while(j<n && slots[j]<maxEnd && need[j] && slots[j]===start+(j-i)*STEP){
+      contiguousEnd=slots[j]+STEP;
+      j++;
+    }
+    // Fin du trait : au moins 2h, au plus 4h, et on prolonge jusqu'à la fin du
+    // besoin continu si celui-ci dépasse 2h. Un trou après 2h coupe ici.
+    let end=Math.max(minEnd, contiguousEnd);
+    if(end>maxEnd) end=maxEnd;
+    out.push({start, end});
+    // Reprendre APRÈS la fin du trait. Un besoin qui réapparaît plus tard
+    // (après un trou, ou après la coupure des 4h) sera une NOUVELLE personne.
+    while(i<n && slots[i]<end) i++;
+  }
+  return out;
+}
+// Conservée pour compatibilité éventuelle : applique la même règle à des runs.
 function splitProd(runs){
   const out=[];
   runs.forEach(r=>{
-    const dur=r.end-r.start;
-    if(dur<MIN2)return;
-    let s=r.start;
-    while(r.end-s>MAX5){out.push({n:r.n,start:s,end:s+MAX5});s+=MAX5;}
-    const rem=r.end-s;
-    if(rem>=MIN2)out.push({n:r.n,start:s,end:r.end});
-    else if(rem>0&&out.length)out[out.length-1].end=r.end;
+    const slots=[]; for(let t=r.start;t<r.end;t+=STEP) slots.push(t);
+    const need=slots.map(()=>true);
+    placeLayer(slots,need).forEach(seg=>out.push({n:r.n,start:seg.start,end:seg.end}));
   });
   return out;
 }
@@ -6040,22 +6077,14 @@ function buildRows(caMap){
       return {minVal, n:(getEff(ca15)[poste])||0};
     }).sort((a,b)=>a.minVal-b.minVal);
     if(!profil.length) return;
+    const slots=profil.map(p=>p.minVal);
     const maxN=Math.max(...profil.map(p=>p.n));
-    // Pour chaque couche k (1..maxN), construire les segments continus où n>=k
+    // Pour chaque couche k (1..maxN) : besoin[k] = (effectif requis >= k).
+    // placeLayer pose les personnes selon la règle 2h min / 4h max.
     for(let k=1;k<=maxN;k++){
-      const runs=[];
-      profil.forEach(p=>{
-        if(p.n>=k){
-          const last=runs[runs.length-1];
-          if(last && last.end===p.minVal) last.end=p.minVal+STEP;
-          else runs.push({start:p.minVal, end:p.minVal+STEP});
-        }
-      });
-      // Découper chaque segment en shifts réalistes (2h-5h) et créer un trait
-      runs.forEach(seg=>{
-        splitProd([{n:1,start:seg.start,end:seg.end}]).forEach(r=>{
-          rows.push({shift:`${fmt(r.start)}–${fmt(r.end)}`,bars:[{l:poste,s:r.start,e:r.end}],type:'extra'});
-        });
+      const need=profil.map(p=>p.n>=k);
+      placeLayer(slots, need).forEach(seg=>{
+        rows.push({shift:`${fmt(seg.start)}–${fmt(seg.end)}`,bars:[{l:poste,s:seg.start,e:seg.end}],type:'extra'});
       });
     }
   });
