@@ -324,7 +324,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
         <button id="sw-BK500" class="btn" style="font-size:11px;padding:4px 10px" onclick="switchResto('BK500')">🏟️ BK 500</button>
         <button id="sw-BK509" class="btn" style="font-size:11px;padding:4px 10px" onclick="switchResto('BK509')">🏪 BK 509</button>
         <button id="sw-BK526" class="btn" style="font-size:11px;padding:4px 10px" onclick="switchResto('BK526')">🌿 BK 526</button>
-        <button id="sw-ALL"   class="btn" style="font-size:11px;padding:4px 10px" onclick="switchResto('ALL')">📊 Tous</button>
       </div>
     </div>
     <div class="topbar-right">
@@ -2862,7 +2861,7 @@ function switchResto(restoId) {
   ACTIVE_RESTO = restoId;
   window.ACTIVE_RESTO = restoId; // synchro pour la section Horaires (script séparé)
   // Mettre à jour les boutons actifs
-  ['BK500','BK509','BK526','ALL'].forEach(id => {
+  ['BK500','BK509','BK526'].forEach(id => {
     const btn = document.getElementById('sw-'+id);
     if(!btn) return;
     btn.className = id===restoId ? 'btn btn-accent' : 'btn';
@@ -4290,12 +4289,12 @@ function applyRoleUI(role) {
 
   // Initialiser ACTIVE_RESTO selon le rôle (sans render — loadConfig s'en charge)
   if(isMulti) {
-    ACTIVE_RESTO = 'ALL';
-    window.ACTIVE_RESTO = 'ALL';
+    ACTIVE_RESTO = 'BK526';
+    window.ACTIVE_RESTO = 'BK526';
     setTimeout(()=>{
-      ['BK500','BK509','BK526','ALL'].forEach(id=>{
+      ['BK500','BK509','BK526'].forEach(id=>{
         const btn=document.getElementById('sw-'+id);
-        if(btn){btn.className=id==='ALL'?'btn btn-accent':'btn';btn.style.fontSize='11px';btn.style.padding='4px 10px';}
+        if(btn){btn.className=id==='BK526'?'btn btn-accent':'btn';btn.style.fontSize='11px';btn.style.padding='4px 10px';}
       });
     },50);
   } else if(CURRENT_USER?.resto) {
