@@ -1019,14 +1019,8 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       </select>
     </div>
     <div class="hr-cc" id="hrx-jour-wrap"><label>Jour</label>
-      <select id="hrx-ca-day-sel" onchange="loadCADay()">
-        <option value="0">Lundi 13 avril — 12 870 €</option>
-        <option value="1">Mardi 14 avril — 13 884 €</option>
-        <option value="2">Mercredi 15 avril — 16 912 €</option>
-        <option value="3">Jeudi 16 avril — 13 958 €</option>
-        <option value="4">Vendredi 17 avril — 19 945 €</option>
-        <option value="5">Samedi 18 avril — 17 663 €</option>
-        <option value="6">Dimanche 19 avril — 19 592 €</option>
+      <select id="hrx-ca-day-sel" onchange="if(/^\d{4}-/.test(this.value)){hrGenFromDate(this.value)}else{loadCADay()}">
+        <option value="0">— chargement… —</option>
       </select>
     </div>
     <div class="hr-cc" id="hrx-sem-wrap" style="display:none"><label>Semaine</label>
@@ -6345,17 +6339,24 @@ window.__hrInit=function(){
     if(window.HR_SEED_BK509) HR_ALL['BK509']=window.HR_SEED_BK509;
     if(window.HR_SEED_BK500) HR_ALL['BK500']=window.HR_SEED_BK500;
     window.HR_ALL=HR_ALL;
-    // Vue active = resto courant de l'appli (ou Saint-Clément par défaut)
     const resto = hrCurrentResto();
     if(HR_ALL[resto]){ HR_DATA=HR_ALL[resto]; HR_RESTO=resto; window.HR_DATA=HR_DATA; }
     else if(HR_ALL['BK526']){ HR_DATA=HR_ALL['BK526']; HR_RESTO='BK526'; window.HR_DATA=HR_DATA; }
+    hrSwitchRestoGrille(HR_RESTO||'BK526');
   }catch(e){ console.warn('seed horaires',e); }
-  buildCAGrid();renderGrille();renderNP();
-  // Si des données sont chargées, remplir les sélecteurs et générer le dernier jour
+  renderGrille();renderNP();
   if(Object.keys(HR_DATA).length){
-    hrFillDaySelect(); hrFillWeekSelect();
+    hrFillDaySelect();
+    hrFillWeekSelect();
+    // Démarrer en vue SEMAINE sur la dernière semaine disponible
+    const vue=document.getElementById('hrx-vue-sel'); if(vue) vue.value='semaine';
+    hrSetVue('semaine');
+    // Mettre le titre
+    const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+    const titre=document.querySelector('#sec-horaires .hr-hdr-title');
+    if(titre) titre.textContent='BK '+(noms[HR_RESTO]||HR_RESTO||'');
   } else {
-    renderAll();
+    buildCAGrid(); renderAll();
   }
 };
 // Bascule la section Horaires sur le restaurant actif de l'appli
@@ -6476,26 +6477,44 @@ function hrSetVue(v){
 }
 window.hrSetVue=hrSetVue;
 
-// Remplit la liste des semaines à partir des dates importées
+// Remplit la liste avec TOUTES les semaines de 2026 (réel + prévision N-1)
 function hrFillWeekSelect(){
   const sel=document.getElementById('hrx-sem-sel');
   if(!sel) return;
-  const dates=Object.keys(HR_DATA).sort();
-  if(!dates.length){ sel.innerHTML='<option>— importez d\'abord un CSV —</option>'; return; }
-  // Regrouper par lundi de semaine
-  const semaines={};
-  dates.forEach(d=>{ const lun=hrMonday(d); if(!semaines[lun]) semaines[lun]=[]; semaines[lun].push(d); });
-  const luns=Object.keys(semaines).sort();
+  if(!Object.keys(HR_DATA).length){ sel.innerHTML='<option>— aucune donnée —</option>'; return; }
   const moisC=['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
   const lbl=d=>{const [y,m,j]=d.split('-');return parseInt(j)+' '+moisC[parseInt(m)-1];};
+  // Tous les lundis de 2026
+  const luns=[];
+  let d=new Date('2026-01-01');
+  // reculer au lundi
+  d.setDate(d.getDate()-((d.getDay()+6)%7));
+  while(d.getFullYear()<=2026){
+    const iso=d.toISOString().slice(0,10);
+    if(new Date(iso).getFullYear()===2026 || (new Date(iso).getFullYear()===2025 && iso>='2025-12-29')) luns.push(iso);
+    d.setDate(d.getDate()+7);
+    if(luns.length>60) break;
+  }
+  // total d'une semaine (réel ou N-1)
+  const totSem=lun=>{
+    let t=0; const b=new Date(lun);
+    for(let i=0;i<7;i++){const x=new Date(b);x.setDate(b.getDate()+i);const iso=x.toISOString().slice(0,10);
+      const r=hrCourbeJour(iso); t+=Object.values(r.ca||{}).reduce((a,c)=>a+c,0);}
+    return Math.round(t);
+  };
+  // une semaine a-t-elle au moins un jour réel ?
+  const aDuReel=lun=>{const b=new Date(lun);for(let i=0;i<7;i++){const x=new Date(b);x.setDate(b.getDate()+i);if(HR_DATA[x.toISOString().slice(0,10)])return true;}return false;};
   sel.innerHTML=luns.map(lun=>{
-    const js=semaines[lun]; const dim=js[js.length-1];
-    const tot=Math.round(js.reduce((a,d)=>a+Object.values(HR_DATA[d]).reduce((x,y)=>x+y,0),0));
-    return `<option value="${lun}">Sem. ${hrIsoWeek(lun)} · ${lbl(lun)} → ${lbl(dim)} — ${tot.toLocaleString('fr')} €</option>`;
+    const dim=new Date(lun); dim.setDate(dim.getDate()+6);
+    const dimIso=dim.toISOString().slice(0,10);
+    const tag=aDuReel(lun)?'':' (prév.)';
+    return `<option value="${lun}">Sem. ${hrIsoWeek(lun)} · ${lbl(lun)} → ${lbl(dimIso)} — ${totSem(lun).toLocaleString('fr')} €${tag}</option>`;
   }).join('');
-  const lastLun=luns[luns.length-1];
-  sel.value=lastLun;
-  hrGenFromWeek(lastLun);
+  // sélectionner la dernière semaine réelle par défaut
+  const reels=luns.filter(aDuReel);
+  const def=reels.length?reels[reels.length-1]:luns[0];
+  sel.value=def;
+  hrGenFromWeek(def);
 }
 window.hrFillWeekSelect=hrFillWeekSelect;
 
