@@ -6123,10 +6123,16 @@ function renderMetrics(){
   const caSem = DAY_TOTALS.reduce((a,b)=>a+b,0);
   const hSem = Math.round(DAY_LABELS.reduce((_,__,i)=>_+calcHeures(i),0)*10)/10;
   const semLbl = (typeof WEEK_LABEL!=='undefined' && WEEK_LABEL) ? WEEK_LABEL : (DAY_LABELS[0]+' → '+DAY_LABELS[6]);
+  // Jour en toutes lettres
+  const joursLong=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  let jourTxt = DAY_LABELS[curDay];
+  // si label format "Lun 11/05", reconstruire le jour complet
+  const mlab = DAY_LABELS[curDay] && DAY_LABELS[curDay].match(/(\d{2})\/(\d{2})/);
+  if(mlab){ const dd=new Date('2026-'+mlab[2]+'-'+mlab[1]); jourTxt = joursLong[dd.getDay()]+' '+parseInt(mlab[1])+'/'+mlab[2]; }
 
   document.getElementById('hrx-mrow').innerHTML=`
-    <div class="hr-mc"><div class="hr-mc-l">CA journée HT</div><div class="hr-mc-v">${caDay.toLocaleString('fr')} €</div><div class="hr-mc-s">${DAY_LABELS[curDay]}</div></div>
-    <div class="hr-mc"><div class="hr-mc-l">Heures planifiées</div><div class="hr-mc-v">${hDay} h</div><div class="hr-mc-s">ce jour</div></div>
+    <div class="hr-mc" style="border-color:var(--ac)"><div class="hr-mc-l" style="color:var(--ac)">📅 Jour sélectionné</div><div class="hr-mc-v" style="font-size:18px;color:#fff">${jourTxt}</div><div class="hr-mc-s">${caDay.toLocaleString('fr')} € HT · ${hDay} h</div></div>
+    <div class="hr-mc"><div class="hr-mc-l">CA journée HT</div><div class="hr-mc-v">${caDay.toLocaleString('fr')} €</div><div class="hr-mc-s">${hDay} h planifiées</div></div>
     <div class="hr-mc" style="border-color:var(--ac);"><div class="hr-mc-l" style="color:var(--ac);">CA semaine HT</div><div class="hr-mc-v">${caSem.toLocaleString('fr')} €</div><div class="hr-mc-s">${semLbl}</div></div>
     <div class="hr-mc" style="border-color:var(--ac);"><div class="hr-mc-l" style="color:var(--ac);">Heures semaine</div><div class="hr-mc-v">${hSem} h</div><div class="hr-mc-s">total 7 jours</div></div>
   `;
@@ -6136,7 +6142,9 @@ function renderDays(){
   const wrap=document.getElementById('hrx-days');wrap.innerHTML='';
   DAY_LABELS.forEach((d,i)=>{
     const h=calcHeures(i);
-    const btn=document.createElement('div');btn.className='hr-db'+(i===curDay?' on':'');
+    const actif = (i===curDay);
+    const btn=document.createElement('div');btn.className='hr-db'+(actif?' hr-on':'');
+    if(actif){ btn.style.color='#fff'; btn.style.fontWeight='600'; }
     btn.innerHTML=`<span class="hr-db-day">${d}</span><span class="hr-db-ca">${DAY_TOTALS[i].toLocaleString('fr')} € · ${h}h</span>`;
     btn.onclick=()=>{curDay=i;renderAll();};
     wrap.appendChild(btn);
@@ -6495,8 +6503,13 @@ function hrGenFromDate(date){
   CA_DAYS[0] = ca;
   ROWS_BY_DAY[0] = buildRows(ca);
   DAY_TOTALS[0] = Math.round(total);
-  DAY_LABELS[0] = date + (r.source==='N-1' ? ' (prév. N-1)' : '');
-  WEEK_LABEL = date + (r.source==='N-1'?' (prév. N-1)':'');
+  // Libellé explicite : "Lundi 17 mai 2026"
+  const joursL=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const moisL=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const dt=new Date(date);
+  const jourTxt = joursL[dt.getDay()]+' '+parseInt(date.slice(8,10))+' '+moisL[parseInt(date.slice(5,7))-1]+' '+date.slice(0,4);
+  DAY_LABELS[0] = joursL[dt.getDay()].slice(0,3)+' '+date.slice(8,10)+'/'+date.slice(5,7) + (r.source==='N-1' ? '*' : '');
+  WEEK_LABEL = jourTxt + (r.source==='N-1'?' (prévision N-1)':'');
   curDay = 0;
   if(window.hrUpdateHeader) hrUpdateHeader();
   buildCAGrid();
