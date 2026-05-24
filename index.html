@@ -1005,6 +1005,13 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
   <div class="hr-stitle">CA prévisionnel</div>
   <div class="hr-ssub">CA HT réel par tranche 15min. La base minimum terrain est toujours garantie.</div>
   <div class="hr-ca-ctrl">
+    <div class="hr-cc"><label>Restaurant</label>
+      <select id="hrx-resto-sel" onchange="hrSelectResto(this.value)">
+        <option value="BK526">Saint-Clément</option>
+        <option value="BK509">Saint-Jean-de-Védas</option>
+        <option value="BK500">Près des Arènes</option>
+      </select>
+    </div>
     <div class="hr-cc"><label>Vue</label>
       <select id="hrx-vue-sel" onchange="hrSetVue(this.value)">
         <option value="jour">Jour</option>
@@ -2882,6 +2889,7 @@ function switchResto(restoId) {
   else if(idActive==='journee') buildJourneeSelect();
   else if(idActive==='managers') renderManagers();
   else if(idActive==='annulations'){renderAnnulationsHistorique();}
+  else if(idActive==='horaires'){ if(window.__hrSwitchTo) try{window.__hrSwitchTo(true);}catch(e){console.warn('horaires switch',e);} }
 }
 
 function getSeedForResto(year) {
@@ -6346,6 +6354,9 @@ window.__hrInit=function(){
   }catch(e){ console.warn('seed horaires',e); }
   renderGrille();renderNP();
   if(Object.keys(HR_DATA).length){
+    // Synchroniser le sélecteur de resto dédié
+    const rsel=document.getElementById('hrx-resto-sel');
+    if(rsel && HR_RESTO) rsel.value=HR_RESTO;
     hrFillDaySelect();
     hrFillWeekSelect();
     // Démarrer en vue SEMAINE sur la dernière semaine disponible
@@ -6360,17 +6371,46 @@ window.__hrInit=function(){
   }
 };
 // Bascule la section Horaires sur le restaurant actif de l'appli
-window.__hrSwitchTo=function(){
+window.__hrSwitchTo=function(force){
+  if(!window.__hrDone) return; // section pas encore initialisée
   const resto = hrCurrentResto();
-  if(HR_ALL[resto] && resto!==HR_RESTO){
-    HR_DATA = HR_ALL[resto]; HR_RESTO = resto; window.HR_DATA = HR_DATA;
-    hrSwitchRestoGrille(resto);
-    if(Object.keys(HR_DATA).length){ hrFillDaySelect(); hrFillWeekSelect(); }
-    // Mettre à jour le titre du planning avec le resto
-    const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
-    const titre=document.querySelector('#sec-horaires .hr-hdr-title');
-    if(titre) titre.textContent='BK '+(noms[resto]||resto);
+  if(!HR_ALL[resto]) return;
+  if(resto===HR_RESTO && !force) return;
+  HR_DATA = HR_ALL[resto]; HR_RESTO = resto; window.HR_DATA = HR_DATA;
+  hrSwitchRestoGrille(resto);
+  // Mettre à jour le titre
+  const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+  const titre=document.querySelector('#sec-horaires .hr-hdr-title');
+  if(titre) titre.textContent='BK '+(noms[resto]||resto);
+  // Recharger les sélecteurs et régénérer selon la vue en cours
+  if(Object.keys(HR_DATA).length){
+    hrFillDaySelect();
+    hrFillWeekSelect();
+    const vue=document.getElementById('hrx-vue-sel');
+    if(vue && vue.value==='jour'){
+      const s=document.getElementById('hrx-ca-day-sel');
+      if(s && s.value) hrGenFromDate(s.value);
+    }
+    // en vue semaine, hrFillWeekSelect a déjà régénéré
   }
+};
+window.hrSwitchTo=window.__hrSwitchTo;
+
+// Sélection explicite du resto dans la section Horaires (sélecteur dédié)
+window.hrSelectResto=function(resto){
+  if(!HR_ALL[resto]){ alert('Pas de données horaires pour ce restaurant.'); return; }
+  HR_DATA = HR_ALL[resto]; HR_RESTO = resto; window.HR_DATA = HR_DATA;
+  hrSwitchRestoGrille(resto);
+  const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+  const titre=document.querySelector('#sec-horaires .hr-hdr-title');
+  if(titre) titre.textContent='BK '+(noms[resto]||resto);
+  hrFillDaySelect();
+  hrFillWeekSelect();
+  const vue=document.getElementById('hrx-vue-sel');
+  if(vue && vue.value==='jour'){
+    const s=document.getElementById('hrx-ca-day-sel'); if(s&&s.value) hrGenFromDate(s.value);
+  }
+  renderGrille(); renderNP();
 };
 
 
