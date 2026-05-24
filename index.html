@@ -6376,23 +6376,31 @@ window.__hrSwitchTo=function(force){
   if(resto===HR_RESTO && !force) return;
   HR_DATA = HR_ALL[resto]; HR_RESTO = resto; window.HR_DATA = HR_DATA;
   hrSwitchRestoGrille(resto);
-  // Mettre à jour le titre
-  const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
-  const titre=document.querySelector('#sec-horaires .hr-hdr-title');
-  if(titre) titre.textContent='BK '+(noms[resto]||resto);
   // Recharger les sélecteurs et régénérer selon la vue en cours
   if(Object.keys(HR_DATA).length){
     hrFillDaySelect();
-    hrFillWeekSelect();
+    hrFillWeekSelect(); // régénère la semaine → met à jour l'en-tête via hrGenFromWeek
     const vue=document.getElementById('hrx-vue-sel');
     if(vue && vue.value==='jour'){
       const s=document.getElementById('hrx-ca-day-sel');
       if(s && s.value) hrGenFromDate(s.value);
     }
-    // en vue semaine, hrFillWeekSelect a déjà régénéré
   }
+  hrUpdateHeader();
+  renderGrille(); renderNP();
 };
 window.hrSwitchTo=window.__hrSwitchTo;
+
+// Met à jour l'en-tête de la section Horaires : titre = resto, sous-titre = semaine
+function hrUpdateHeader(){
+  const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
+  const nom = noms[HR_RESTO] || HR_RESTO || '';
+  const titre=document.querySelector('#sec-horaires .hr-hdr-title');
+  if(titre) titre.textContent = 'BK '+nom;
+  const sub=document.querySelector('#sec-horaires .hr-hdr-sub');
+  if(sub) sub.textContent = nom + (WEEK_LABEL ? ' · Semaine du '+WEEK_LABEL : '');
+}
+window.hrUpdateHeader=hrUpdateHeader;
 
 // Sélection explicite du resto dans la section Horaires (sélecteur dédié)
 window.hrSelectResto=function(resto){
@@ -6485,7 +6493,9 @@ function hrGenFromDate(date){
   ROWS_BY_DAY[0] = buildRows(ca);
   DAY_TOTALS[0] = Math.round(total);
   DAY_LABELS[0] = date + (r.source==='N-1' ? ' (prév. N-1)' : '');
+  WEEK_LABEL = date + (r.source==='N-1'?' (prév. N-1)':'');
   curDay = 0;
+  if(window.hrUpdateHeader) hrUpdateHeader();
   buildCAGrid();
   hrShow('planning');
   renderAll();
@@ -6584,10 +6594,7 @@ function hrGenFromWeek(lundi){
   // Libellé semaine
   const dim=new Date(base); dim.setDate(base.getDate()+6);
   WEEK_LABEL = lundi.slice(8,10)+' '+moisC[parseInt(lundi.slice(5,7))-1]+' → '+dim.toISOString().slice(8,10)+' '+moisC[dim.getMonth()]+' '+dim.getFullYear();
-  // Mettre à jour le sous-titre du header (resto + semaine)
-  const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
-  const sub=document.querySelector('#sec-horaires .hr-hdr-sub');
-  if(sub) sub.textContent=(noms[HR_RESTO]||HR_RESTO||'')+' · Semaine du '+WEEK_LABEL;
+  if(window.hrUpdateHeader) hrUpdateHeader();
   curDay=0; editDay=0;
   buildCAGrid(); hrShow('planning'); renderAll();
 }
