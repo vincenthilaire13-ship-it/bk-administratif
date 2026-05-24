@@ -1027,6 +1027,9 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
         <option value="0">— chargement… —</option>
       </select>
     </div>
+    <div class="hr-cc" id="hrx-ref-wrap" style="display:none"><label>📅 Jour de référence (2025) — manuel</label>
+      <input type="date" id="hrx-ref-date" min="2025-01-01" max="2025-12-31" onchange="hrSetRefManuelle(this.value)" style="background:var(--s1);border:1px solid var(--bd2);border-radius:8px;padding:6px 11px;font-size:13px;color:var(--tx);font-family:'DM Sans',sans-serif;">
+    </div>
     <div class="hr-cc" id="hrx-sem-wrap" style="display:none"><label>Semaine</label>
       <select id="hrx-sem-sel" onchange="hrGenFromWeek(this.value)"></select>
     </div>
@@ -6518,6 +6521,18 @@ function hrGenFromDate(date){
   WEEK_LABEL = jourTxt + suffix;
   if(r.alerte){ WEEK_LABEL += ' ⚠ '+r.alerte; }
   curDay = 0;
+  HR_CURRENT_DAY = date;
+  // Afficher le champ "jour de référence manuel" si on est en prévision (pas réel)
+  const refWrap=document.getElementById('hrx-ref-wrap');
+  const refInput=document.getElementById('hrx-ref-date');
+  if(refWrap){
+    if(r.source!=='réel' && r.source!=='aucune'){
+      refWrap.style.display='';
+      if(refInput && r.dateSource) refInput.value=r.dateSource;
+    } else {
+      refWrap.style.display='none';
+    }
+  }
   if(window.hrUpdateHeader) hrUpdateHeader();
   buildCAGrid();
   hrShow('planning');
@@ -6638,6 +6653,17 @@ function hrSetSource(v){
 window.hrSetSource = hrSetSource;
 // Cherche le même jour de semaine, année -1
 // Jours fériés français pour une année donnée (fixes + mobiles liés à Pâques)
+// Référence manuelle choisie par l'utilisateur : { 'resto|YYYY-MM-DD' : 'YYYY-MM-DD' (jour 2025) }
+var HR_REF_MANUELLE = {};
+var HR_CURRENT_DAY = null; // jour 2026 actuellement affiché en vue jour
+function hrSetRefManuelle(dateRef2025){
+  if(!HR_CURRENT_DAY || !dateRef2025) return;
+  if(!HR_DATA[dateRef2025]){ alert('Pas de données pour le '+dateRef2025+' dans ce restaurant.'); return; }
+  HR_REF_MANUELLE[HR_RESTO+'|'+HR_CURRENT_DAY] = dateRef2025;
+  hrGenFromDate(HR_CURRENT_DAY);
+}
+window.hrSetRefManuelle=hrSetRefManuelle;
+
 function hrFeries(annee){
   // Pâques (algorithme de Gauss)
   const a=annee%19, b=Math.floor(annee/100), c=annee%100, d=Math.floor(b/4), e=b%4,
@@ -6701,6 +6727,13 @@ function hrN1(dateISO){
 }
 // Renvoie {ca, source, dateSource, alerte?}
 function hrCourbeJour(dateISO){
+  // Référence MANUELLE prioritaire (sauf en mode réel strict)
+  if(HR_SRC!=='reel'){
+    const manuel = HR_REF_MANUELLE[HR_RESTO+'|'+dateISO];
+    if(manuel && HR_DATA[manuel]){
+      return {ca:HR_DATA[manuel], source:'manuel', dateSource:manuel};
+    }
+  }
   if(HR_SRC==='reel'){
     if(HR_DATA[dateISO]) return {ca:HR_DATA[dateISO], source:'réel', dateSource:dateISO};
     return {ca:{}, source:'aucune', dateSource:null};
@@ -6709,14 +6742,11 @@ function hrCourbeJour(dateISO){
   if(HR_SRC==='n1'){
     res = hrN1(dateISO) || {ca:{}, source:'aucune', dateSource:null};
   } else {
-    // auto
     if(HR_DATA[dateISO]) res = {ca:HR_DATA[dateISO], source:'réel', dateSource:dateISO};
     else res = hrN1(dateISO) || {ca:{}, source:'aucune', dateSource:null};
   }
-  // Contrôle CA aberrant : si la référence est un jour à CA très bas (fermeture, grève...)
   if(res.dateSource && res.source!=='réel'){
     const totRef = Object.values(res.ca).reduce((a,b)=>a+b,0);
-    // moyenne du même jour de semaine sur les 4 semaines autour
     const dt=new Date(res.dateSource); let cmp=[];
     for(let w=-4;w<=4;w++){ if(w===0)continue; const x=new Date(dt); x.setDate(dt.getDate()+w*7); const iso=x.toISOString().slice(0,10); if(HR_DATA[iso]) cmp.push(Object.values(HR_DATA[iso]).reduce((a,b)=>a+b,0)); }
     if(cmp.length>=3){
