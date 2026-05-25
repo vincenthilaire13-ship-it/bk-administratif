@@ -6618,7 +6618,11 @@ function hrNpToggleForm(){
     const grid=document.getElementById('hrx-np-grid');
     if(grid && grid.parentNode) grid.parentNode.insertBefore(f, grid);
     f.style.display='';
-    f.scrollIntoView({behavior:'smooth', block:'center'});
+    const r=f.getBoundingClientRect();
+    const vh=window.innerHeight||document.documentElement.clientHeight;
+    if(r.bottom>vh || r.top<0){
+      f.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
   } else {
     f.style.display='none';
   }
@@ -6688,8 +6692,14 @@ function hrNpEdit(nom){
     card.parentNode.insertBefore(f, card.nextSibling);
   }
   f.style.display='';
-  // Centre la vue sur le formulaire qui vient de s'ouvrir
-  f.scrollIntoView({behavior:'smooth', block:'center'});
+  // On ne recentre PAS la vue : le formulaire apparaît juste sous la carte,
+  // là où l'utilisateur a cliqué. On scrolle seulement si le formulaire
+  // déborde du bas de l'écran (sinon on ne bouge pas du tout).
+  const r=f.getBoundingClientRect();
+  const vh=window.innerHeight||document.documentElement.clientHeight;
+  if(r.bottom>vh || r.top<0){
+    f.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
 }
 function hrNpDelete(nom){
   if(!confirm('Supprimer le poste non productif « '+nom+' » ?')) return;
