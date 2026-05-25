@@ -1063,14 +1063,18 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <button class="hr-btn hr-btn-ac" onclick="hrNpToggleForm()" style="padding:8px 18px">+ Ajouter un non productif</button>
   </div>
   <div id="hrx-np-form" style="display:none;background:var(--s1);border:1px solid var(--bd2);border-radius:12px;padding:1rem;margin-bottom:1.2rem">
-    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div id="hrx-np-form-title" class="hr-stitle" style="font-size:14px;margin-bottom:.8rem">Nouveau poste non productif</div>
+    <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:.9rem">
       <div class="hr-cc"><label>Nom du poste</label><input id="hrx-np-nom" type="text" placeholder="ex : PLONGE SOIR" style="background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:7px 11px;font-size:13px;color:var(--tx);font-family:'DM Sans',sans-serif;min-width:180px;text-transform:uppercase"></div>
-      <div class="hr-cc"><label>Début</label><input id="hrx-np-deb" type="time" value="09:00" style="background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:7px 11px;font-size:13px;color:var(--tx);font-family:'DM Mono',monospace"></div>
-      <div class="hr-cc"><label>Fin</label><input id="hrx-np-fin" type="time" value="11:00" style="background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:7px 11px;font-size:13px;color:var(--tx);font-family:'DM Mono',monospace"></div>
+    </div>
+    <div class="hr-cc" style="margin-bottom:.4rem"><label>Créneaux horaires</label></div>
+    <div id="hrx-np-slots" style="display:flex;flex-direction:column;gap:8px;margin-bottom:.7rem"></div>
+    <button type="button" class="hr-btn" onclick="hrNpAddSlot()" style="padding:6px 14px;font-size:12px">+ Ajouter un créneau</button>
+    <div class="hr-ssub" style="margin:10px 0 0;font-size:11px">Ajoute autant de créneaux que nécessaire (ex : un avant la pause, un après). Pour une tâche de nuit (après minuit), mets une fin comme 01:30 ou 02:00.</div>
+    <div style="display:flex;gap:10px;margin-top:1rem">
       <button class="hr-btn hr-btn-ac" onclick="hrNpSave()" style="padding:8px 18px">Enregistrer</button>
       <button class="hr-btn" onclick="hrNpCancel()" style="padding:8px 14px">Annuler</button>
     </div>
-    <div class="hr-ssub" style="margin:8px 0 0;font-size:11px">Astuce : pour une tâche de nuit (après minuit), mets une fin comme 01:30 ou 02:00.</div>
   </div>
   <div class="hr-np-grid" id="hrx-np-grid"></div>
 </div>
@@ -6539,7 +6543,12 @@ function renderGrille(){
 
 // ── NP SECTION ────────────────────────────────────────────────────────────────
 function renderNP(){
-  const g=document.getElementById('hrx-np-grid');g.innerHTML='';
+  const g=document.getElementById('hrx-np-grid');
+  // Si le formulaire a été déplacé à l'intérieur de la grille (mode édition inline),
+  // on le ressort AVANT de vider la grille pour ne pas le détruire.
+  const f=document.getElementById('hrx-np-form');
+  if(f && g && f.parentNode===g && g.parentNode){ g.parentNode.insertBefore(f, g); }
+  g.innerHTML='';
   const postes={};
   // On ne garde QUE les postes non productifs (type 'np'), indépendants du CA.
   // La base minimum n'est plus affichée ici : ce sont les grilles de positionnement qui décident.
@@ -6569,35 +6578,90 @@ function renderNP(){
 
 // ── Gestion des postes non productifs (ajout / modif / suppression), par resto ──
 var HR_NP_EDIT_NOM = null; // nom du poste en cours d'édition (null = ajout)
+
+// Construit une ligne de créneau (début + fin + bouton supprimer) dans le formulaire
+function _hrNpSlotRow(deb, fin){
+  const row=document.createElement('div');
+  row.className='hrx-np-slot-row';
+  row.style.cssText='display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap';
+  row.innerHTML=`
+    <div class="hr-cc"><label>Début</label><input class="hrx-np-deb" type="time" value="${deb||'09:00'}" style="background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:7px 11px;font-size:13px;color:var(--tx);font-family:'DM Mono',monospace"></div>
+    <div class="hr-cc"><label>Fin</label><input class="hrx-np-fin" type="time" value="${fin||'11:00'}" style="background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:7px 11px;font-size:13px;color:var(--tx);font-family:'DM Mono',monospace"></div>
+    <button type="button" class="hr-btn" title="Supprimer ce créneau" onclick="hrNpRemoveSlot(this)" style="padding:7px 11px;font-size:13px;color:#f87171;border-color:rgba(248,113,113,.4)">✕</button>
+  `;
+  return row;
+}
+// Ajoute un créneau au formulaire (vide par défaut, ou pré-rempli)
+function hrNpAddSlot(deb, fin){
+  const box=document.getElementById('hrx-np-slots'); if(!box) return;
+  box.appendChild(_hrNpSlotRow(deb, fin));
+}
+// Supprime un créneau (garde toujours au moins un créneau affiché)
+function hrNpRemoveSlot(btn){
+  const box=document.getElementById('hrx-np-slots'); if(!box) return;
+  const row=btn.closest('.hrx-np-slot-row'); if(!row) return;
+  if(box.querySelectorAll('.hrx-np-slot-row').length<=1){
+    // dernier créneau : on le vide plutôt que de le retirer
+    row.querySelector('.hrx-np-deb').value='09:00';
+    row.querySelector('.hrx-np-fin').value='11:00';
+    return;
+  }
+  row.remove();
+}
 function hrNpToggleForm(){
   const f=document.getElementById('hrx-np-form');
   if(!f) return;
-  if(f.style.display==='none'){ f.style.display=''; HR_NP_EDIT_NOM=null; hrNpResetForm(); }
-  else { f.style.display='none'; }
+  if(f.style.display==='none'){
+    HR_NP_EDIT_NOM=null;
+    hrNpResetForm();
+    // ouvrir en mode AJOUT : on déplace le form en haut de la grille
+    const grid=document.getElementById('hrx-np-grid');
+    if(grid && grid.parentNode) grid.parentNode.insertBefore(f, grid);
+    f.style.display='';
+    f.scrollIntoView({behavior:'smooth', block:'center'});
+  } else {
+    f.style.display='none';
+  }
 }
 function hrNpResetForm(){
   const n=document.getElementById('hrx-np-nom'); if(n) n.value='';
-  const d=document.getElementById('hrx-np-deb'); if(d) d.value='09:00';
-  const fi=document.getElementById('hrx-np-fin'); if(fi) fi.value='11:00';
+  const t=document.getElementById('hrx-np-form-title'); if(t) t.textContent='Nouveau poste non productif';
+  const box=document.getElementById('hrx-np-slots'); if(box) box.innerHTML='';
+  hrNpAddSlot('09:00','11:00'); // un créneau vide par défaut
 }
-function hrNpCancel(){ HR_NP_EDIT_NOM=null; const f=document.getElementById('hrx-np-form'); if(f) f.style.display='none'; }
+function hrNpCancel(){
+  HR_NP_EDIT_NOM=null;
+  const f=document.getElementById('hrx-np-form'); if(f) f.style.display='none';
+}
 function _hmFromTime(t){ // 'HH:MM' -> minutes (gère l'après-minuit : <5h => +24h)
   const [h,m]=t.split(':').map(Number);
   return hm(h, m||0);
 }
+// Récupère tous les créneaux saisis dans le formulaire, validés
+function _hrNpReadSlots(){
+  const rows=[...document.querySelectorAll('#hrx-np-slots .hrx-np-slot-row')];
+  const slots=[];
+  for(const r of rows){
+    const deb=r.querySelector('.hrx-np-deb').value;
+    const fin=r.querySelector('.hrx-np-fin').value;
+    if(!deb||!fin) continue; // ignore les créneaux incomplets
+    let s=_hmFromTime(deb), e=_hmFromTime(fin);
+    if(e<=s) e+=24*60; // fin après minuit
+    slots.push([s,e]);
+  }
+  return slots;
+}
 function hrNpSave(){
   const nom=(document.getElementById('hrx-np-nom').value||'').trim().toUpperCase();
-  const deb=document.getElementById('hrx-np-deb').value;
-  const fin=document.getElementById('hrx-np-fin').value;
   if(!nom){ alert('Indique un nom de poste.'); return; }
-  if(!deb||!fin){ alert('Indique une heure de début et de fin.'); return; }
-  let s=_hmFromTime(deb), e=_hmFromTime(fin);
-  if(e<=s) e+=24*60; // fin après minuit
+  const slots=_hrNpReadSlots();
+  if(!slots.length){ alert('Indique au moins un créneau (début + fin).'); return; }
   // Si on édite, on retire d'abord toutes les lignes np de ce nom
   if(HR_NP_EDIT_NOM){
     BASE_MIN = BASE_MIN.filter(b=>!(b[3]==='np' && b[0]===HR_NP_EDIT_NOM));
   }
-  BASE_MIN.push([nom, s, e, 'np']);
+  // On enregistre une ligne par créneau
+  slots.forEach(([s,e])=>{ BASE_MIN.push([nom, s, e, 'np']); });
   // Persister pour le resto courant
   BASEMIN_BY_RESTO[HR_GRILLE_RESTO] = BASE_MIN.map(b=>[...b]);
   hrSauverGrille(); // sauvegarde grille + base-min en base (Supabase)
@@ -6608,15 +6672,24 @@ function hrNpSave(){
   renderAll(); // mettre à jour le planning aussi
 }
 function hrNpEdit(nom){
-  // Récupère tous les créneaux de ce poste (on édite le 1er, et on les remplace tous au save)
+  // Récupère TOUS les créneaux de ce poste
   const lignes=BASE_MIN.filter(b=>b[3]==='np' && b[0]===nom);
   if(!lignes.length) return;
   HR_NP_EDIT_NOM=nom;
-  const f=document.getElementById('hrx-np-form'); if(f) f.style.display='';
+  const f=document.getElementById('hrx-np-form'); if(!f) return;
+  const t=document.getElementById('hrx-np-form-title'); if(t) t.textContent='Modifier « '+nom+' »';
   document.getElementById('hrx-np-nom').value=nom;
-  document.getElementById('hrx-np-deb').value=fmt(lignes[0][1]);
-  document.getElementById('hrx-np-fin').value=fmt(lignes[0][2]);
-  if(lignes.length>1) alert('Note : ce poste a plusieurs créneaux. En enregistrant, ils seront remplacés par le créneau saisi.');
+  // Remplit un créneau par ligne existante
+  const box=document.getElementById('hrx-np-slots'); if(box) box.innerHTML='';
+  lignes.forEach(l=>hrNpAddSlot(fmt(l[1]), fmt(l[2])));
+  // Ouvre le formulaire DIRECTEMENT sous la carte cliquée
+  const card=(typeof event!=='undefined'&&event)?(event.target&&event.target.closest('.hr-np-card')):null;
+  if(card && card.parentNode){
+    card.parentNode.insertBefore(f, card.nextSibling);
+  }
+  f.style.display='';
+  // Centre la vue sur le formulaire qui vient de s'ouvrir
+  f.scrollIntoView({behavior:'smooth', block:'center'});
 }
 function hrNpDelete(nom){
   if(!confirm('Supprimer le poste non productif « '+nom+' » ?')) return;
@@ -6631,6 +6704,8 @@ window.hrNpSave=hrNpSave;
 window.hrNpCancel=hrNpCancel;
 window.hrNpEdit=hrNpEdit;
 window.hrNpDelete=hrNpDelete;
+window.hrNpAddSlot=hrNpAddSlot;
+window.hrNpRemoveSlot=hrNpRemoveSlot;
 window.renderNP=renderNP;
 window.renderGrille=typeof renderGrille==='function'?renderGrille:window.renderGrille;
 window.renderDays=typeof renderDays==='function'?renderDays:window.renderDays;
