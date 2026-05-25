@@ -6428,6 +6428,8 @@ function applyGrille(){
   // Mémoriser cette grille pour le restaurant actif
   GRILLE_BY_RESTO[HR_GRILLE_RESTO] = GRILLE_EDIT.map(r=>[...r]);
   renderGrille();
+  // Sauvegarder la grille en base (Supabase) → survit aux rechargements + partagée.
+  hrSauverGrille();
   // On n'actualise PLUS le planning ici. La signature de grille a changé → toutes
   // les semaines non-passées repassent ORANGE automatiquement (à valider).
   // Le manager clique ensuite sur « 🔄 Actualiser » pour recalculer et valider (VERT).
@@ -6556,6 +6558,7 @@ function hrNpSave(){
   BASE_MIN.push([nom, s, e, 'np']);
   // Persister pour le resto courant
   BASEMIN_BY_RESTO[HR_GRILLE_RESTO] = BASE_MIN.map(b=>[...b]);
+  hrSauverGrille(); // sauvegarde grille + base-min en base (Supabase)
   HR_NP_EDIT_NOM=null;
   hrNpResetForm();
   document.getElementById('hrx-np-form').style.display='none';
@@ -6577,6 +6580,7 @@ function hrNpDelete(nom){
   if(!confirm('Supprimer le poste non productif « '+nom+' » ?')) return;
   BASE_MIN = BASE_MIN.filter(b=>!(b[3]==='np' && b[0]===nom));
   BASEMIN_BY_RESTO[HR_GRILLE_RESTO] = BASE_MIN.map(b=>[...b]);
+  hrSauverGrille(); // sauvegarde en base (Supabase)
   renderNP();
   renderAll();
 }
@@ -6625,9 +6629,16 @@ window.__hrInit=function(){
   } else {
     buildCAGrid(); renderAll();
   }
-  // Charger les validations de semaines (Supabase) puis recolorer les jours.
-  // Fait au démarrage pour que le VERT persiste dès l'ouverture, même après rechargement.
-  hrChargerValidations().then(()=>{ if(document.getElementById('hrx-days')) renderDays(); });
+  // Charger d'abord les grilles personnalisées (Supabase), PUIS les validations :
+  // la signature de validation doit être calculée sur la vraie grille du resto.
+  // (hrChargerGrilles recharge déjà GRILLE_EDIT/BASE_MIN du resto actif en interne,
+  //  on ne rappelle donc PAS hrSwitchRestoGrille ici pour ne pas écraser.)
+  hrChargerGrilles().then(()=>{
+    renderGrille(); renderNP();
+    return hrChargerValidations();
+  }).then(()=>{
+    if(document.getElementById('hrx-days')) renderDays();
+  });
 };
 // Bascule la section Horaires sur le restaurant actif de l'appli
 window.__hrSwitchTo=function(force){
@@ -6948,6 +6959,60 @@ window.hrCalcJour=hrCalcJour;
 // Cache local des validations chargées : { 'RESTO|YYYY-MM-DD(lundi)' : signatureGrille }
 var HR_VALIDATIONS = {};
 var HR_VALID_CHARGEES = false;
+var HR_GRILLES_CHARGEES = false;
+
+// ── PERSISTANCE DE LA GRILLE DE POSITIONNEMENT (par resto, dans Supabase) ─────
+// La grille personnalisée et la base minimum (non productifs) sont sauvegardées
+// pour chaque restaurant, afin de survivre aux rechargements et d'être partagées.
+async function hrChargerGrilles(){
+  if(!window.SB){ HR_GRILLES_CHARGEES=true; return; }
+  try{
+    const {data, error} = await SB.from('planning_grilles').select('resto,grille,basemin,mode');
+    if(error) throw error;
+    (data||[]).forEach(row=>{
+      try{
+        if(row.grille)  GRILLE_BY_RESTO[row.resto]  = (typeof row.grille==='string'? JSON.parse(row.grille): row.grille);
+        if(row.basemin) BASEMIN_BY_RESTO[row.resto] = (typeof row.basemin==='string'? JSON.parse(row.basemin): row.basemin);
+      }catch(e){ console.warn('grille resto', row.resto, e); }
+    });
+    HR_GRILLES_CHARGEES = true;
+    // Recharger la grille du resto actif depuis ce qu'on vient de récupérer
+    if(typeof HR_GRILLE_RESTO!=='undefined' && GRILLE_BY_RESTO[HR_GRILLE_RESTO]){
+      GRILLE_EDIT = GRILLE_BY_RESTO[HR_GRILLE_RESTO].map(r=>[...r]);
+      GRILLE.length=0; GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
+    }
+    if(typeof HR_GRILLE_RESTO!=='undefined' && BASEMIN_BY_RESTO[HR_GRILLE_RESTO]){
+      BASE_MIN = BASEMIN_BY_RESTO[HR_GRILLE_RESTO].map(b=>[...b]);
+    }
+  }catch(e){
+    console.warn('Grilles planning : lecture impossible (table planning_grilles ?).', e.message||e);
+    HR_GRILLES_CHARGEES = true;
+  }
+}
+window.hrChargerGrilles = hrChargerGrilles;
+
+// Sauvegarde la grille + base-min du resto actif dans Supabase
+async function hrSauverGrille(){
+  const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+  // maj cache mémoire
+  GRILLE_BY_RESTO[resto]  = GRILLE_EDIT.map(r=>[...r]);
+  BASEMIN_BY_RESTO[resto] = BASE_MIN.map(b=>[...b]);
+  if(!window.SB) return;
+  try{
+    const {error} = await SB.from('planning_grilles').upsert({
+      resto,
+      grille:  JSON.stringify(GRILLE_BY_RESTO[resto]),
+      basemin: JSON.stringify(BASEMIN_BY_RESTO[resto]),
+      mode:    (typeof grilleMode==='number'?grilleMode:15),
+      maj_le:  new Date().toISOString()
+    }, {onConflict:'resto'});
+    if(error) throw error;
+  }catch(e){
+    console.warn('Grilles planning : écriture impossible.', e.message||e);
+    hrSetValidStatus('⚠ grille non enregistrée en base — exécute le SQL', '#f5a623');
+  }
+}
+window.hrSauverGrille = hrSauverGrille;
 
 // Signature compacte et STABLE de la grille du resto actif.
 // Normalisée en base 15 min pour être INDÉPENDANTE du mode d'affichage (15/30/60) :
