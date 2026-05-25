@@ -6290,31 +6290,23 @@ function renderDays(){
     }
     btn.innerHTML=`<span class="hr-db-day"${actif?' style="color:var(--ac)"':''}>${titre}</span><span class="hr-db-ca">${DAY_TOTALS[i].toLocaleString('fr')} € · ${h}h</span>${refLine}${vacLine}`;
     btn.onclick=()=>{curDay=i;renderAll();};
-    // État de synchro grille→planning : vert = actualisé, orange = à valider.
-    // Ne s'applique qu'aux semaines EN COURS et FUTURES (le passé n'est pas re-planifié).
-    if(iso2026 && hrSemaineConcernee(iso2026)){
-      if(HR_PLANNING_SYNC) btn.classList.add('hr-ok');
-      else btn.classList.add('hr-warn');
+    // État de synchro grille→planning, persistant et par semaine (via Supabase) :
+    //   VERT   = semaine validée (actualisée) avec la grille actuelle
+    //   ORANGE = pas encore actualisée, ou grille modifiée depuis la validation
+    // Le passé validé reste vert et figé ; le passé non validé reste neutre.
+    if(iso2026){
+      const lundi = hrMonday(iso2026);
+      if(hrSemaineValidee(lundi)){
+        btn.classList.add('hr-ok');
+      } else if(!hrSemainePassee(lundi)){
+        // semaine en cours ou future, pas (ou plus) validée → orange
+        btn.classList.add('hr-warn');
+      }
+      // semaine passée non validée → neutre (pas de classe)
     }
     wrap.appendChild(btn);
   });
 }
-
-// État de synchronisation planning ↔ grille de positionnement.
-//   true  = le planning affiché a été ACTUALISÉ avec la grille actuelle (VERT, persistant)
-//   false = grille modifiée/appliquée mais planning pas encore actualisé (ORANGE, à valider)
-var HR_PLANNING_SYNC = false;
-// Une date 2026 fait-elle partie de la semaine en cours ou d'une semaine future ?
-// (on compare le LUNDI de sa semaine au lundi de la semaine en cours)
-function hrSemaineConcernee(iso2026){
-  if(!iso2026) return false;
-  const auj=new Date();
-  const lundiCette=new Date(auj); lundiCette.setDate(auj.getDate()-((auj.getDay()+6)%7));
-  lundiCette.setHours(0,0,0,0);
-  const lundiJour=hrParse(hrMonday(iso2026)); lundiJour.setHours(0,0,0,0);
-  return lundiJour >= lundiCette;
-}
-window.hrSemaineConcernee=hrSemaineConcernee;
 
 // ── CA SECTION ────────────────────────────────────────────────────────────────
 let editDay=0;
@@ -6379,20 +6371,15 @@ function recalcEff(rowIdx){
 
 var _hrAutoTimer=null;
 function hrAutoApply(){
-  // NOUVEAU COMPORTEMENT : on ne régénère PLUS le planning automatiquement.
-  // Toute modification de la grille marque simplement le planning comme « à valider »
-  // (boutons-jours en ORANGE). Le recalcul se fait au clic sur « Actualiser ».
-  HR_PLANNING_SYNC = false;
-  // Garder GRILLE (utilisée par getEff) cohérente avec l'édition en cours.
-  clearTimeout(_hrAutoTimer);
-  _hrAutoTimer=setTimeout(()=>{
-    const restoActif = hrCurrentResto();
-    if(restoActif !== HR_GRILLE_RESTO) HR_GRILLE_RESTO = restoActif;
-    GRILLE_EDIT.sort((a,b)=>a[0]-b[0]);
-    GRILLE.length=0; GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
-    GRILLE_BY_RESTO[HR_GRILLE_RESTO]=GRILLE_EDIT.map(r=>[...r]);
-  },350);
-  // Rafraîchir l'affichage des jours pour montrer l'orange tout de suite, si on est sur le planning.
+  // On ne régénère PLUS le planning automatiquement. Modifier la grille rend
+  // simplement les semaines non-validées (la signature de grille ne correspond
+  // plus) → boutons-jours ORANGE. Le recalcul se fait au clic sur « Actualiser ».
+  const restoActif = hrCurrentResto();
+  if(restoActif !== HR_GRILLE_RESTO) HR_GRILLE_RESTO = restoActif;
+  GRILLE_EDIT.sort((a,b)=>a[0]-b[0]);
+  GRILLE.length=0; GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
+  GRILLE_BY_RESTO[HR_GRILLE_RESTO]=GRILLE_EDIT.map(r=>[...r]);
+  // Rafraîchir l'affichage des jours : la nouvelle signature fera virer à l'orange.
   if(document.getElementById('hrx-days')) renderDays();
 }
 window.hrAutoApply=hrAutoApply;
@@ -6440,10 +6427,9 @@ function applyGrille(){
   // Mémoriser cette grille pour le restaurant actif
   GRILLE_BY_RESTO[HR_GRILLE_RESTO] = GRILLE_EDIT.map(r=>[...r]);
   renderGrille();
-  // NOUVEAU : on n'actualise PLUS le planning ici. On marque la nouvelle grille
-  // comme « à valider » → tous les jours (semaine en cours + futures) passent ORANGE.
+  // On n'actualise PLUS le planning ici. La signature de grille a changé → toutes
+  // les semaines non-passées repassent ORANGE automatiquement (à valider).
   // Le manager clique ensuite sur « 🔄 Actualiser » pour recalculer et valider (VERT).
-  HR_PLANNING_SYNC = false;
   hrShow('planning');
   renderDays();
   const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
@@ -6659,6 +6645,13 @@ window.__hrSwitchTo=function(force){
   }
   hrUpdateHeader();
   renderGrille(); renderNP();
+  // Charger (une fois) les validations de semaines depuis Supabase, puis rafraîchir
+  // la couleur des boutons-jours (vert = validé avec la grille actuelle).
+  if(!HR_VALID_CHARGEES){
+    hrChargerValidations().then(()=>{ if(document.getElementById('hrx-days')) renderDays(); });
+  } else {
+    if(document.getElementById('hrx-days')) renderDays();
+  }
 };
 window.hrSwitchTo=window.__hrSwitchTo;
 
@@ -6898,9 +6891,8 @@ function hrGenFromWeek(lundi, garderOnglet){
   const moisC=['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
   const base=hrParse(lundi);
   HR_WEEK_LUNDI = lundi; // mémorise le lundi affiché (sert au bouton Actualiser)
-  // Nouvelle semaine affichée → considérée « à valider » (ORANGE) tant qu'on n'a
-  // pas cliqué sur « 🔄 Actualiser ». (Le bouton Actualiser, lui, passe en VERT.)
-  HR_PLANNING_SYNC = false;
+  // La couleur (vert/orange) est déduite automatiquement de l'état de validation
+  // de cette semaine (voir hrSemaineValidee), rien à forcer ici.
   for(let i=0;i<7;i++){
     hrCalcJour(base, i);
   }
@@ -6939,6 +6931,84 @@ function hrCalcJour(base, i){
 }
 window.hrCalcJour=hrCalcJour;
 
+// ════════════════════════════════════════════════════════════════════════════
+// VALIDATION DES SEMAINES (persistée dans Supabase, partagée entre managers)
+// ════════════════════════════════════════════════════════════════════════════
+// Une semaine est VERTE si elle a été actualisée avec la grille ACTUELLE.
+// On mémorise par (resto, lundi de semaine) une "signature" de la grille utilisée.
+// Au rechargement, on recharge ces validations depuis Supabase :
+//   • signature mémorisée == signature actuelle de la grille  → VERT
+//   • signature différente (= grille modifiée depuis)         → ORANGE
+// Les semaines PASSÉES validées restent vertes et figées (jamais retouchées).
+//
+// Cache local des validations chargées : { 'RESTO|YYYY-MM-DD(lundi)' : signatureGrille }
+var HR_VALIDATIONS = {};
+var HR_VALID_CHARGEES = false;
+
+// Signature compacte de la grille du resto actif (seuils + effectifs).
+function hrSignatureGrille(){
+  try{
+    const g = (GRILLE_BY_RESTO[HR_GRILLE_RESTO] || GRILLE_EDIT || []);
+    // on sérialise seuils + tous les effectifs ; insensible au mode d'affichage
+    return JSON.stringify(g.map(r=>r.map(x=>Math.round(x))));
+  }catch(e){ return ''; }
+}
+// Clé d'une semaine
+function hrCleVal(resto, lundi){ return (resto||HR_RESTO||'BK526')+'|'+lundi; }
+
+// Charge toutes les validations depuis Supabase (une fois)
+async function hrChargerValidations(){
+  if(!window.SB){ HR_VALID_CHARGEES=true; return; }
+  try{
+    const {data, error} = await SB.from('planning_validations').select('resto,lundi,signature');
+    if(error) throw error;
+    HR_VALIDATIONS = {};
+    (data||[]).forEach(row=>{ HR_VALIDATIONS[hrCleVal(row.resto, row.lundi)] = row.signature; });
+    HR_VALID_CHARGEES = true;
+  }catch(e){
+    console.warn('Validations planning : lecture impossible (table planning_validations ?).', e.message||e);
+    HR_VALID_CHARGEES = true; // on n'empêche pas l'usage : tout sera simplement orange tant que non validé
+  }
+}
+window.hrChargerValidations = hrChargerValidations;
+
+// Enregistre la validation de la semaine `lundi` avec la signature de grille courante
+async function hrEnregistrerValidation(lundi){
+  const resto = HR_RESTO || 'BK526';
+  const sig = hrSignatureGrille();
+  HR_VALIDATIONS[hrCleVal(resto, lundi)] = sig; // maj cache immédiate
+  if(!window.SB) return;
+  try{
+    const {error} = await SB.from('planning_validations')
+      .upsert({resto, lundi, signature:sig, valide_le:new Date().toISOString()}, {onConflict:'resto,lundi'});
+    if(error) throw error;
+  }catch(e){
+    console.warn('Validations planning : écriture impossible.', e.message||e);
+  }
+}
+window.hrEnregistrerValidation = hrEnregistrerValidation;
+
+// La semaine `lundi` est-elle validée AVEC LA GRILLE ACTUELLE ? (→ vert)
+function hrSemaineValidee(lundi){
+  if(!lundi) return false;
+  const sig = HR_VALIDATIONS[hrCleVal(HR_RESTO, lundi)];
+  if(sig===undefined) return false;        // jamais validée → orange
+  // Pour une semaine PASSÉE : une fois validée, elle reste verte quoi qu'il arrive.
+  if(hrSemainePassee(lundi)) return true;
+  // Semaine en cours / future : verte seulement si la grille n'a pas changé depuis.
+  return sig === hrSignatureGrille();
+}
+// Le lundi donné est-il celui d'une semaine déjà passée ? (avant la semaine en cours)
+function hrSemainePassee(lundi){
+  const auj=new Date();
+  const lundiCette=new Date(auj); lundiCette.setDate(auj.getDate()-((auj.getDay()+6)%7));
+  lundiCette.setHours(0,0,0,0);
+  const l=hrParse(lundi); l.setHours(0,0,0,0);
+  return l < lundiCette;
+}
+window.hrSemaineValidee=hrSemaineValidee;
+window.hrSemainePassee=hrSemainePassee;
+
 // ── BOUTON ACTUALISER : recalcule les 7 jours et valide chacun en vert ────────
 // Recalcule toute la semaine affichée, un jour après l'autre, en faisant passer
 // chaque bouton-jour en vert (✓) au fur et à mesure pour confirmer visuellement
@@ -6964,8 +7034,9 @@ function hrRefreshWeek(){
   HR_WEEK_LUNDI = lundi;
   const base = hrParse(lundi);
 
-  // Le recalcul aboutit à un planning SYNCHRONISÉ avec la grille → état VERT persistant.
-  HR_PLANNING_SYNC = true;
+  // Le recalcul valide la semaine avec la GRILLE ACTUELLE → VERT persistant et partagé.
+  // On enregistre la signature de grille pour cette semaine (cache + Supabase).
+  hrEnregistrerValidation(lundi);
 
   let i = 0;
   function etape(){
