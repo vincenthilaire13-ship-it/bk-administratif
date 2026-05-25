@@ -5856,7 +5856,15 @@ let grilleMode = 15; // Référence = 15 min (quart d'heure)
 let BASEMIN_DEFAULT = null; // initialisé après la déclaration de BASE_MIN
 let GRILLE_BY_RESTO = {};   // { 'BK526': [[...]], ... }
 let BASEMIN_BY_RESTO = {};  // { 'BK526': [[...]], ... }
+let TAUX_BY_RESTO = {};     // { 'BK526': 20, ... } taux horaire € (masse salariale), par resto
 let HR_GRILLE_RESTO = 'BK526'; // resto dont la grille/base est active
+const TAUX_DEFAULT = 20;    // € / heure par défaut si non défini pour le resto
+// Taux horaire du resto actif (ou défaut)
+function hrTaux(resto){
+  const r = resto || HR_GRILLE_RESTO || 'BK526';
+  const v = TAUX_BY_RESTO[r];
+  return (typeof v==='number' && isFinite(v) && v>0) ? v : TAUX_DEFAULT;
+}
 
 function hrCurrentResto(){
   // resto actif = celui sélectionné dans l'appli, sinon celui des données horaires
@@ -6271,8 +6279,8 @@ function renderMetrics(){
     }
   }
   if(!an2025) an2025='2025';
-  // Masse salariale : heures × taux horaire, et % sur le CA de référence/prévu
-  const TAUX_HORAIRE = 20; // € / heure (base de calcul masse salariale)
+  // Masse salariale : heures × taux horaire (propre à chaque resto), et % sur le CA
+  const TAUX_HORAIRE = hrTaux(HR_GRILLE_RESTO); // € / heure du resto actif
   const masse = hSem * TAUX_HORAIRE;
   const caPourcent = has2026reel ? ca2026 : caBase; // CA sur lequel on rapporte la masse
   const pctMasse = caPourcent>0 ? (masse/caPourcent*100) : 0;
@@ -6303,7 +6311,7 @@ function renderMetrics(){
 
   document.getElementById('hrx-mrow').innerHTML=`
     <div class="hr-mc" style="border-color:var(--ac);flex:2"><div class="hr-mc-l" style="color:var(--ac);">💶 CA semaine HT · réf. ${an2025}</div><div class="hr-mc-v">${Math.round(ca2025||caBase).toLocaleString('fr')} €</div>${ligne2026}<div class="hr-mc-s" style="opacity:.6">semaine ${semLbl}</div></div>
-    <div class="hr-mc" style="border-color:#3ecf8e;flex:2"><div class="hr-mc-l" style="color:#3ecf8e;">⏱️ Heures semaine · prévues 2026</div><div class="hr-mc-v">${hSem} h</div><div class="hr-mc-s">Masse salariale : <b style="color:#fff">${Math.round(masse).toLocaleString('fr')} €</b> (à 20 €/h)</div><div class="hr-mc-s">Soit <b style="color:${pctMasse>30?'#f87171':(pctMasse>25?'#fbbf24':'#3ecf8e')}">${pctMasse.toFixed(1)} %</b> du CA</div></div>
+    <div class="hr-mc" style="border-color:#3ecf8e;flex:2"><div class="hr-mc-l" style="color:#3ecf8e;">⏱️ Heures semaine · prévues 2026</div><div class="hr-mc-v">${hSem} h</div><div class="hr-mc-s">Masse salariale : <b style="color:#fff">${Math.round(masse).toLocaleString('fr')} €</b> (à <input id="hrx-taux-input" type="number" min="1" step="0.5" value="${TAUX_HORAIRE}" onchange="hrSetTaux(this.value)" title="Taux horaire de ce restaurant — cliquer pour modifier" style="width:46px;background:var(--s2);border:1px solid var(--bd2);border-radius:5px;padding:1px 4px;font-size:11px;color:#3ecf8e;font-family:'DM Mono',monospace;text-align:right;font-weight:600">€/h)</div><div class="hr-mc-s">Soit <b style="color:${pctMasse>30?'#f87171':(pctMasse>25?'#fbbf24':'#3ecf8e')}">${pctMasse.toFixed(1)} %</b> du CA</div></div>
     <div class="hr-mc" style="border-color:#60a5fa;flex:2"><div class="hr-mc-l" style="color:#60a5fa;">👤 Personnes · ${labelJourCur}</div><div class="hr-mc-v">${persJourCur}</div><div class="hr-mc-s">Pic simultané : <b style="color:#fff">${picJourCur} pers.</b></div><div class="hr-mc-s">Semaine : <b style="color:#fff">${persSem}</b> shifts</div></div>
   `;
 }
@@ -7096,12 +7104,22 @@ var HR_GRILLES_CHARGEES = false;
 async function hrChargerGrilles(){
   if(!window.SB){ HR_GRILLES_CHARGEES=true; return; }
   try{
-    const {data, error} = await SB.from('planning_grilles').select('resto,grille,basemin,mode');
+    // On tente de lire aussi la colonne taux_horaire (si elle existe)
+    let data, error;
+    ({data, error} = await SB.from('planning_grilles').select('resto,grille,basemin,mode,taux_horaire'));
+    if(error){
+      // colonne taux_horaire absente : on relit sans elle
+      ({data, error} = await SB.from('planning_grilles').select('resto,grille,basemin,mode'));
+    }
     if(error) throw error;
     (data||[]).forEach(row=>{
       try{
         if(row.grille)  GRILLE_BY_RESTO[row.resto]  = (typeof row.grille==='string'? JSON.parse(row.grille): row.grille);
         if(row.basemin) BASEMIN_BY_RESTO[row.resto] = (typeof row.basemin==='string'? JSON.parse(row.basemin): row.basemin);
+        if(row.taux_horaire!=null && row.taux_horaire!==''){
+          const t=parseFloat(row.taux_horaire);
+          if(isFinite(t) && t>0) TAUX_BY_RESTO[row.resto]=t;
+        }
       }catch(e){ console.warn('grille resto', row.resto, e); }
     });
     HR_GRILLES_CHARGEES = true;
@@ -7127,21 +7145,43 @@ async function hrSauverGrille(){
   GRILLE_BY_RESTO[resto]  = GRILLE_EDIT.map(r=>[...r]);
   BASEMIN_BY_RESTO[resto] = BASE_MIN.map(b=>[...b]);
   if(!window.SB) return;
+  const payloadBase = {
+    resto,
+    grille:  JSON.stringify(GRILLE_BY_RESTO[resto]),
+    basemin: JSON.stringify(BASEMIN_BY_RESTO[resto]),
+    mode:    (typeof grilleMode==='number'?grilleMode:15),
+    maj_le:  new Date().toISOString()
+  };
   try{
-    const {error} = await SB.from('planning_grilles').upsert({
-      resto,
-      grille:  JSON.stringify(GRILLE_BY_RESTO[resto]),
-      basemin: JSON.stringify(BASEMIN_BY_RESTO[resto]),
-      mode:    (typeof grilleMode==='number'?grilleMode:15),
-      maj_le:  new Date().toISOString()
-    }, {onConflict:'resto'});
+    // On tente d'inclure le taux horaire (colonne 'taux_horaire' si elle existe)
+    const {error} = await SB.from('planning_grilles').upsert(
+      {...payloadBase, taux_horaire: hrTaux(resto)}, {onConflict:'resto'});
     if(error) throw error;
   }catch(e){
-    console.warn('Grilles planning : écriture impossible.', e.message||e);
-    hrSetValidStatus('⚠ grille non enregistrée en base — exécute le SQL', '#f5a623');
+    // La colonne taux_horaire n'existe peut-être pas encore : on réessaie SANS,
+    // pour ne jamais perdre la grille/base à cause du taux.
+    try{
+      const {error:e2} = await SB.from('planning_grilles').upsert(payloadBase, {onConflict:'resto'});
+      if(e2) throw e2;
+    }catch(e2){
+      console.warn('Grilles planning : écriture impossible.', e2.message||e2);
+      hrSetValidStatus('⚠ grille non enregistrée en base — exécute le SQL', '#f5a623');
+    }
   }
 }
 window.hrSauverGrille = hrSauverGrille;
+
+// Change le taux horaire du resto actif, recalcule et persiste
+function hrSetTaux(val){
+  const resto = HR_GRILLE_RESTO || 'BK526';
+  let v = parseFloat(String(val).replace(',','.'));
+  if(!isFinite(v) || v<=0){ alert('Indique un taux horaire valide (en €).'); if(typeof renderMetrics==='function') renderMetrics(); return; }
+  v = Math.round(v*100)/100; // 2 décimales max
+  TAUX_BY_RESTO[resto] = v;
+  hrSauverGrille();        // persiste (inclut le taux dans l'upsert)
+  if(typeof renderMetrics==='function') renderMetrics(); // recalcule la carte masse salariale
+}
+window.hrSetTaux = hrSetTaux;
 
 // Signature compacte et STABLE de la grille du resto actif.
 // Normalisée en base 15 min pour être INDÉPENDANTE du mode d'affichage (15/30/60) :
