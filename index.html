@@ -2956,6 +2956,7 @@ function loadConfig() {
 function initSupabase(url, key) {
   try {
     SB = window.supabase.createClient(url, key);
+    window.SB = SB; // exposer pour la section planning (bloc <script> séparé)
     document.getElementById('db-status').textContent = 'Connecté';
     loadAll();
   } catch(e) {
@@ -2972,6 +2973,7 @@ async function saveConfig() {
   localStorage.setItem('sb_key', key);
   try {
     SB = window.supabase.createClient(url, key);
+    window.SB = SB; // exposer pour la section planning (bloc <script> séparé)
     const {error} = await SB.from('journees').select('id').limit(1);
     if(error) throw error;
     showAlert('setup-ok'); hideAlert('setup-err');
@@ -2979,7 +2981,7 @@ async function saveConfig() {
     loadAll();
   } catch(e) {
     showAlert('setup-err'); hideAlert('setup-ok');
-    SB = null; document.getElementById('db-status').textContent = 'Erreur';
+    SB = null; window.SB = null; document.getElementById('db-status').textContent = 'Erreur';
   }
 }
 
@@ -2997,6 +2999,18 @@ async function loadAll() {
   applyRestoFilter();
   document.getElementById('last-update').textContent = 'Màj '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
   renderDashboard();
+  // La connexion Supabase est prête : (re)charger les grilles + validations du
+  // planning si la section a déjà été initialisée (sinon ce sera fait à son init).
+  try{
+    if(window.SB && window.__hrDone && typeof window.hrChargerGrilles==='function'){
+      window.hrChargerGrilles().then(()=>{
+        if(typeof window.hrChargerValidations==='function') return window.hrChargerValidations();
+      }).then(()=>{
+        if(typeof window.renderGrille==='function') try{window.renderGrille();}catch(e){}
+        if(document.getElementById('hrx-days') && typeof window.renderDays==='function') try{window.renderDays();}catch(e){}
+      });
+    }
+  }catch(e){ console.warn('reload planning après connexion SB', e); }
 }
 
 // ══ DASHBOARD ══
@@ -6590,6 +6604,8 @@ window.hrNpCancel=hrNpCancel;
 window.hrNpEdit=hrNpEdit;
 window.hrNpDelete=hrNpDelete;
 window.renderNP=renderNP;
+window.renderGrille=typeof renderGrille==='function'?renderGrille:window.renderGrille;
+window.renderDays=typeof renderDays==='function'?renderDays:window.renderDays;
 window.calcHeures=calcHeures;
 
 function hrShow(id){
