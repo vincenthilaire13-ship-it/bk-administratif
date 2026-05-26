@@ -340,6 +340,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 
     <!-- DASHBOARD -->
     <section class="section active" id="sec-dashboard">
+      <div id="dash-manquants" style="margin-bottom:16px"></div>
       <div id="dash-kpis" class="kpi-grid"></div>
 
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
@@ -603,7 +604,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
               <div style="font-size:36px">📂</div>
               <div>
                 <div class="mgr-title" style="margin-bottom:2px">Déposer les 4 PDF de la journée</div>
-                <div class="mgr-sub" style="margin-bottom:0">Synthèse CA · SOS Drive · Ventes ¼h · Repas employés</div>
+                <div class="mgr-sub" style="margin-bottom:0">Synthèse CA · SOS Drive · Ventes au quart d'heure · Bons repas</div>
               </div>
               <div style="margin-left:auto;color:var(--muted);font-size:18px">›</div>
             </div>
@@ -645,11 +646,11 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
                 </div>
                 <div style="display:flex;align-items:flex-start;gap:10px">
                   <span style="font-size:16px">⏱️</span>
-                  <div><div style="font-weight:600">Rapport des ventes horaire par quart d'heure</div><div style="font-size:10px;color:var(--muted)">de la journée</div></div>
+                  <div><div style="font-weight:600">Rapport des ventes horaire au quart d'heure</div><div style="font-size:10px;color:var(--muted)">de la journée</div></div>
                 </div>
                 <div style="display:flex;align-items:flex-start;gap:10px">
                   <span style="font-size:16px">🍔</span>
-                  <div><div style="font-weight:600">Repas employés</div><div style="font-size:10px;color:var(--muted)">bons repas opérationnels de la journée</div></div>
+                  <div><div style="font-weight:600">Bons repas</div><div style="font-size:10px;color:var(--muted)">bons repas employés opérationnels de la journée</div></div>
                 </div>
               </div>
               <div style="font-size:10px;color:var(--muted);margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">⚠️ Les 4 documents doivent être du <strong style="color:var(--muted2)">même jour</strong>. L'enregistrement est bloqué si un document manque ou si les dates ne correspondent pas.</div>
@@ -3183,7 +3184,99 @@ async function loadAll() {
 }
 
 // ══ DASHBOARD ══
+// ══════════════════════════════════════════════════════════════
+//  DÉTECTION DES FICHIERS MANQUANTS (alerte dashboard)
+// ══════════════════════════════════════════════════════════════
+const SUIVI_DATE_DEBUT = '2026-05-17'; // début du suivi des dépôts
+
+async function checkFichiersManquants(){
+  const box = document.getElementById('dash-manquants');
+  if(!box) return;
+  if(!SB){ box.innerHTML=''; return; }
+
+  // Restos à scanner : admin/superviseur = tous ; directeur = le sien
+  let restos;
+  if(CURRENT_USER?.role && ['admin','superviseur'].includes(CURRENT_USER.role)) restos = ['BK500','BK509','BK526'];
+  else if(ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') restos = [ACTIVE_RESTO];
+  else restos = ['BK500','BK509','BK526'];
+
+  // Dernier jour à contrôler = hier (la journée du jour n'est pas encore close)
+  const hier = new Date(); hier.setDate(hier.getDate()-1);
+  const finISO = hier.toISOString().slice(0,10);
+  if(finISO < SUIVI_DATE_DEBUT){ box.innerHTML=''; return; }
+
+  box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0">Vérification des dépôts…</div>';
+
+  try {
+    const q = (table)=>{ let r=SB.from(table).select('restaurant,date').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO); return r; };
+    const [j,s,v,rp] = await Promise.all([ q('journees'), q('sos_drive'), q('ventes_horaire'), q('repas_employes') ]);
+    const setOf = (rows)=>{ const m=new Set(); (rows.data||[]).forEach(x=>m.add(x.restaurant+'|'+x.date)); return m; };
+    const has = { synthese:setOf(j), sos:setOf(s), ventes:setOf(v), repas:setOf(rp) };
+    const labels = { synthese:'Synthèse CA', sos:'SOS Drive', ventes:'Ventes ¼h', repas:'Bons repas' };
+
+    // Liste des jours du 17 mai à hier
+    const jours = [];
+    let d = new Date(SUIVI_DATE_DEBUT+'T00:00:00');
+    const fin = new Date(finISO+'T00:00:00');
+    while(d<=fin){ jours.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+
+    // Pour chaque resto, repérer les jours incomplets
+    const parResto = {};
+    restos.forEach(rt=>{
+      const incomplets = [];
+      jours.forEach(jour=>{
+        const key = rt+'|'+jour;
+        const manque = Object.keys(labels).filter(t=>!has[t].has(key));
+        if(manque.length>0 && manque.length<4){
+          // jour partiellement rempli (au moins 1 doc déposé mais pas les 4)
+          incomplets.push({jour, manque, partiel:true});
+        } else if(manque.length===4){
+          incomplets.push({jour, manque, partiel:false}); // rien déposé du tout
+        }
+      });
+      if(incomplets.length) parResto[rt]=incomplets;
+    });
+
+    if(Object.keys(parResto).length===0){
+      box.innerHTML = `<div style="background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:var(--green);display:flex;align-items:center;gap:10px">
+        <span style="font-size:18px">✅</span><span>Tous les fichiers sont à jour depuis le ${formatDate(SUIVI_DATE_DEBUT)} pour ${restos.length>1?'tous les restaurants':'ce restaurant'}.</span></div>`;
+      return;
+    }
+
+    // Construire l'alerte
+    let html = `<div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:var(--radius);padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:18px">⚠️</span>
+        <span style="font-weight:600;color:var(--red);font-size:13px">Fichiers manquants depuis le ${formatDate(SUIVI_DATE_DEBUT)}</span>
+      </div>`;
+    restos.forEach(rt=>{
+      if(!parResto[rt]) return;
+      const inc = parResto[rt];
+      html += `<div style="margin-bottom:12px">
+        <div style="font-size:11px;font-weight:600;color:var(--accent2);margin-bottom:6px">${RESTAURANTS[rt]?.nom||rt} — ${inc.length} jour(s) incomplet(s)</div>
+        <div style="display:flex;flex-direction:column;gap:4px">`;
+      inc.slice().reverse().forEach(it=>{
+        const jourLbl = formatDate(it.jour)+' '+jourSemaine(new Date(it.jour));
+        if(!it.partiel){
+          html += `<div style="font-size:11px;padding:5px 10px;background:var(--bg3);border-radius:6px;border-left:2px solid var(--red)">
+            <span style="color:var(--accent)">${jourLbl}</span> — <span style="color:var(--red)">aucun document déposé</span></div>`;
+        } else {
+          html += `<div style="font-size:11px;padding:5px 10px;background:var(--bg3);border-radius:6px;border-left:2px solid var(--yellow)">
+            <span style="color:var(--accent)">${jourLbl}</span> — manque : <span style="color:var(--yellow)">${it.manque.map(t=>labels[t]).join(', ')}</span></div>`;
+        }
+      });
+      html += `</div></div>`;
+    });
+    html += `</div>`;
+    box.innerHTML = html;
+  } catch(err){
+    console.warn('checkFichiersManquants', err);
+    box.innerHTML='';
+  }
+}
+
 function renderDashboard() {
+  checkFichiersManquants();
   if(!DATA || !DATA.length) {
     const restoNom = ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? (RESTAURANTS[ACTIVE_RESTO]?.nom||ACTIVE_RESTO) : 'ce restaurant';
     document.getElementById('dash-kpis').innerHTML = `
