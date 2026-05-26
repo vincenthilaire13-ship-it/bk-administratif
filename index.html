@@ -3658,14 +3658,18 @@ async function checkFichiersManquants(){
   if(!box) return;
   if(!SB){ box.innerHTML=''; return; }
 
-  // Suivi des dépôts : un directeur ne voit que son resto ; admin/superviseur voient les 3.
+  // Suivi des dépôts : suit le restaurant sélectionné en haut.
+  // Directeur → son resto. Admin/superviseur → le resto sélectionné, ou les 3 si "Tous".
   let restos;
   if(CURRENT_USER?.role === 'directeur' && CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') restos = [CURRENT_USER.resto];
-  else restos = ['BK500','BK509','BK526']; // contrôle global pour admin/superviseur
+  else if(ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' && ACTIVE_RESTO!=='Administration') restos = [ACTIVE_RESTO];
+  else restos = ['BK500','BK509','BK526']; // vue "Tous"
 
-  // Dernier jour à contrôler = hier (la journée du jour n'est pas encore close)
-  const hier = new Date(); hier.setDate(hier.getDate()-1);
-  const finISO = hier.toISOString().slice(0,10);
+  // Dernier jour à contrôler = hier (date LOCALE, pas UTC, pour éviter tout décalage)
+  const now = new Date();
+  const hier = new Date(now.getFullYear(), now.getMonth(), now.getDate()-1);
+  const pad = n => String(n).padStart(2,'0');
+  const finISO = hier.getFullYear()+'-'+pad(hier.getMonth()+1)+'-'+pad(hier.getDate());
   if(finISO < SUIVI_DATE_DEBUT){ box.innerHTML=''; return; }
 
   box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0">Vérification des dépôts…</div>';
@@ -3677,11 +3681,11 @@ async function checkFichiersManquants(){
     const has = { synthese:setOf(j), sos:setOf(s), ventes:setOf(v), repas:setOf(rp) };
     const labels = { synthese:'Synthèse CA', sos:'SOS Drive', ventes:'Ventes au quart d\'heure', repas:'Bons repas' };
 
-    // Liste des jours du 17 mai à hier
+    // Liste des jours du 17 mai à hier (dates locales)
     const jours = [];
-    let d = new Date(SUIVI_DATE_DEBUT+'T00:00:00');
-    const fin = new Date(finISO+'T00:00:00');
-    while(d<=fin){ jours.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+    let d = new Date(SUIVI_DATE_DEBUT+'T12:00:00');
+    const fin = new Date(finISO+'T12:00:00');
+    while(d<=fin){ jours.push(d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())); d.setDate(d.getDate()+1); }
 
     // Pour chaque resto, repérer les jours incomplets (manque 1 à 4 documents)
     const parResto = {};
