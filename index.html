@@ -1218,6 +1218,8 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 
             <div style="margin-top:24px">
               <button class="btn btn-accent" style="width:100%;padding:11px" onclick="saveCodes()">💾 Enregistrer tout</button>
+              <button class="btn" style="width:100%;padding:9px;margin-top:8px;font-size:11px;color:var(--muted2)" onclick="rechargerNomsPlannings()">↻ Recharger les noms officiels des plannings (managers + leaders)</button>
+              <div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:center">Remplace les listes actuelles par les vrais noms des 3 plannings (PIN 0000)</div>
             </div>
           </div>
         </div>
@@ -3193,10 +3195,9 @@ async function checkFichiersManquants(){
   if(!box) return;
   if(!SB){ box.innerHTML=''; return; }
 
-  // Restos à scanner : admin/superviseur = tous ; directeur = le sien
+  // Toujours les 3 restos pour admin/superviseur ; le directeur ne voit que le sien
   let restos;
-  if(CURRENT_USER?.role && ['admin','superviseur'].includes(CURRENT_USER.role)) restos = ['BK500','BK509','BK526'];
-  else if(ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') restos = [ACTIVE_RESTO];
+  if(CURRENT_USER?.role === 'directeur' && CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') restos = [CURRENT_USER.resto];
   else restos = ['BK500','BK509','BK526'];
 
   // Dernier jour à contrôler = hier (la journée du jour n'est pas encore close)
@@ -3211,7 +3212,7 @@ async function checkFichiersManquants(){
     const [j,s,v,rp] = await Promise.all([ q('journees'), q('sos_drive'), q('ventes_horaire'), q('repas_employes') ]);
     const setOf = (rows)=>{ const m=new Set(); (rows.data||[]).forEach(x=>m.add(x.restaurant+'|'+x.date)); return m; };
     const has = { synthese:setOf(j), sos:setOf(s), ventes:setOf(v), repas:setOf(rp) };
-    const labels = { synthese:'Synthèse CA', sos:'SOS Drive', ventes:'Ventes ¼h', repas:'Bons repas' };
+    const labels = { synthese:'Synthèse CA', sos:'SOS Drive', ventes:'Ventes au quart d\'heure', repas:'Bons repas' };
 
     // Liste des jours du 17 mai à hier
     const jours = [];
@@ -3219,50 +3220,41 @@ async function checkFichiersManquants(){
     const fin = new Date(finISO+'T00:00:00');
     while(d<=fin){ jours.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
 
-    // Pour chaque resto, repérer les jours incomplets
+    // Pour chaque resto, repérer les jours incomplets (manque 1 à 4 documents)
     const parResto = {};
     restos.forEach(rt=>{
       const incomplets = [];
       jours.forEach(jour=>{
         const key = rt+'|'+jour;
         const manque = Object.keys(labels).filter(t=>!has[t].has(key));
-        if(manque.length>0 && manque.length<4){
-          // jour partiellement rempli (au moins 1 doc déposé mais pas les 4)
-          incomplets.push({jour, manque, partiel:true});
-        } else if(manque.length===4){
-          incomplets.push({jour, manque, partiel:false}); // rien déposé du tout
-        }
+        if(manque.length>0) incomplets.push({jour, manque});
       });
-      if(incomplets.length) parResto[rt]=incomplets;
+      parResto[rt] = incomplets; // toujours une entrée par resto, même vide
     });
 
-    if(Object.keys(parResto).length===0){
-      box.innerHTML = `<div style="background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:var(--green);display:flex;align-items:center;gap:10px">
-        <span style="font-size:18px">✅</span><span>Tous les fichiers sont à jour depuis le ${formatDate(SUIVI_DATE_DEBUT)} pour ${restos.length>1?'tous les restaurants':'ce restaurant'}.</span></div>`;
-      return;
-    }
-
-    // Construire l'alerte
-    let html = `<div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.3);border-radius:var(--radius);padding:14px 16px">
+    // Construire l'alerte — un bloc par restaurant, les 3 affichés ensemble
+    let html = `<div style="background:rgba(248,113,113,.06);border:1px solid var(--border2);border-radius:var(--radius);padding:14px 16px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <span style="font-size:18px">⚠️</span>
-        <span style="font-weight:600;color:var(--red);font-size:13px">Fichiers manquants depuis le ${formatDate(SUIVI_DATE_DEBUT)}</span>
+        <span style="font-size:18px">📋</span>
+        <span style="font-weight:600;font-size:13px">Suivi des dépôts depuis le ${formatDate(SUIVI_DATE_DEBUT)}</span>
       </div>`;
     restos.forEach(rt=>{
-      if(!parResto[rt]) return;
       const inc = parResto[rt];
+      if(!inc.length){
+        html += `<div style="margin-bottom:10px">
+          <div style="font-size:11px;font-weight:600;color:var(--accent2);margin-bottom:4px">${RESTAURANTS[rt]?.nom||rt}</div>
+          <div style="font-size:11px;padding:5px 10px;background:rgba(62,207,142,.1);border-radius:6px;border-left:2px solid var(--green);color:var(--green)">✅ Tous les fichiers sont à jour</div>
+        </div>`;
+        return;
+      }
       html += `<div style="margin-bottom:12px">
         <div style="font-size:11px;font-weight:600;color:var(--accent2);margin-bottom:6px">${RESTAURANTS[rt]?.nom||rt} — ${inc.length} jour(s) incomplet(s)</div>
         <div style="display:flex;flex-direction:column;gap:4px">`;
       inc.slice().reverse().forEach(it=>{
         const jourLbl = formatDate(it.jour)+' '+jourSemaine(new Date(it.jour));
-        if(!it.partiel){
-          html += `<div style="font-size:11px;padding:5px 10px;background:var(--bg3);border-radius:6px;border-left:2px solid var(--red)">
-            <span style="color:var(--accent)">${jourLbl}</span> — <span style="color:var(--red)">aucun document déposé</span></div>`;
-        } else {
-          html += `<div style="font-size:11px;padding:5px 10px;background:var(--bg3);border-radius:6px;border-left:2px solid var(--yellow)">
-            <span style="color:var(--accent)">${jourLbl}</span> — manque : <span style="color:var(--yellow)">${it.manque.map(t=>labels[t]).join(', ')}</span></div>`;
-        }
+        const docsManquants = it.manque.map(t=>`<span style="color:var(--red);font-weight:500">${labels[t]}</span>`).join(', ');
+        html += `<div style="font-size:11px;padding:5px 10px;background:var(--bg3);border-radius:6px;border-left:2px solid var(--red)">
+          <span style="color:var(--accent)">${jourLbl}</span> — manque : ${docsManquants}</div>`;
       });
       html += `</div></div>`;
     });
@@ -4392,16 +4384,35 @@ const DEFAULT_CODES = {
     {nom:'Directeur 3', code:'0003', resto:'BK509'}
   ],
   managers: [
-    {nom:'Manager 1', code:'1111', resto:'BK526'},
-    {nom:'Manager 2', code:'2222', resto:'BK526'},
-    {nom:'Manager 3', code:'3333', resto:'BK500'},
-    {nom:'Manager 4', code:'4444', resto:'BK509'}
+    {nom:'JENNY',   code:'0000', resto:'BK526'},
+    {nom:'HABIB',   code:'0000', resto:'BK526'},
+    {nom:'MAXIME',  code:'0000', resto:'BK526'},
+    {nom:'AUDREY',  code:'0000', resto:'BK526'},
+    {nom:'CARRER',  code:'0000', resto:'BK509'},
+    {nom:'DELPHINE',code:'0000', resto:'BK509'},
+    {nom:'MORGAN',  code:'0000', resto:'BK509'},
+    {nom:'QUENTIN', code:'0000', resto:'BK509'},
+    {nom:'LOUNA',   code:'0000', resto:'BK509'},
+    {nom:'STEF',    code:'0000', resto:'BK500'},
+    {nom:'ELEA',    code:'0000', resto:'BK500'},
+    {nom:'TRISTAN', code:'0000', resto:'BK500'},
+    {nom:'JULIA',   code:'0000', resto:'BK500'},
+    {nom:'YOHAN',   code:'0000', resto:'BK500'}
   ],
   leaders: [
-    {nom:'Leader 1', resto:'BK526'},
-    {nom:'Leader 2', resto:'BK526'},
-    {nom:'Leader 3', resto:'BK500'},
-    {nom:'Leader 4', resto:'BK509'}
+    {nom:'LOU DEL',  resto:'BK526'},
+    {nom:'JEROME',   resto:'BK526'},
+    {nom:'AMANDINE', resto:'BK526'},
+    {nom:'KEVIN F',  resto:'BK526'},
+    {nom:'MEHDI',    resto:'BK509'},
+    {nom:'NOEMIE',   resto:'BK509'},
+    {nom:'EWAN',     resto:'BK509'},
+    {nom:'GREGORY',  resto:'BK509'},
+    {nom:'JEAN RAPHAEL', resto:'BK500'},
+    {nom:'NOLAN',    resto:'BK500'},
+    {nom:'NOURDINE', resto:'BK500'},
+    {nom:'MANON',    resto:'BK500'},
+    {nom:'MORGAN',   resto:'BK500'}
   ]
 };
 
@@ -5467,6 +5478,31 @@ function enregistrerJourneeManager(){
 }
 
 // ── Gestion codes (admin) ──
+// Recharge les vrais noms managers + leaders des plannings (garde admin/sup/directeurs)
+function rechargerNomsPlannings(){
+  if(!confirm('Remplacer les managers et leaders actuels par les noms officiels des 3 plannings ?\n\nLes managers auront le PIN 0000 (à changer ensuite).\nLes codes admin/superviseur/directeurs ne sont pas touchés.')) return;
+  const codes=getCodes();
+  codes.managers = [
+    {nom:'JENNY',code:'0000',resto:'BK526'},{nom:'HABIB',code:'0000',resto:'BK526'},
+    {nom:'MAXIME',code:'0000',resto:'BK526'},{nom:'AUDREY',code:'0000',resto:'BK526'},
+    {nom:'CARRER',code:'0000',resto:'BK509'},{nom:'DELPHINE',code:'0000',resto:'BK509'},
+    {nom:'MORGAN',code:'0000',resto:'BK509'},{nom:'QUENTIN',code:'0000',resto:'BK509'},
+    {nom:'LOUNA',code:'0000',resto:'BK509'},
+    {nom:'STEF',code:'0000',resto:'BK500'},{nom:'ELEA',code:'0000',resto:'BK500'},
+    {nom:'TRISTAN',code:'0000',resto:'BK500'},{nom:'JULIA',code:'0000',resto:'BK500'},
+    {nom:'YOHAN',code:'0000',resto:'BK500'}
+  ];
+  codes.leaders = [
+    {nom:'LOU DEL',resto:'BK526'},{nom:'JEROME',resto:'BK526'},{nom:'AMANDINE',resto:'BK526'},{nom:'KEVIN F',resto:'BK526'},
+    {nom:'MEHDI',resto:'BK509'},{nom:'NOEMIE',resto:'BK509'},{nom:'EWAN',resto:'BK509'},{nom:'GREGORY',resto:'BK509'},
+    {nom:'JEAN RAPHAEL',resto:'BK500'},{nom:'NOLAN',resto:'BK500'},{nom:'NOURDINE',resto:'BK500'},{nom:'MANON',resto:'BK500'},{nom:'MORGAN',resto:'BK500'}
+  ];
+  localStorage.setItem('bk_codes',JSON.stringify(codes));
+  renderAcces();
+  populateManagerSelect();
+  showAlert('acces-ok');
+}
+
 function renderAcces(){
   const codes=getCodes();
   const ca=document.getElementById('code-admin'); if(ca){ca.type='text';ca.value=codes.admin||'';}
