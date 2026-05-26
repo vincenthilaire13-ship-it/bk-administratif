@@ -3675,10 +3675,12 @@ async function checkFichiersManquants(){
   box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0">Vérification des dépôts…</div>';
 
   try {
+    // Synthèse CA = présence d'un CA HT (pas juste une ligne journees créée par le SOS)
+    const qJ = SB.from('journees').select('restaurant,date,ca_ht').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO);
     const q = (table)=>{ let r=SB.from(table).select('restaurant,date').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO); return r; };
-    const [j,s,v,rp] = await Promise.all([ q('journees'), q('sos_drive'), q('ventes_horaire'), q('repas_employes') ]);
-    const setOf = (rows)=>{ const m=new Set(); (rows.data||[]).forEach(x=>{ const dt=(x.date||'').slice(0,10); let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; m.add(rt+'|'+dt); }); return m; };
-    const has = { synthese:setOf(j), sos:setOf(s), ventes:setOf(v), repas:setOf(rp) };
+    const [j,s,v,rp] = await Promise.all([ qJ, q('sos_drive'), q('ventes_horaire'), q('repas_employes') ]);
+    const setOf = (rows, cond)=>{ const m=new Set(); (rows.data||[]).forEach(x=>{ if(cond && !cond(x)) return; const dt=(x.date||'').slice(0,10); let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; m.add(rt+'|'+dt); }); return m; };
+    const has = { synthese:setOf(j, x=>x.ca_ht!=null), sos:setOf(s), ventes:setOf(v), repas:setOf(rp) };
     const labels = { synthese:'Synthèse CA', sos:'SOS Drive', ventes:'Ventes au quart d\'heure', repas:'Bons repas' };
 
     // Liste des jours du 17 mai à hier (dates locales)
@@ -3820,10 +3822,8 @@ function renderDashboard() {
   if(caIdentique) {
     alertesHtml += `<div style="background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.4);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#f87171">🚨 Anomalie : le CA 2026 est identique au CA 2025. Vérifiez les données.</div>`;
   }
-  if(manquants.length) {
-    const apercu = manquants.slice(0,8).map(formatDate).join(', ');
-    alertesHtml += `<div style="background:rgba(251,191,36,.13);border:1px solid rgba(251,191,36,.35);border-radius:10px;padding:10px 14px;margin-bottom:10px;font-size:12px;color:#fbbf24">⚠ ${manquants.length} jour(s) manquant(s) en 2026 : ${apercu}${manquants.length>8?' …':''}</div>`;
-  }
+  // (Alerte "jours manquants" supprimée — le suivi des dépôts s'en charge déjà)
+
   document.getElementById('dash-kpis').innerHTML = alertesHtml + `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;grid-column:1/-1">` + kpis.map(k=>`
     <div class="kpi ${k.cls}">
       <div class="kpi-label">${k.l} <span style="font-size:8px;color:var(--muted);font-weight:400;text-transform:uppercase;letter-spacing:.08em">2026</span></div>
@@ -7762,12 +7762,22 @@ async function traiterPDFSecondaire(type, fullText){
       if(SB){
         try {
           await SB.from('ventes_horaire').delete().eq('restaurant',resto).eq('date',v.date);
-          const rows = (v.tranches||[]).map(t=>({restaurant:resto,date:v.date,heure:t.heure,nb:t.nb}));
-          if(rows.length) await SB.from('ventes_horaire').insert(rows);
-        } catch(e){ console.warn('ventes_horaire', e); }
+          // UNE ligne par jour (format de la table : tickets_total, ht_total, tranches jsonb)
+          const ligne = { restaurant:resto, date:v.date, tickets_total:v.tickets, ht_total:v.ht, tranches:v.tranches||[] };
+          let lj={...ligne};
+          let {error} = await SB.from('ventes_horaire').insert(lj);
+          let essais=0;
+          while(error && essais<10){
+            const m=(error.message||'').match(/'([^']+)' column/i)||(error.message||'').match(/column "([^"]+)"/i);
+            const col=m&&m[1];
+            if(col && col in lj){ delete lj[col]; const r2=await SB.from('ventes_horaire').insert(lj); error=r2.error; essais++; }
+            else break;
+          }
+          if(error){ console.warn('ventes_horaire', error); finir(false,'✗ Ventes ¼h lues ('+v.tickets+' tickets) mais non rangées : '+(error.message||error)); return; }
+        } catch(e){ console.warn('ventes_horaire', e); finir(false,'✗ Ventes ¼h : '+(e.message||e)); return; }
         await loadAll();
       }
-      finir(true, `✓ Ventes par quart d'heure importées (${formatDate(v.date)}) — ${v.tickets||'?'} tickets, ${fmt(v.ht)||'?'} € HT, ${(v.tranches||[]).length} créneaux. Utilisé pour les horaires.`);
+      finir(true, `✓ Ventes par quart d'heure importées (${formatDate(v.date)}) — ${v.tickets||'?'} tickets, ${fmt(v.ht)||'?'} € HT, ${(v.tranches||[]).length} créneaux.`);
       return;
     }
   } catch(err){
