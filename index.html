@@ -298,7 +298,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-mgrspace" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
     <div class="nav-section role-superadmin-only" style="display:none">Analyse</div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('analyses')"><span>📊</span><span>Analyses</span></div>
-    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('managers')"><span>👥</span><span>Suivi managers</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
@@ -3195,10 +3194,11 @@ async function checkFichiersManquants(){
   if(!box) return;
   if(!SB){ box.innerHTML=''; return; }
 
-  // Toujours les 3 restos pour admin/superviseur ; le directeur ne voit que le sien
+  // Suivi filtré sur le restaurant actuellement affiché
   let restos;
   if(CURRENT_USER?.role === 'directeur' && CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') restos = [CURRENT_USER.resto];
-  else restos = ['BK500','BK509','BK526'];
+  else if(ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') restos = [ACTIVE_RESTO];
+  else restos = ['BK500','BK509','BK526']; // vue "tous" seulement si aucun resto sélectionné
 
   // Dernier jour à contrôler = hier (la journée du jour n'est pas encore close)
   const hier = new Date(); hier.setDate(hier.getDate()-1);
