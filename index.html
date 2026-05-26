@@ -3274,7 +3274,18 @@ alter table journees add column if not exists cc_pct numeric;
 alter table journees add column if not exists cc_tickets int;
 alter table journees add column if not exists cc_ticket_moyen numeric;
 alter table journees add column if not exists ancv numeric;
-alter table journees add column if not exists click_collect_cb numeric;`;
+alter table journees add column if not exists click_collect_cb numeric;
+alter table journees add column if not exists mo_pct numeric;
+alter table journees add column if not exists salaires numeric;
+alter table journees add column if not exists ca_prevu numeric;
+alter table journees add column if not exists ts_bornes_midi numeric;
+alter table journees add column if not exists ts_drive_midi int;
+alter table journees add column if not exists ts_bornes_soir numeric;
+alter table journees add column if not exists ts_drive_soir int;
+alter table journees add column if not exists pertes_brutes numeric;
+alter table journees add column if not exists pertes_finies numeric;
+alter table journees add column if not exists annulations_pct numeric;
+alter table journees add column if not exists commandes_ouvertes_pct numeric;`;
 
 async function verifierTables(){
   const el = document.getElementById('tables-check-result');
@@ -3301,7 +3312,7 @@ async function verifierTables(){
   try { const {error} = await SB.from('annulations').select('equipier').limit(1); equipierOk = !error; } catch(e){}
 
   // Vérifier les colonnes HT/% de la table journees (cause n°1 des cases vides)
-  const colsJournee = ['drive_ht','kiosk_ht','livraison_ht','livraison_nb','comptoir_ht','cc_ht','annulations_pct','commandes_ouvertes_pct','sauces_pct','repas_employes_pct'];
+  const colsJournee = ['drive_ht','drive_pct','drive_ticket_moyen','kiosk_ht','kiosk_pct','kiosk_tickets','kiosk_ticket_moyen','livraison_ht','livraison_nb','livraison_pct','livraison_ticket_moyen','comptoir_ht','comptoir_pct','comptoir_tickets','comptoir_ticket_moyen','cc_ht','cc_pct','cc_tickets','cc_ticket_moyen','annulations_pct','commandes_ouvertes_pct','sauces_pct','repas_employes_pct','ancv','click_collect_cb','mo_pct','salaires','ca_prevu','ts_bornes_midi','ts_drive_midi','ts_bornes_soir','ts_drive_soir','pertes_brutes','pertes_finies'];
   const colsManquantes = [];
   for(const c of colsJournee){
     try { const {error} = await SB.from('journees').select(c).limit(1); if(error) colsManquantes.push(c); }
@@ -3327,7 +3338,7 @@ async function verifierTables(){
 
   if(colsManquantes.length>0){
     const sqlAlter = colsManquantes.map(c=>{
-      const type = (c==='livraison_nb') ? 'int' : 'numeric';
+      const type = ['livraison_nb','kiosk_tickets','comptoir_tickets','cc_tickets','ts_drive_midi','ts_drive_soir'].includes(c) ? 'int' : 'numeric';
       return `alter table journees add column if not exists ${c} ${type};`;
     }).join('\n');
     window.__SQL_ALTER_JOURNEES = sqlAlter;
@@ -3880,15 +3891,17 @@ function loadJournee(mode) {
 }
 
 function renderJournee(d) {
+  // Harmonisation des noms de champs (selon source : import PDF ou saisie manuelle)
+  const livNb = d.livraison_commandes ?? d.livraison_nb ?? null;
   const caht = caHT(d);
   const caht_n1 = caHT_n1(d);
   const ecN1 = caht_n1 ? ((caht-caht_n1)/caht_n1*100) : null;
   const ecT = d.tickets_n1&&d.tickets_nb ? ((d.tickets_nb-d.tickets_n1)/d.tickets_n1*100) : null;
   const ecDr = d.drive_n1&&d.drive_voitures ? ((d.drive_voitures-d.drive_n1)/d.drive_n1*100) : null;
-  const ecLv = d.livraison_n1&&d.livraison_commandes ? ((d.livraison_commandes-d.livraison_n1)/d.livraison_n1*100) : null;
+  const ecLv = d.livraison_n1&&livNb ? ((livNb-d.livraison_n1)/d.livraison_n1*100) : null;
   const tM = d.tickets_nb ? (caht/d.tickets_nb).toFixed(2) : '—';
   const drM = d.drive_voitures&&canalHT(d,'drive') ? (canalHT(d,'drive')/d.drive_voitures).toFixed(2) : '—';
-  const lvM = d.livraison_commandes&&canalHT(d,'livraison') ? (canalHT(d,'livraison')/d.livraison_commandes).toFixed(2) : '—';
+  const lvM = livNb&&canalHT(d,'livraison') ? (canalHT(d,'livraison')/livNb).toFixed(2) : '—';
 
   const als = [];
   if(ecN1!==null) { if(ecN1<SEUILS.n1_rouge) als.push({t:'bad',m:`CA en forte baisse vs N-1 : ${ecN1.toFixed(1)}% — Journée critique`}); else if(ecN1<SEUILS.n1_warn) als.push({t:'warn',m:`CA en baisse vs N-1 : ${ecN1.toFixed(1)}%`}); else als.push({t:'ok',m:`CA vs N-1 : +${ecN1.toFixed(1)}% — Bonne journée`}); }
@@ -3917,16 +3930,33 @@ function renderJournee(d) {
     ['Ticket moyen HT',tM+' €','—','≥'+SEUILS.ticket_min+' €',chipS(parseFloat(tM),SEUILS.ticket_min,null,'h')],
     ['─────── DRIVE ───────','','','',''],
     ['Voitures drive',d.drive_voitures||'—',d.drive_n1||'—','≥'+SEUILS.drive_min,chipS(d.drive_voitures,SEUILS.drive_min,null,'h')],
-    ['Ticket moyen drive',drM+' €','—','≥'+SEUILS.drive_ticket_min+' €',chipS(parseFloat(drM),SEUILS.drive_ticket_min,null,'h')],
     ['CA drive HT',canalHT(d,'drive')?fmt(canalHT(d,'drive'))+' €':'—','—','—','—'],
+    ['Drive % du CA',d.drive_pct?d.drive_pct+'%':'—','—','—','—'],
+    ['Ticket moyen drive',(d.drive_ticket_moyen??drM)+' €','—','≥'+SEUILS.drive_ticket_min+' €',chipS(parseFloat(d.drive_ticket_moyen??drM),SEUILS.drive_ticket_min,null,'h')],
     ['─────── LIVRAISON ───────','','','',''],
-    ['Commandes livraison',d.livraison_commandes||'—',d.livraison_n1||'—','≥'+SEUILS.livraison_min,chipS(d.livraison_commandes,SEUILS.livraison_min,null,'h')],
-    ['Ticket moyen livraison',lvM+' €','—','—','—'],
+    ['Commandes livraison',livNb||'—',d.livraison_n1||'—','≥'+SEUILS.livraison_min,chipS(livNb,SEUILS.livraison_min,null,'h')],
     ['CA livraison HT',canalHT(d,'livraison')?fmt(canalHT(d,'livraison'))+' €':'—','—','—','—'],
-    ['─────── CANAUX ───────','','','',''],
+    ['Livraison % du CA',d.livraison_pct?d.livraison_pct+'%':'—','—','—','—'],
+    ['Ticket moyen livraison',(d.livraison_ticket_moyen??lvM)+' €','—','—','—'],
+    ['─────── KIOSK / COMPTOIR / C&C ───────','','','',''],
+    ['Kiosk — clients',d.kiosk_tickets||'—','—','—','—'],
     ['Kiosk CA HT',canalHT(d,'kiosk')?fmt(canalHT(d,'kiosk'))+' €':'—','—','—','—'],
+    ['Kiosk % du CA',d.kiosk_pct?d.kiosk_pct+'%':'—','—','—','—'],
+    ['Kiosk ticket moyen',d.kiosk_ticket_moyen?d.kiosk_ticket_moyen+' €':'—','—','—','—'],
+    ['Comptoir — clients',d.comptoir_tickets||'—','—','—','—'],
     ['Comptoir CA HT',canalHT(d,'comptoir')?fmt(canalHT(d,'comptoir'))+' €':'—','—','—','—'],
+    ['Comptoir % du CA',d.comptoir_pct?d.comptoir_pct+'%':'—','—','—','—'],
+    ['Comptoir ticket moyen',d.comptoir_ticket_moyen?d.comptoir_ticket_moyen+' €':'—','—','—','—'],
+    ['Click & Collect — clients',d.cc_tickets||'—','—','—','—'],
     ['Click & Collect HT',canalHT(d,'cc')?fmt(canalHT(d,'cc'))+' €':'—','—','—','—'],
+    ['Click & Collect % du CA',d.cc_pct?d.cc_pct+'%':'—','—','—','—'],
+    ['Click & Collect ticket moyen',d.cc_ticket_moyen?d.cc_ticket_moyen+' €':'—','—','—','—'],
+    ['─────── MODE DE CONSO ───────','','','',''],
+    ['Sur place — clients',d.sp_clients||'—','—','—','—'],
+    ['Sur place CA HT',d.sp_ht?fmt(d.sp_ht)+' €':'—','—','—','—'],
+    ['Sur place % du CA',d.sp_pct?d.sp_pct+'%':'—','—','—','—'],
+    ['À emporter CA HT',d.ae_ht?fmt(d.ae_ht)+' €':'—','—','—','—'],
+    ['À emporter % du CA',d.ae_pct?d.ae_pct+'%':'—','—','—','—'],
     ['─────── CORRECTIONS ───────','','','',''],
     ['Nb corrections',d.corrections_nb||'—','—','—','—'],
     ['Corrections montant',d.corrections_montant?fmt(d.corrections_montant)+' €':'—','—','—','—'],
@@ -3957,6 +3987,8 @@ function renderJournee(d) {
     ['─────── ENCAISSEMENTS ───────','','','',''],
     ['CB',d.cb?fmt(d.cb)+' €':'—','—','—','—'],
     ['Espèces',d.especes?fmt(d.especes)+' €':'—','—','—','—'],
+    ['ANCV',d.ancv?fmt(d.ancv)+' €':'—','—','—','—'],
+    ['Click & Collect CB',d.click_collect_cb?fmt(d.click_collect_cb)+' €':'—','—','—','—'],
     ['Uber Eats',d.uber_eats?fmt(d.uber_eats)+' €':'—','—','—','—'],
     ['Deliveroo',d.deliveroo?fmt(d.deliveroo)+' €':'—','—','—','—'],
     ['BK Livraison',d.bk_livraison?fmt(d.bk_livraison)+' €':'—','—','—','—'],
@@ -3990,8 +4022,8 @@ function renderJournee(d) {
       <div class="kpi-label">Drive</div><div class="kpi-val">${d.drive_voitures||'—'}</div>
       <div class="kpi-delta ${ecDr!==null?ecDr>0?'up':'down':'flat'}">${ecDr!==null?(ecDr>0?'+':'')+ecDr.toFixed(1)+'% vs N-1':drM+' €/voiture'}</div>
     </div>
-    <div class="kpi ${d.livraison_commandes>=SEUILS.livraison_min?'ok':'warn'}">
-      <div class="kpi-label">Livraisons</div><div class="kpi-val">${d.livraison_commandes||'—'}</div>
+    <div class="kpi ${livNb>=SEUILS.livraison_min?'ok':'warn'}">
+      <div class="kpi-label">Livraisons</div><div class="kpi-val">${livNb||'—'}</div>
       <div class="kpi-delta flat">${lvM} € / commande</div>
     </div>
     <div class="kpi ${errAbs>SEUILS.erreur_caisse_rouge?'bad':errAbs>SEUILS.erreur_caisse_max?'warn':'ok'}">
