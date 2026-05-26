@@ -1313,6 +1313,12 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
           <div style="font-size:11px;color:var(--muted2);margin-bottom:12px">Vérifie que les 5 tables nécessaires aux analyses existent dans votre base.</div>
           <button class="btn" style="width:100%" onclick="verifierTables()">🔍 Vérifier les tables</button>
           <div id="tables-check-result" style="margin-top:14px"></div>
+          <div style="margin-top:16px;padding:12px 14px;border-radius:8px;background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.25)">
+            <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:6px">📋 Colonnes complètes du PDF (à faire une seule fois)</div>
+            <div style="font-size:11px;color:var(--muted2);margin-bottom:10px">Crée dans la base toutes les colonnes présentes sur la Synthèse CA (pourcentages par canal, tickets moyens, mode de consommation, encaissements, écarts…). Sans risque : n'écrase jamais l'existant.</div>
+            <button class="btn btn-accent" style="width:100%" onclick="copierSQLColonnesPDF()">📋 Copier le SQL des colonnes du PDF</button>
+            <div id="sql-pdf-ok" style="display:none;color:var(--green);font-size:10px;text-align:center;margin-top:6px">✓ SQL copié — collez-le dans Supabase → SQL Editor → Run</div>
+          </div>
         </div>
 
         <div style="margin-top:28px;font-size:11px;font-weight:600;color:var(--accent2);font-family:var(--font-head);margin-bottom:14px">Étapes de déploiement</div>
@@ -3322,6 +3328,83 @@ alter table journees add column if not exists pertes_brutes numeric;
 alter table journees add column if not exists pertes_finies numeric;
 alter table journees add column if not exists annulations_pct numeric;
 alter table journees add column if not exists commandes_ouvertes_pct numeric;`;
+
+const SQL_COLONNES_PDF = `-- Colonnes completes de la Synthese CA (PDF) - a coller dans Supabase SQL Editor puis Run
+-- Sans risque : "if not exists" ne touche jamais une colonne deja creee.
+alter table journees add column if not exists ca_ttc numeric;
+alter table journees add column if not exists ca_prevu numeric;
+alter table journees add column if not exists tickets_n1 int;
+alter table journees add column if not exists drive_voitures int;
+alter table journees add column if not exists drive_ttc numeric;
+alter table journees add column if not exists drive_pct numeric;
+alter table journees add column if not exists drive_ticket_moyen numeric;
+alter table journees add column if not exists drive_n1 int;
+alter table journees add column if not exists kiosk_ttc numeric;
+alter table journees add column if not exists kiosk_tickets int;
+alter table journees add column if not exists kiosk_pct numeric;
+alter table journees add column if not exists kiosk_ticket_moyen numeric;
+alter table journees add column if not exists livraison_ttc numeric;
+alter table journees add column if not exists livraison_nb int;
+alter table journees add column if not exists livraison_commandes int;
+alter table journees add column if not exists livraison_pct numeric;
+alter table journees add column if not exists livraison_ticket_moyen numeric;
+alter table journees add column if not exists livraison_n1 int;
+alter table journees add column if not exists comptoir_ttc numeric;
+alter table journees add column if not exists comptoir_tickets int;
+alter table journees add column if not exists comptoir_pct numeric;
+alter table journees add column if not exists comptoir_ticket_moyen numeric;
+alter table journees add column if not exists cc_ht numeric;
+alter table journees add column if not exists cc_ttc numeric;
+alter table journees add column if not exists cc_tickets int;
+alter table journees add column if not exists cc_pct numeric;
+alter table journees add column if not exists cc_ticket_moyen numeric;
+alter table journees add column if not exists sp_clients int;
+alter table journees add column if not exists sp_ht numeric;
+alter table journees add column if not exists sp_pct numeric;
+alter table journees add column if not exists ae_ht numeric;
+alter table journees add column if not exists ae_pct numeric;
+alter table journees add column if not exists corrections_nb int;
+alter table journees add column if not exists remises_nb int;
+alter table journees add column if not exists sauces_nb int;
+alter table journees add column if not exists sauces_montant numeric;
+alter table journees add column if not exists sauces_pct numeric;
+alter table journees add column if not exists annulations_nb int;
+alter table journees add column if not exists annulations_pct numeric;
+alter table journees add column if not exists commandes_ouvertes_nb int;
+alter table journees add column if not exists commandes_ouvertes_montant numeric;
+alter table journees add column if not exists commandes_ouvertes_pct numeric;
+alter table journees add column if not exists repas_employes_nb int;
+alter table journees add column if not exists repas_employes_montant numeric;
+alter table journees add column if not exists repas_employes_pct numeric;
+alter table journees add column if not exists erreur_caisse numeric;
+alter table journees add column if not exists cb numeric;
+alter table journees add column if not exists especes numeric;
+alter table journees add column if not exists ancv numeric;
+alter table journees add column if not exists click_collect_cb numeric;
+alter table journees add column if not exists uber_eats numeric;
+alter table journees add column if not exists deliveroo numeric;
+alter table journees add column if not exists bk_livraison numeric;
+alter table journees add column if not exists trd numeric;
+alter table journees add column if not exists mo_pct numeric;
+alter table journees add column if not exists salaires numeric;
+alter table journees add column if not exists ts_bornes_midi numeric;
+alter table journees add column if not exists ts_drive_midi int;
+alter table journees add column if not exists ts_bornes_soir numeric;
+alter table journees add column if not exists ts_drive_soir int;
+alter table journees add column if not exists pertes_brutes numeric;
+alter table journees add column if not exists pertes_finies numeric;
+alter table journees add column if not exists manager_ouverture text;
+alter table journees add column if not exists manager_fermeture text;
+alter table journees add column if not exists leader_ouverture text;
+alter table journees add column if not exists leader_fermeture text;
+alter table journees add column if not exists directeur_midi boolean;
+alter table journees add column if not exists directeur_soir boolean;`;
+
+function copierSQLColonnesPDF(){
+  navigator.clipboard.writeText(SQL_COLONNES_PDF).then(()=>{
+    const o=document.getElementById('sql-pdf-ok'); if(o){o.style.display='block'; setTimeout(()=>o.style.display='none',6000);}
+  }).catch(()=>window.prompt('Copiez ce SQL et collez-le dans Supabase puis SQL Editor :', SQL_COLONNES_PDF));
+}
 
 async function verifierTables(){
   const el = document.getElementById('tables-check-result');
