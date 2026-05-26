@@ -4559,11 +4559,9 @@ async function saveSaisie(e) {
     ts_bornes_midi:pf('s-ts-bornes-midi'), ts_drive_midi:pi('s-ts-drive-midi'),
     ts_bornes_soir:pf('s-ts-bornes-soir'), ts_drive_soir:pi('s-ts-drive-soir'),
     pertes_brutes:pf('s-pertes-brutes'), pertes_finies:pf('s-pertes-finies'),
-    manager_ouverture:document.getElementById('s-manager-ouv').value||null,
-    manager_fermeture:document.getElementById('s-manager-fer').value||null,
-    manager_ouverture:document.getElementById('s-manager-ouv').value||null,
-    manager_fermeture:document.getElementById('s-manager-fer').value||null,
-    commentaire:document.getElementById('s-comment').value,
+    manager_ouverture:document.getElementById('s-manager-ouv')?.value||null,
+    manager_fermeture:document.getElementById('s-manager-fer')?.value||null,
+    commentaire:document.getElementById('s-comment')?.value||'',
   };
   await upsert(row,'saisie-ok','saisie-err');
 }
@@ -4581,8 +4579,19 @@ async function upsert(row, okId, errId) {
       if(col && col in r){ delete r[col]; retirees.push(col); continue; }
       break;
     }
-    if(err){ showAlert(errId); console.error(err); return; }
-    if(retirees.length) console.warn('upsert : colonnes manquantes en base, ignorées →', retirees);
+    if(err){
+      const el = document.getElementById(errId);
+      if(el){ el.textContent = '✗ Erreur enregistrement : '+(err.message||err); el.style.display='block'; setTimeout(()=>el.style.display='none',8000); }
+      console.error('upsert journees', err);
+      return;
+    }
+    if(retirees.length){
+      console.warn('upsert : colonnes manquantes en base, ignorées →', retirees);
+      const el = document.getElementById(okId);
+      if(el){ el.textContent = '✓ Enregistré (mais '+retirees.length+' colonne(s) manquent en base : '+retirees.join(', ')+' — exécutez le SQL dans Configuration)'; el.style.display='block'; setTimeout(()=>el.style.display='none',9000); }
+      renderDashboard();
+      return;
+    }
   } else {
     const idx = DATA.findIndex(d=>d.date===row.date);
     if(idx>=0) DATA[idx]={...DATA[idx],...row};
