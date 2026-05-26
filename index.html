@@ -1450,6 +1450,42 @@ let SB = null;
 let DATA = [];    // journées 2026
 let DATA25 = []; // journées 2025 (N-1)
 
+// Liste blanche des colonnes de la table journees.
+// Détectée dynamiquement au chargement (JOURNEES_COLS_REELLES) ; sinon liste de secours.
+let JOURNEES_COLS_REELLES = null;
+const JOURNEES_COLS_BASE = ['restaurant','date','ca_ht','ca_ttc','ca_n1','ca_prevu','tickets_nb','tickets_n1',
+  'drive_voitures','drive_ht','drive_ttc','drive_pct','drive_ticket_moyen','drive_n1',
+  'kiosk_ht','kiosk_ttc','kiosk_tickets','kiosk_pct','kiosk_ticket_moyen',
+  'livraison_ht','livraison_ttc','livraison_nb','livraison_commandes','livraison_pct','livraison_ticket_moyen','livraison_n1',
+  'comptoir_ht','comptoir_ttc','comptoir_tickets','comptoir_pct','comptoir_ticket_moyen',
+  'cc_ht','cc_ttc','cc_tickets','cc_pct','cc_ticket_moyen',
+  'sp_clients','sp_ht','sp_pct','ae_ht','ae_pct',
+  'corrections_nb','corrections_montant','corrections_pct',
+  'remises_nb','remises_montant','remises_pct','sauces_nb','sauces_montant','sauces_pct',
+  'annulations_nb','annulations_montant','annulations_pct',
+  'commandes_ouvertes_nb','commandes_ouvertes_montant','commandes_ouvertes_pct',
+  'repas_employes_nb','repas_employes_montant','repas_employes_pct',
+  'erreur_caisse','cb','especes','ancv','click_collect_cb','uber_eats','deliveroo','bk_livraison','trd',
+  'mo_pct','salaires','ts_bornes_midi','ts_drive_midi','ts_bornes_soir','ts_drive_soir','pertes_brutes','pertes_finies',
+  'manager_ouverture','manager_fermeture','leader_ouverture','leader_fermeture','directeur_midi','directeur_soir','commentaire'];
+
+// Détecte les colonnes réellement présentes (1 requête) → plus jamais d'erreur "column not found"
+async function detecterColonnesJournees(){
+  if(!SB) return;
+  try {
+    const { data, error } = await SB.from('journees').select('*').limit(1);
+    if(!error && data && data.length) JOURNEES_COLS_REELLES = Object.keys(data[0]);
+  } catch(e){ /* garde la liste de secours */ }
+}
+
+// Ne conserve que les colonnes existantes (réelles si détectées, sinon liste de base)
+function filtrerColonnesJournees(row){
+  const autorisees = JOURNEES_COLS_REELLES || JOURNEES_COLS_BASE;
+  const clean = {};
+  Object.keys(row).forEach(k=>{ if(autorisees.includes(k) && row[k]!==undefined) clean[k]=row[k]; });
+  return clean;
+}
+
 const SEUILS = {
   ca_min_semaine:14000, ca_min_rouge:12000, ticket_min:19,
   drive_min:190, drive_ticket_min:17, livraison_min:100,
@@ -3431,6 +3467,8 @@ async function saveConfig() {
 }
 
 async function loadAll() {
+  // Détecter les colonnes réelles de la table journees (évite les erreurs "column not found")
+  await detecterColonnesJournees();
   // Le seed reste la base (données historiques propres en HT).
   // On y FUSIONNE les journées déposées dans Supabase (journees) pour que
   // la liste des journées, le dashboard et l'historique soient à jour.
@@ -4643,28 +4681,21 @@ async function saveSaisie(e) {
 
 async function upsert(row, okId, errId) {
   if(SB) {
-    // Auto-adaptatif : retire les colonnes absentes en base (signalées par PostgREST) et réessaie
-    let r = { ...row }, err = null, retirees = [];
-    for(let essai=0; essai<25; essai++){
-      const res = await SB.from('journees').upsert(r,{onConflict:'restaurant,date'});
-      err = res.error;
-      if(!err) break;
+    // On ne garde que les colonnes réellement présentes en base → plus d'erreur "column not found"
+    let r = filtrerColonnesJournees(row);
+    let { error:err } = await SB.from('journees').upsert(r,{onConflict:'restaurant,date'});
+    // Secours : si une colonne passe encore (cache schéma), on la retire et on réessaie
+    let essais=0;
+    while(err && essais<15){
       const m = (err.message||'').match(/'([^']+)' column/i) || (err.message||'').match(/column "([^"]+)"/i);
       const col = m && m[1];
-      if(col && col in r){ delete r[col]; retirees.push(col); continue; }
-      break;
+      if(col && col in r){ delete r[col]; const res=await SB.from('journees').upsert(r,{onConflict:'restaurant,date'}); err=res.error; essais++; }
+      else break;
     }
     if(err){
       const el = document.getElementById(errId);
       if(el){ el.textContent = '✗ Erreur enregistrement : '+(err.message||err); el.style.display='block'; setTimeout(()=>el.style.display='none',8000); }
       console.error('upsert journees', err);
-      return;
-    }
-    if(retirees.length){
-      console.warn('upsert : colonnes manquantes en base, ignorées →', retirees);
-      const el = document.getElementById(okId);
-      if(el){ el.textContent = '✓ Enregistré (mais '+retirees.length+' colonne(s) manquent en base : '+retirees.join(', ')+' — exécutez le SQL dans Configuration)'; el.style.display='block'; setTimeout(()=>el.style.display='none',9000); }
-      renderDashboard();
       return;
     }
   } else {
@@ -4674,6 +4705,8 @@ async function upsert(row, okId, errId) {
     DATA.sort((a,b)=>a.date.localeCompare(b.date));
   }
   showAlert(okId);
+  // Recharger depuis la base pour que dashboard / journée / historique / comparaison soient à jour
+  if(SB && typeof loadAll==='function') await loadAll();
   renderDashboard();
 }
 
@@ -5816,32 +5849,22 @@ async function enregistrerJourneeMgr() {
         commentaire: equipe.commentaire
       };
       const rowJournee = { restaurant:resto, date, ...(MGR_JOUR.synthese||{}), ...equipeJournee };
-      // Enregistrement auto-adaptatif : si une colonne n'existe pas encore en base,
-      // PostgREST renvoie « Could not find the 'X' column ». On retire CETTE colonne
-      // précise et on réessaie, en boucle. Aucune donnée connue de la base n'est perdue.
-      let row = { ...rowJournee };
-      let colsRetirees = [];
+      // On ne garde que les colonnes réellement présentes en base → plus d'erreur "column not found"
+      let row = filtrerColonnesJournees(rowJournee);
       let eJ = null;
-      for(let essai=0; essai<25; essai++){
-        const res = await SB.from('journees').upsert(row,{onConflict:'restaurant,date'});
-        eJ = res.error;
-        if(!eJ) break;
-        // Extraire le nom de la colonne fautive du message d'erreur
+      const res = await SB.from('journees').upsert(row,{onConflict:'restaurant,date'});
+      eJ = res.error;
+      // Secours : retirer une éventuelle colonne encore signalée et réessayer
+      let essais=0;
+      while(eJ && essais<15){
         const m = (eJ.message||'').match(/'([^']+)' column/i) || (eJ.message||'').match(/column "([^"]+)"/i);
         const col = m && m[1];
-        if(col && col in row){
-          delete row[col];
-          colsRetirees.push(col);
-          continue; // on réessaie sans cette colonne
-        }
-        break; // erreur non liée à une colonne → on arrête
+        if(col && col in row){ delete row[col]; const r2=await SB.from('journees').upsert(row,{onConflict:'restaurant,date'}); eJ=r2.error; essais++; }
+        else break;
       }
       if(eJ){
         erreurs.push('Journée : '+eJ.message);
         console.error('journees upsert échoué', eJ);
-      } else if(colsRetirees.length){
-        erreurs.push('⚠️ Journée enregistrée, mais '+colsRetirees.length+' colonne(s) manquent en base ('+colsRetirees.join(', ')+'). Allez dans Configuration → Vérifier les tables et exécutez le SQL proposé, puis réimportez pour remplir ces cases.');
-        console.warn('colonnes retirées à l\'enregistrement', colsRetirees);
       }
     } else {
       const idx=DATA.findIndex(d=>d.date===date); const row={restaurant:resto,date,...(MGR_JOUR.synthese||{})}; if(idx>=0) DATA[idx]={...DATA[idx],...row}; else DATA.push(row);
