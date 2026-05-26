@@ -295,6 +295,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-full-only" style="display:none" onclick="nav('journee')"><span>📅</span><span>Journée</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('historique')"><span>📈</span><span>Historique</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('comparaison')"><span>🔄</span><span>Comparaison N-1</span></div>
+    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('imports')"><span>🗂️</span><span>Imports (contrôle)</span></div>
     <div class="nav-section role-superadmin-only" style="display:none">Saisie</div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('saisie')"><span>📥</span><span>Importer PDF</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('import-masse')"><span>⚡</span><span>Import massif</span></div>
@@ -448,6 +449,25 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <!-- COMPARAISON N-1 -->
     <section class="section" id="sec-comparaison">
       <div id="comp-content"></div>
+    </section>
+
+    <!-- IMPORTS — CONTRÔLE DES 4 PDF PAR JOUR -->
+    <section class="section" id="sec-imports">
+      <div class="topbar" style="position:static;padding:0 0 14px;border:none;background:none;gap:12px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:11px;color:var(--muted2)">Du</label>
+          <input type="date" class="form-input" id="imp-date-from" style="width:auto;padding:6px 10px">
+          <label style="font-size:11px;color:var(--muted2)">au</label>
+          <input type="date" class="form-input" id="imp-date-to" style="width:auto;padding:6px 10px">
+        </div>
+        <button class="btn" onclick="impSetPeriode(7)">7 j</button>
+        <button class="btn" onclick="impSetPeriode(30)">30 j</button>
+        <button class="btn" onclick="impSetPeriode(90)">90 j</button>
+        <button class="btn btn-accent" onclick="renderImports()">↺ Actualiser</button>
+      </div>
+      <div id="imports-content">
+        <div class="empty"><div class="empty-icon">🗂️</div><div class="empty-title">Contrôle des imports</div><div class="empty-sub">Chargement…</div></div>
+      </div>
     </section>
 
     <!-- SAISIE / IMPORT PDF -->
@@ -2934,7 +2954,118 @@ const SEED_BK500_2026 = [
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',analyses:'Analyses',equipiers:'Équipiers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',analyses:'Analyses',equipiers:'Équipiers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)',imports:'Imports — contrôle des PDF'};
+// ══════════════════════════════════════════════════════════════
+//  SECTION IMPORTS — contrôle visuel des 4 PDF par journée
+// ══════════════════════════════════════════════════════════════
+const _impEmpty = (ico,titre,sub)=>`<div class="empty"><div class="empty-icon">${ico}</div><div class="empty-title">${titre}</div><div class="empty-sub">${sub}</div></div>`;
+
+function impSetPeriode(jours){
+  const to = new Date();
+  const from = new Date(); from.setDate(from.getDate()-(jours-1));
+  const debut = new Date((typeof SUIVI_DATE_DEBUT!=='undefined'?SUIVI_DATE_DEBUT:'2026-05-17')+'T00:00:00');
+  if(from < debut) from.setTime(debut.getTime());
+  document.getElementById('imp-date-from').value = from.toISOString().slice(0,10);
+  document.getElementById('imp-date-to').value   = to.toISOString().slice(0,10);
+  renderImports();
+}
+
+async function renderImports(){
+  const el = document.getElementById('imports-content');
+  if(!el) return;
+  if(!SB){ el.innerHTML = _impEmpty('🗂️','Base non connectée','La connexion Supabase est nécessaire pour le contrôle des imports.'); return; }
+
+  const debutSuivi = (typeof SUIVI_DATE_DEBUT!=='undefined'?SUIVI_DATE_DEBUT:'2026-05-17');
+  let from = document.getElementById('imp-date-from').value;
+  let to   = document.getElementById('imp-date-to').value;
+  if(!from){ from = debutSuivi; document.getElementById('imp-date-from').value = from; }
+  if(!to){ to = new Date().toISOString().slice(0,10); document.getElementById('imp-date-to').value = to; }
+  if(from < debutSuivi) from = debutSuivi;
+
+  el.innerHTML = _impEmpty('🗂️','Contrôle des imports','Lecture des dépôts…');
+
+  try {
+    const q = (table)=> SB.from(table).select('restaurant,date').gte('date',from).lte('date',to);
+    const [j,s,v,rp] = await Promise.all([ q('journees'), q('sos_drive'), q('ventes_horaire'), q('repas_employes') ]);
+    const setOf = (rows)=>{ const m=new Set(); (rows.data||[]).forEach(x=>m.add(x.restaurant+'|'+x.date)); return m; };
+    const has = { synthese:setOf(j), sos:setOf(s), ventes:setOf(v), repas:setOf(rp) };
+    const cols = [
+      {key:'synthese', label:'Synthèse CA',  ico:'📄'},
+      {key:'sos',      label:'SOS Drive',     ico:'🚗'},
+      {key:'ventes',   label:'Ventes ¼h',     ico:'⏱️'},
+      {key:'repas',    label:'Bons repas',    ico:'🍔'},
+    ];
+
+    const restos = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL')
+      ? [ACTIVE_RESTO]
+      : Object.keys(RESTAURANTS);
+
+    const jours = [];
+    let d = new Date(from+'T00:00:00');
+    const fin = new Date(to+'T00:00:00');
+    while(d<=fin){ jours.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+    jours.reverse();
+
+    let totJours=0, totComplets=0, totDocs=0, totPresents=0;
+    restos.forEach(rt=> jours.forEach(jour=>{
+      totJours++;
+      const present = cols.filter(c=>has[c.key].has(rt+'|'+jour)).length;
+      totDocs += cols.length; totPresents += present;
+      if(present===cols.length) totComplets++;
+    }));
+    const pctComplet = totJours ? Math.round(100*totComplets/totJours) : 0;
+    const pctDocs = totDocs ? Math.round(100*totPresents/totDocs) : 0;
+
+    const kpis = `<div class="kpi-grid">
+      <div class="kpi ${pctComplet>=90?'ok':pctComplet>=60?'warn':'bad'}"><div class="kpi-label">Journées complètes</div><div class="kpi-val">${totComplets}/${totJours}</div><div style="font-size:10px;color:var(--muted2)">${pctComplet}%</div></div>
+      <div class="kpi neutral"><div class="kpi-label">Documents présents</div><div class="kpi-val">${totPresents}/${totDocs}</div><div style="font-size:10px;color:var(--muted2)">${pctDocs}%</div></div>
+      <div class="kpi neutral"><div class="kpi-label">Période</div><div class="kpi-val" style="font-size:15px">${formatDate(from)} → ${formatDate(to)}</div><div style="font-size:10px;color:var(--muted2)">${jours.length} jour(s)</div></div>
+    </div>`;
+
+    let blocks = '';
+    restos.forEach(rt=>{
+      const nomResto = RESTAURANTS[rt]?.nom || rt;
+      const rows = jours.map(jour=>{
+        const cells = cols.map(c=>{
+          const ok = has[c.key].has(rt+'|'+jour);
+          return `<td class="num" style="font-size:15px">${ok
+            ? '<span style="color:var(--green)" title="présent">✅</span>'
+            : '<span style="color:var(--red)" title="manquant">❌</span>'}</td>`;
+        }).join('');
+        const nbOk = cols.filter(c=>has[c.key].has(rt+'|'+jour)).length;
+        const statut = nbOk===cols.length
+          ? '<span style="color:var(--green);font-weight:600">OK</span>'
+          : nbOk===0
+            ? '<span style="color:var(--muted)">—</span>'
+            : `<span style="color:var(--yellow);font-weight:600">${nbOk}/${cols.length}</span>`;
+        const bg = nbOk===cols.length ? 'rgba(62,207,142,.05)' : nbOk===0 ? 'transparent' : 'rgba(251,191,36,.05)';
+        return `<tr style="background:${bg}">
+          <td style="color:var(--accent);white-space:nowrap">${formatDate(jour)} <span style="color:var(--muted2)">${jourSemaine(new Date(jour))}</span></td>
+          ${cells}
+          <td class="num">${statut}</td>
+        </tr>`;
+      }).join('');
+
+      blocks += `<div class="table-card" style="margin-top:16px">
+        <div class="table-header"><span class="table-title">${nomResto}</span></div>
+        <div class="table-wrap" style="max-height:520px;overflow-y:auto"><table>
+          <thead><tr>
+            <th>Date</th>
+            ${cols.map(c=>`<th class="num">${c.ico} ${c.label}</th>`).join('')}
+            <th class="num">Statut</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </div>`;
+    });
+
+    el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px">✅ = fichier importé dans la base · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.</div>`;
+  } catch(err){
+    console.error('renderImports', err);
+    el.innerHTML = _impEmpty('⚠️','Erreur de chargement', (err&&err.message)||'Impossible de lire les dépôts.');
+  }
+}
+
 function nav(id) {
   const targetSec = document.getElementById('sec-'+id);
   if(!targetSec) { console.warn("nav: section sec-"+id+" introuvable"); return; }
@@ -2952,6 +3083,7 @@ function nav(id) {
   if(id==='acces') renderAcces();
   if(id==='managers') renderManagers();
   if(id==='analyses') anInit();
+  if(id==='imports') renderImports();
   if(id==='equipiers') chargerEquipiers();
   if(id==='manager'){
     showMgrSection('home');
@@ -5402,61 +5534,53 @@ function parserSOS(txt){
   const rm = txt.match(/(Montpellier\s+Saint[- ]Cl[eé]ment|Saint[- ]Jean[- ]de[- ]V[eé]das|Pr[eé]s\s+d'Ar[eè]nes)/i);
   if(rm) resto = rm[1].trim();
 
-  const tk = txt.split(/\s+/);
-  const isTime = t => /^\d{1,2}:\d{2}$/.test(t) || t==='-';
+  // Flux de tokens (les colonnes du PDF s'entremêlent avec les objectifs ;
+  // on travaille donc par segment de ligne, délimité par les plages horaires).
+  const flux = txt.replace(/\s+/g,' ');
 
-  function read(startIdx){
-    let i=startIdx;
-    while(i<tk.length && !isTime(tk[i])) i++;
-    const times=[];
-    while(i<tk.length && times.length<10){
-      if(isTime(tk[i])){ times.push(tk[i]); i++; }
-      else if(tk[i]==='midi'){ i++; }
-      else break;
-    }
-    let ca=null,tm=null,cmd=null,voit=null;
-    const rest=[]; let j=i;
-    while(j<tk.length && rest.length<8){
-      const t=tk[j];
-      if(t==='-'){ j++; continue; }
-      if(isTime(t)) break;
-      if(/^(Total|Matin|Déjeun|Après|Dîner|Soir|Nuit|Peak|Objectifs|Montpellier|Saint|Près)/i.test(t)) break;
-      rest.push(t); j++;
-    }
-    const monies=[], ints=[];
-    for(const t of rest){
-      if(/^€?\d[\d ]*,\d{2}€?$/.test(t)) monies.push(_num(t));
-      else if(/^\d+$/.test(t)) ints.push(parseInt(t,10));
-    }
-    ca=monies[0]??null; tm=monies[1]??null; cmd=ints[0]??null; voit=ints[1]??null;
-    const n=times.length;
-    return {
-      attente:times[0]||null,
-      total: n>=2 ? times[n-2] : null,
-      depart: n>=1 ? times[n-1] : null,
-      total_sec: hmsToSec(n>=2 ? times[n-2] : null),
-      ca, tm, commandes:cmd, voitures:voit
-    };
-  }
-
-  const map=[
-    {key:'matinee',anchor:'Matinée',plage:'7h-12h'},
-    {key:'dejeuner',anchor:'Déjeuner',plage:'12h-14h'},
-    {key:'apresmidi',anchor:'Après-',plage:'14h-19h'},
-    {key:'diner',anchor:'Dîner',plage:'19h-21h'},
-    {key:'soir',anchor:'Soir',plage:'21h-23h'},
-    {key:'nuit',anchor:'Nuit',plage:'23h-4h'},
-    {key:'peaknuit',anchor:'Peak',plage:'4h-7h'},
+  const tranchesDef = [
+    {key:'matinee',  plage:'7h-12h',  re:/7h\s*à\s*12h/},
+    {key:'dejeuner', plage:'12h-14h', re:/12h\s*à\s*14h/},
+    {key:'apresmidi',plage:'14h-19h', re:/14h\s*à\s*19h/},
+    {key:'diner',    plage:'19h-21h', re:/19h\s*à\s*21h/},
+    {key:'soir',     plage:'21h-23h', re:/21h\s*à\s*23h/},
+    {key:'nuit',     plage:'23h-4h',  re:/23h\s*à\s*4h/},
+    {key:'peaknuit', plage:'4h-7h',   re:/4h\s*à\s*7h/},
   ];
-  const tranches=[];
-  for(const mp of map){
-    const idx = tk.indexOf(mp.anchor);
-    if(idx<0) continue;
-    tranches.push({key:mp.key, plage:mp.plage, ...read(idx+1)});
+
+  const marqueurs = [];
+  tranchesDef.forEach(t=>{ const m=flux.match(t.re); if(m) marqueurs.push({key:t.key,plage:t.plage,idx:m.index}); });
+  const mj = flux.match(/Moyenne\s+par\s+jour/);
+  const totIdx = mj ? mj.index+mj[0].length : flux.length;
+  marqueurs.sort((a,b)=>a.idx-b.idx);
+
+  // Lecture d'un segment : CA = 1er montant, TM = 2e montant,
+  // Commandes = 1er entier, Voitures = 2e entier,
+  // TOTAL de service = le plus grand temps de la ligne (c'est le cumul).
+  function lire(segment){
+    const tk = segment.split(/\s+/).filter(Boolean);
+    const monies=[], ints=[], times=[];
+    tk.forEach(t=>{
+      if(/^\d{1,2}:\d{2}$/.test(t)) times.push(t);
+      else if(/^\d[\d ]*,\d{2}/.test(t.replace('€',''))) monies.push(_num(t));
+      else if(/^\d+$/.test(t)) ints.push(parseInt(t,10));
+    });
+    const total = times.length ? times.reduce((a,b)=> (hmsToSec(b)>hmsToSec(a)?b:a), times[0]) : null;
+    return { ca:monies[0]??null, tm:monies[1]??null, commandes:ints[0]??null, voitures:ints[1]??null,
+      total, total_sec: hmsToSec(total) };
   }
-  let totalJour=null;
-  const tIdx = tk.findIndex((t,i)=> t==='Total' && tk[i+1]==='/');
-  if(tIdx>=0) totalJour = read(tIdx+2);
+
+  const tranches=[];
+  for(let i=0;i<marqueurs.length;i++){
+    const start = marqueurs[i].idx;
+    const end = (i+1<marqueurs.length) ? marqueurs[i+1].idx : totIdx;
+    tranches.push({key:marqueurs[i].key, plage:marqueurs[i].plage, ...lire(flux.slice(start,end))});
+  }
+
+  const finTot = flux.indexOf('Objectifs', totIdx);
+  const totSeg = flux.slice(totIdx, finTot>=0 ? finTot : flux.length);
+  const totalJour = lire(totSeg);
+
   return { date, resto, tranches, totalJour };
 }
 
@@ -6234,7 +6358,64 @@ function anRenderRepas(){
   <div class="chart-card full" style="margin-bottom:16px">
     <div class="chart-label">Repas par jour</div>
     <div class="chart-wrap"><canvas id="an-repas-canvas"></canvas></div>
-  </div>` + clt;
+  </div>` + anRepasParPeriode(rows) + clt;
+}
+
+// ── Bons repas : récap par jour / semaine / mois ──
+let AN_REPAS_GRAN = 'jour';
+function anRepasGran(g){ AN_REPAS_GRAN = g; const c=document.getElementById('an-repas-periode'); if(c) c.innerHTML = anRepasPeriodeTable(window.__AN_REPAS_ROWS||[]); 
+  document.querySelectorAll('.repas-gran-btn').forEach(b=>{ b.className = 'btn repas-gran-btn'+(b.dataset.g===g?' btn-accent':''); });
+}
+function _isoWeekKey(iso){
+  const d = new Date(iso+'T00:00:00');
+  const dt = new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));
+  const day = dt.getUTCDay()||7; dt.setUTCDate(dt.getUTCDate()+4-day);
+  const yStart = new Date(Date.UTC(dt.getUTCFullYear(),0,1));
+  const wk = Math.ceil((((dt-yStart)/86400000)+1)/7);
+  return dt.getUTCFullYear()+'-S'+String(wk).padStart(2,'0');
+}
+function _moisKey(iso){
+  const mois=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const p=iso.split('-'); return p[0]+'-'+p[1]+'|'+mois[parseInt(p[1],10)-1]+' '+p[0];
+}
+function anRepasPeriodeTable(rows){
+  if(!rows.length) return '<div style="padding:14px;font-size:11px;color:var(--muted)">Aucune donnée.</div>';
+  const agg = {};
+  rows.forEach(r=>{
+    let key, label;
+    if(AN_REPAS_GRAN==='jour'){ key=r.date; label=formatDate(r.date)+' '+jourSemaine(new Date(r.date)); }
+    else if(AN_REPAS_GRAN==='semaine'){ key=_isoWeekKey(r.date); label='Semaine '+key.split('-S')[1]+' ('+key.split('-S')[0]+')'; }
+    else { const mk=_moisKey(r.date); key=mk.split('|')[0]; label=mk.split('|')[1]; }
+    if(!agg[key]) agg[key]={label, repas:0, valo:0, supp:0, emps:new Set(), jours:new Set()};
+    agg[key].repas+=r.nb_repas||0; agg[key].valo+=r.valorisation||0; agg[key].supp+=r.supplement||0;
+    agg[key].emps.add(r.code||r.nom); agg[key].jours.add(r.date);
+  });
+  const lignes = Object.keys(agg).sort().reverse().map(k=>{
+    const a=agg[k];
+    return `<tr>
+      <td style="color:var(--accent)">${a.label}</td>
+      <td class="num" style="font-weight:600">${a.repas}</td>
+      <td class="num">${a.emps.size}</td>
+      <td class="num">${a.jours.size}</td>
+      <td class="num">${fmt(a.valo)} €</td>
+      <td class="num">${a.supp>0?fmt(a.supp)+' €':'—'}</td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr><th>${AN_REPAS_GRAN==='jour'?'Jour':AN_REPAS_GRAN==='semaine'?'Semaine':'Mois'}</th><th class="num">Repas</th><th class="num">Salariés</th><th class="num">Jours</th><th class="num">Valorisation</th><th class="num">Suppléments</th></tr></thead><tbody>${lignes}</tbody></table>`;
+}
+function anRepasParPeriode(rows){
+  window.__AN_REPAS_ROWS = rows;
+  return `<div class="table-card" style="margin-top:16px">
+    <div class="table-header">
+      <span class="table-title">📅 Repas par période</span>
+      <div style="display:flex;gap:4px">
+        <button class="btn repas-gran-btn ${AN_REPAS_GRAN==='jour'?'btn-accent':''}" data-g="jour" onclick="anRepasGran('jour')">Jour</button>
+        <button class="btn repas-gran-btn ${AN_REPAS_GRAN==='semaine'?'btn-accent':''}" data-g="semaine" onclick="anRepasGran('semaine')">Semaine</button>
+        <button class="btn repas-gran-btn ${AN_REPAS_GRAN==='mois'?'btn-accent':''}" data-g="mois" onclick="anRepasGran('mois')">Mois</button>
+      </div>
+    </div>
+    <div class="table-wrap" style="max-height:360px;overflow-y:auto" id="an-repas-periode">${anRepasPeriodeTable(rows)}</div>
+  </div>`;
 }
 
 // ───────── ANNULATIONS — classement manager + équipier ─────────
