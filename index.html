@@ -776,6 +776,17 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
               </div>
             </div>
 
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">👔 Manager responsable</label>
+                <select class="form-input" id="ann-mgr-resp"><option value="">— sélectionner —</option></select>
+              </div>
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">🧑‍🍳 Équipier (si connu)</label>
+                <input type="text" class="form-input" id="ann-equipier" placeholder="Nom de l'équipier">
+              </div>
+            </div>
+
             <div class="form-group" style="margin-bottom:16px">
               <label class="form-label">💬 Commentaire complémentaire (optionnel)</label>
               <input type="text" class="form-input" id="ann-comment" placeholder="Précisions sur l'annulation...">
@@ -885,6 +896,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
         <button class="btn an-tab" data-an="annulations"     onclick="anSwitch('annulations')">🚫 Annulations</button>
         <button class="btn an-tab" data-an="corrections"     onclick="anSwitch('corrections')">✏️ Corrections</button>
         <button class="btn an-tab" data-an="tables"          onclick="anSwitch('tables')">📂 Tables ouvertes</button>
+        <button class="btn an-tab" data-an="restos"          onclick="anSwitch('restos')">🏆 Classement restos</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
         <span style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)">Période</span>
@@ -4519,6 +4531,15 @@ function populateAnnManagerSelect() {
   const opts = codes.managers.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
   const el = document.getElementById('ann-manager');
   if(el) el.innerHTML = '<option value="">— sélectionner —</option>' + opts;
+  // Select "manager responsable" du flux manager (pré-sélectionne le manager connecté)
+  const el2 = document.getElementById('ann-mgr-resp');
+  if(el2){
+    el2.innerHTML = '<option value="">— sélectionner —</option>' + opts;
+    if(CURRENT_USER?.nom){
+      const o = el2.querySelector(`option[value="${CURRENT_USER.nom}"]`);
+      if(o) o.selected = true;
+    }
+  }
 }
 
 function populateManagerSelect() {
@@ -5258,13 +5279,27 @@ async function anRefresh(){
       if(resto) r = r.eq('restaurant', resto);
       return r.order('date',{ascending:true});
     };
-    const [sos, repas, ann] = await Promise.all([
-      q('sos_drive'), q('repas_employes'), q('annulations')
+    const [sos, repas, ann, jour] = await Promise.all([
+      q('sos_drive'), q('repas_employes'), q('annulations'), q('journees')
     ]);
     AN_DATA.sos = sos.data||[];
     AN_DATA.repas = repas.data||[];
     AN_DATA.annulations = ann.data||[];
-    // Corrections & tables ouvertes : depuis journees (en mémoire DATA filtré par période)
+    AN_DATA.journees = jour.data||[];
+
+    // Données multi-restos (sans filtre resto) pour l'onglet "Classement restos"
+    const qAll = (table)=>{
+      let r = SB.from(table).select('*');
+      if(from) r = r.gte('date', from);
+      if(to)   r = r.lte('date', to);
+      return r;
+    };
+    const [sosA, journeesA, annA, repasA] = await Promise.all([ qAll('sos_drive'), qAll('journees'), qAll('annulations'), qAll('repas_employes') ]);
+    AN_DATA.sosAll = sosA.data||[];
+    AN_DATA.journeesAll = journeesA.data||[];
+    AN_DATA.annulationsAll = annA.data||[];
+    AN_DATA.repasAll = repasA.data||[];
+
     anRender();
   } catch(err){
     console.error('anRefresh', err);
@@ -5275,7 +5310,38 @@ async function anRefresh(){
 function anJourneesPeriode(){
   const from = document.getElementById('an-date-from').value;
   const to   = document.getElementById('an-date-to').value;
-  return (DATA||[]).filter(d=> (!from||d.date>=from) && (!to||d.date<=to));
+  // Préférer les journées Supabase (avec managers) ; fallback sur le seed en mémoire
+  const src = (AN_DATA.journees && AN_DATA.journees.length) ? AN_DATA.journees : (DATA||[]);
+  return src.filter(d=> (!from||d.date>=from) && (!to||d.date<=to));
+}
+
+// ── Helpers de classement / couleur ──
+// feu : 'l' = plus haut = pire (rouge) ; 'h' = plus bas = pire
+function anFeu(val, seuilOrange, seuilRouge, sens){
+  if(val==null||isNaN(val)) return {cls:'', dot:'⚪', col:'var(--muted)'};
+  let niveau; // 0 vert, 1 orange, 2 rouge
+  if(sens==='bas'){ // val basse = bien (ex: temps service court). Plus c'est haut, pire.
+    niveau = val>=seuilRouge?2 : val>=seuilOrange?1 : 0;
+  } else {
+    niveau = val>=seuilRouge?2 : val>=seuilOrange?1 : 0;
+  }
+  return [{dot:'🟢',col:'var(--green)'},{dot:'🟠',col:'var(--yellow)'},{dot:'🔴',col:'var(--red)'}][niveau];
+}
+function anBadge(rang){
+  const medals = ['🥇','🥈','🥉'];
+  return medals[rang] || (rang+1);
+}
+// Construit un tableau de classement HTML générique
+function anClassement(titre, sousTitre, colonnes, lignes){
+  const ths = colonnes.map(c=>`<th class="${c.num?'num':''}">${c.label}</th>`).join('');
+  const trs = lignes.map((l,i)=>`<tr>${colonnes.map((c,ci)=>{
+    const v = c.render ? c.render(l, i) : (l[c.key]??'—');
+    return `<td class="${c.num?'num':''}" style="${ci===0?'font-weight:600;color:var(--accent)':''}">${v}</td>`;
+  }).join('')}</tr>`).join('');
+  return `<div class="table-card">
+    <div class="table-header"><span class="table-title">${titre}</span>${sousTitre?`<span style="font-size:10px;color:var(--muted)">${sousTitre}</span>`:''}</div>
+    <div class="table-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>
+  </div>`;
 }
 
 function anRender(){
@@ -5285,6 +5351,7 @@ function anRender(){
   else if(AN_TAB==='annulations') el.innerHTML = anRenderAnnulations();
   else if(AN_TAB==='corrections') el.innerHTML = anRenderCorrections();
   else if(AN_TAB==='tables')  el.innerHTML = anRenderTables();
+  else if(AN_TAB==='restos')  el.innerHTML = anRenderRestos();
   // dessiner les graphiques après injection HTML
   setTimeout(()=>{ try{ anDrawCharts(); }catch(e){console.warn(e);} }, 30);
 }
@@ -5292,7 +5359,9 @@ function anRender(){
 const _anEmpty = (ico,titre,sub)=>`<div class="empty"><div class="empty-icon">${ico}</div><div class="empty-title">${titre}</div><div class="empty-sub">${sub}</div></div>`;
 
 // ───────── TEMPS DE SERVICE (SOS) ─────────
-let _anSosChart=null;
+// ───────── TEMPS DE SERVICE (SOS) — classement managers ─────────
+const SOS_SEUIL_ORANGE = 165;   // 02:45 (objectif "Total")
+const SOS_SEUIL_ROUGE  = 210;   // 03:30
 function anRenderSOS(){
   const rows = AN_DATA.sos.filter(r=>r.total_sec);
   if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service','Les SOS Drive déposés par les managers apparaîtront ici.');
@@ -5300,58 +5369,54 @@ function anRenderSOS(){
   const best = rows.reduce((a,b)=>a.total_sec<b.total_sec?a:b);
   const worst= rows.reduce((a,b)=>a.total_sec>b.total_sec?a:b);
   const totVoit = rows.reduce((a,b)=>a+(b.total_voitures||0),0);
-  const SEUIL = 165; // objectif total ~02:45 ? ici on prend l'objectif "Total" 02:45=165s
+
+  // Agréger par manager (ouverture ET fermeture comptent pour la journée)
+  const byMgr = {};
+  rows.forEach(r=>{
+    [r.manager_ouverture, r.manager_fermeture].filter(Boolean).forEach(nom=>{
+      if(!byMgr[nom]) byMgr[nom]={nom, sum:0, n:0, jours:new Set()};
+      byMgr[nom].sum+=r.total_sec; byMgr[nom].n++; byMgr[nom].jours.add(r.date);
+    });
+  });
+  const classement = Object.values(byMgr).map(m=>({nom:m.nom, moy:Math.round(m.sum/m.n), jours:m.jours.size}))
+    .sort((a,b)=>b.moy-a.moy); // pire (plus lent) en haut
 
   const kpis = `
   <div class="kpi-grid">
-    <div class="kpi ${moy<=SEUIL?'ok':'bad'}"><div class="kpi-label">Temps moyen / jour</div><div class="kpi-val">${secToHMS(moy)}</div><div style="font-size:10px;color:var(--muted2)">${rows.length} jours analysés</div></div>
+    <div class="kpi ${moy<=SOS_SEUIL_ORANGE?'ok':moy<=SOS_SEUIL_ROUGE?'warn':'bad'}"><div class="kpi-label">Temps moyen / jour</div><div class="kpi-val">${secToHMS(moy)}</div><div style="font-size:10px;color:var(--muted2)">${rows.length} jours</div></div>
     <div class="kpi ok"><div class="kpi-label">Meilleur jour</div><div class="kpi-val">${secToHMS(best.total_sec)}</div><div style="font-size:10px;color:var(--muted2)">${formatDate(best.date)}</div></div>
     <div class="kpi bad"><div class="kpi-label">Jour le + lent</div><div class="kpi-val">${secToHMS(worst.total_sec)}</div><div style="font-size:10px;color:var(--muted2)">${formatDate(worst.date)}</div></div>
     <div class="kpi neutral"><div class="kpi-label">Voitures totales</div><div class="kpi-val">${fmt(totVoit)}</div><div style="font-size:10px;color:var(--muted2)">${Math.round(totVoit/rows.length)} / jour</div></div>
   </div>`;
 
-  // Moyenne par tranche (sur la période)
+  // Classement managers (pire → meilleur)
+  const clt = anClassement('🏆 Classement managers — temps de service (pire → meilleur)', classement.length+' managers',
+    [
+      {label:'#', render:(l,i)=>anBadge(i)},
+      {label:'Manager', key:'nom'},
+      {label:'Temps moyen', num:true, render:l=>{const f=anFeu(l.moy,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${secToHMS(l.moy)}</span>`;}},
+      {label:'Jours', num:true, key:'jours'},
+    ], classement);
+
+  // Moyenne par tranche
   const trancheLabels = {matinee:'Matinée',dejeuner:'Déjeuner',apresmidi:'Après-midi',diner:'Dîner',soir:'Soir',nuit:'Nuit',peaknuit:'Peak nuit'};
   const trancheAgg = {};
-  rows.forEach(r=>{
-    (r.tranches||[]).forEach(t=>{
-      if(t.total_sec==null) return;
-      if(!trancheAgg[t.key]) trancheAgg[t.key]={sum:0,n:0,voit:0,ca:0};
-      trancheAgg[t.key].sum+=t.total_sec; trancheAgg[t.key].n++; trancheAgg[t.key].voit+=t.voitures||0; trancheAgg[t.key].ca+=t.ca||0;
-    });
-  });
-  const trancheRows = Object.keys(trancheLabels).filter(k=>trancheAgg[k]).map(k=>{
-    const a=trancheAgg[k]; const m=Math.round(a.sum/a.n);
-    return `<tr><td>${trancheLabels[k]}</td><td class="num" style="font-weight:600;color:${m<=SEUIL?'var(--green)':'var(--red)'}">${secToHMS(m)}</td><td class="num">${a.voit}</td><td class="num">${fmt(a.ca)} €</td></tr>`;
-  }).join('');
-
-  const tableJours = rows.slice().reverse().map(r=>`
-    <tr>
-      <td style="color:var(--accent)">${formatDate(r.date)} ${jourSemaine(new Date(r.date))}</td>
-      <td class="num" style="font-weight:600;color:${r.total_sec<=SEUIL?'var(--green)':'var(--red)'}">${secToHMS(r.total_sec)}</td>
-      <td class="num">${r.total_voitures||'—'}</td>
-      <td class="num">${r.total_ca?fmt(r.total_ca)+' €':'—'}</td>
-      <td style="color:var(--muted2)">${r.manager_ouverture||'—'}${r.manager_fermeture&&r.manager_fermeture!==r.manager_ouverture?' / '+r.manager_fermeture:''}</td>
-    </tr>`).join('');
+  rows.forEach(r=>{(r.tranches||[]).forEach(t=>{ if(t.total_sec==null)return; if(!trancheAgg[t.key])trancheAgg[t.key]={sum:0,n:0,voit:0}; trancheAgg[t.key].sum+=t.total_sec; trancheAgg[t.key].n++; trancheAgg[t.key].voit+=t.voitures||0; });});
+  const trancheRows = Object.keys(trancheLabels).filter(k=>trancheAgg[k]).map(k=>{const a=trancheAgg[k];const m=Math.round(a.sum/a.n);const f=anFeu(m,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas');return `<tr><td>${trancheLabels[k]}</td><td class="num" style="font-weight:600;color:${f.col}">${f.dot} ${secToHMS(m)}</td><td class="num">${a.voit}</td></tr>`;}).join('');
 
   return kpis + `
   <div class="chart-card full" style="margin-bottom:16px">
     <div class="chart-label">Évolution du temps de service total / jour</div>
     <div class="chart-wrap tall"><canvas id="an-sos-canvas"></canvas></div>
   </div>
-  <div class="chart-grid">
-    <div class="table-card">
-      <div class="table-header"><span class="table-title">Moyenne par tranche horaire</span></div>
-      <div class="table-wrap"><table><thead><tr><th>Tranche</th><th class="num">Temps moy.</th><th class="num">Voitures</th><th class="num">CA</th></tr></thead><tbody>${trancheRows}</tbody></table></div>
-    </div>
-    <div class="table-card">
-      <div class="table-header"><span class="table-title">Détail par jour</span></div>
-      <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Total</th><th class="num">Voit.</th><th class="num">CA</th><th>Manager</th></tr></thead><tbody>${tableJours}</tbody></table></div>
-    </div>
+  ${clt}
+  <div class="table-card" style="margin-top:16px">
+    <div class="table-header"><span class="table-title">Moyenne par tranche horaire</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Tranche</th><th class="num">Temps moy.</th><th class="num">Voitures</th></tr></thead><tbody>${trancheRows}</tbody></table></div>
   </div>`;
 }
 
-// ───────── BONS REPAS ─────────
+// ───────── BONS REPAS — détection abus (doublons + total élevé) ─────────
 function anRenderRepas(){
   const rows = AN_DATA.repas;
   if(!rows.length) return _anEmpty('🍔','Aucun bon repas enregistré','Les repas employés déposés par les managers apparaîtront ici.');
@@ -5361,57 +5426,75 @@ function anRenderRepas(){
   const totValo  = rows.reduce((a,b)=>a+(b.valorisation||0),0);
   const totSupp  = rows.reduce((a,b)=>a+(b.supplement||0),0);
 
-  // Agrégat par employé
+  // Agrégat par employé + détection doublons (2+ repas le même jour)
   const byEmp = {};
   rows.forEach(r=>{
     const k = r.code||r.nom;
-    if(!byEmp[k]) byEmp[k]={nom:r.nom, code:r.code, repas:0, valo:0, supp:0, jours:new Set()};
+    if(!byEmp[k]) byEmp[k]={nom:r.nom, code:r.code, repas:0, valo:0, supp:0, jours:new Set(), doublons:[]};
     byEmp[k].repas+=r.nb_repas||0; byEmp[k].valo+=r.valorisation||0; byEmp[k].supp+=r.supplement||0; byEmp[k].jours.add(r.date);
+    if((r.nb_repas||0) >= 2) byEmp[k].doublons.push({date:r.date, nb:r.nb_repas});
   });
-  const emps = Object.values(byEmp).sort((a,b)=>b.repas-a.repas);
+  const emps = Object.values(byEmp).map(e=>({...e, joursN:e.jours.size, ratio: e.repas/(e.jours.size||1), nbDoublons:e.doublons.length}));
+
+  // Liste des abus suspects (au moins un jour avec 2+ repas)
+  const suspects = emps.filter(e=>e.nbDoublons>0).sort((a,b)=>b.nbDoublons-a.nbDoublons || b.repas-a.repas);
 
   const kpis = `
   <div class="kpi-grid">
-    <div class="kpi neutral"><div class="kpi-label">Total repas</div><div class="kpi-val">${totRepas}</div><div style="font-size:10px;color:var(--muted2)">${jours.length} jours</div></div>
-    <div class="kpi neutral"><div class="kpi-label">Valorisation totale</div><div class="kpi-val">${fmt(totValo)} €</div><div style="font-size:10px;color:var(--muted2)">${(totValo/(totRepas||1)).toFixed(2)} €/repas</div></div>
-    <div class="kpi ${totSupp>0?'warn':'ok'}"><div class="kpi-label">Suppléments</div><div class="kpi-val">${totValo?fmt(totSupp):0} €</div><div style="font-size:10px;color:var(--muted2)">à la charge employé</div></div>
-    <div class="kpi neutral"><div class="kpi-label">Employés concernés</div><div class="kpi-val">${emps.length}</div><div style="font-size:10px;color:var(--muted2)">${(totRepas/(jours.length||1)).toFixed(1)} repas/jour</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Total repas</div><div class="kpi-val">${totRepas}</div><div style="font-size:10px;color:var(--muted2)">${jours.length} jours · ${emps.length} salariés</div></div>
+    <div class="kpi ${suspects.length?'bad':'ok'}"><div class="kpi-label">⚠ Salariés à doublon</div><div class="kpi-val">${suspects.length}</div><div style="font-size:10px;color:var(--muted2)">2 repas+ le même jour</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Valorisation</div><div class="kpi-val">${fmt(totValo)} €</div><div style="font-size:10px;color:var(--muted2)">${(totValo/(totRepas||1)).toFixed(2)} €/repas</div></div>
+    <div class="kpi ${totSupp>0?'warn':'ok'}"><div class="kpi-label">Suppléments</div><div class="kpi-val">${fmt(totSupp)} €</div><div style="font-size:10px;color:var(--muted2)">charge employé</div></div>
   </div>`;
 
-  const empRows = emps.map(e=>`
-    <tr>
-      <td style="font-weight:600;color:var(--accent)">${e.nom}</td>
+  // Tableau alerte doublons
+  let alerteDoublons = '';
+  if(suspects.length){
+    const lignes = suspects.map(e=>`<tr>
+      <td style="font-weight:600;color:var(--red)">🔴 ${e.nom}</td>
       <td style="color:var(--muted)">${e.code||'—'}</td>
-      <td class="num" style="font-weight:600">${e.repas}</td>
-      <td class="num">${e.jours.size}</td>
-      <td class="num">${fmt(e.valo)} €</td>
-      <td class="num" style="color:${e.supp>0?'var(--yellow)':'var(--muted)'}">${e.supp>0?fmt(e.supp)+' €':'—'}</td>
+      <td class="num" style="font-weight:600">${e.nbDoublons}</td>
+      <td style="color:var(--muted2);font-size:10px">${e.doublons.map(d=>formatDate(d.date)+' ('+d.nb+')').join(' · ')}</td>
     </tr>`).join('');
+    alerteDoublons = `<div class="table-card" style="margin-bottom:16px;border-color:rgba(248,113,113,.3)">
+      <div class="table-header"><span class="table-title" style="color:var(--red)">⚠️ Suspicion d'abus — doublons de repas</span><span style="font-size:10px;color:var(--muted)">${suspects.length} salariés</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Salarié</th><th>Code</th><th class="num">Jours à doublon</th><th>Détail</th></tr></thead><tbody>${lignes}</tbody></table></div>
+    </div>`;
+  }
 
-  return kpis + `
+  // Classement par nb de repas (ratio repas/jour = signal de sur-consommation)
+  const classement = emps.slice().sort((a,b)=>b.repas-a.repas);
+  const clt = anClassement('🏆 Classement salariés — nb de bons repas (du + au -)', emps.length+' salariés',
+    [
+      {label:'#', render:(l,i)=>anBadge(i)},
+      {label:'Salarié', key:'nom'},
+      {label:'Code', render:l=>`<span style="color:var(--muted)">${l.code||'—'}</span>`},
+      {label:'Repas', num:true, render:l=>`<strong>${l.repas}</strong>`},
+      {label:'Jours', num:true, key:'joursN'},
+      {label:'Repas/jour', num:true, render:l=>{const f=anFeu(l.ratio,1.3,1.8,'bas'); return `<span style="color:${f.col}">${f.dot} ${l.ratio.toFixed(2)}</span>`;}},
+      {label:'Valorisation', num:true, render:l=>fmt(l.valo)+' €'},
+    ], classement);
+
+  return kpis + alerteDoublons + `
   <div class="chart-card full" style="margin-bottom:16px">
     <div class="chart-label">Repas par jour</div>
     <div class="chart-wrap"><canvas id="an-repas-canvas"></canvas></div>
-  </div>
-  <div class="table-card">
-    <div class="table-header"><span class="table-title">Classement par employé</span><span style="font-size:10px;color:var(--muted)">${emps.length} employés</span></div>
-    <div class="table-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr><th>Employé</th><th>Code</th><th class="num">Repas</th><th class="num">Jours</th><th class="num">Valorisation</th><th class="num">Supplément</th></tr></thead><tbody>${empRows}</tbody></table></div>
-  </div>`;
+  </div>` + clt;
 }
 
-// ───────── ANNULATIONS ─────────
+// ───────── ANNULATIONS — classement manager + équipier ─────────
 function anRenderAnnulations(){
-  // fusionner Supabase + localStorage (ancien)
   let rows = [...AN_DATA.annulations];
   try {
     const local = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
     const from=document.getElementById('an-date-from').value, to=document.getElementById('an-date-to').value;
     const resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null);
+    const seen=new Set(rows.map(r=>r.id));
     local.forEach(a=>{
       const dISO = a.date && a.date.includes('/') ? a.date.split('/').reverse().join('-') : a.date;
       if(from&&dISO<from) return; if(to&&dISO>to) return;
       if(resto&&a.restaurant!==resto) return;
-      rows.push({date:dISO, heure:a.heure, montant:a.montant, manager:a.manager, commentaire:a.comment, _local:true});
+      rows.push({date:dISO, heure:a.heure, montant:a.montant, manager:a.manager, equipier:a.equipier, commentaire:a.comment, _local:true});
     });
   } catch(e){}
 
@@ -5420,9 +5503,13 @@ function anRenderAnnulations(){
 
   const totMontant = rows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
   const nb = rows.length;
-  const byMgr={};
-  rows.forEach(r=>{ const m=r.manager||'—'; if(!byMgr[m])byMgr[m]={nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0); });
-  const mgrRows = Object.entries(byMgr).sort((a,b)=>b[1].montant-a[1].montant).map(([m,s])=>`<tr><td style="color:var(--accent)">${m}</td><td class="num">${s.nb}</td><td class="num" style="color:var(--red)">${fmt(s.montant)} €</td></tr>`).join('');
+
+  // Par manager
+  const byMgr={}; rows.forEach(r=>{const m=r.manager||'(non renseigné)'; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0);});
+  const cltMgr=Object.values(byMgr).sort((a,b)=>b.montant-a.montant);
+  // Par équipier
+  const byEq={}; rows.forEach(r=>{ if(!r.equipier)return; const e=r.equipier; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=Math.abs(r.montant||0);});
+  const cltEq=Object.values(byEq).sort((a,b)=>b.montant-a.montant);
 
   const kpis = `
   <div class="kpi-grid">
@@ -5431,36 +5518,51 @@ function anRenderAnnulations(){
     <div class="kpi neutral"><div class="kpi-label">Montant moyen</div><div class="kpi-val">${fmt(totMontant/(nb||1))} €</div></div>
   </div>`;
 
+  const cltMgrTbl = anClassement('🏆 Classement managers — annulations (pire → meilleur)', cltMgr.length+' managers',
+    [
+      {label:'#', render:(l,i)=>anBadge(i)},
+      {label:'Manager', key:'nom'},
+      {label:'Nb', num:true, key:'nb'},
+      {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,30,80,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
+    ], cltMgr);
+
+  const cltEqTbl = cltEq.length ? anClassement('🧑‍🍳 Classement équipiers — annulations (pire → meilleur)', cltEq.length+' équipiers identifiés',
+    [
+      {label:'#', render:(l,i)=>anBadge(i)},
+      {label:'Équipier', key:'nom'},
+      {label:'Nb', num:true, key:'nb'},
+      {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,30,80,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
+    ], cltEq) : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun équipier renseigné sur les annulations de la période. Lors de la déclaration d'une annulation, saisissez le nom de l'équipier pour suivre les responsabilités individuelles.</div></div>`;
+
   const detail = rows.slice(0,80).map(r=>`
-    <tr>
-      <td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
+    <tr><td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
       <td style="color:var(--muted2)">${r.heure||'—'}</td>
       <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
       <td>${r.manager||'—'}</td>
-      <td style="color:var(--muted2)">${r.commentaire||''}</td>
-    </tr>`).join('');
+      <td style="color:var(--muted2)">${r.equipier||'—'}</td>
+      <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`).join('');
 
-  return kpis + `
-  <div class="chart-grid">
-    <div class="table-card">
-      <div class="table-header"><span class="table-title">Par manager</span></div>
-      <div class="table-wrap"><table><thead><tr><th>Manager</th><th class="num">Nb</th><th class="num">Montant</th></tr></thead><tbody>${mgrRows}</tbody></table></div>
-    </div>
-    <div class="table-card">
-      <div class="table-header"><span class="table-title">Détail</span></div>
-      <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Manager</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
-    </div>
+  return kpis + cltMgrTbl + `<div style="height:16px"></div>` + cltEqTbl + `
+  <div class="table-card" style="margin-top:16px">
+    <div class="table-header"><span class="table-title">Détail des annulations</span></div>
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Manager</th><th>Équipier</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
   </div>`;
 }
 
-// ───────── CORRECTIONS (depuis journees) ─────────
+// ───────── CORRECTIONS — classement managers (depuis journees) ─────────
 function anRenderCorrections(){
   const rows = anJourneesPeriode().filter(d=>d.corrections_montant!=null||d.corrections_nb!=null);
   if(!rows.length) return _anEmpty('✏️','Aucune correction sur la période','Les corrections proviennent de la Synthèse CA.');
   const totMontant = rows.reduce((a,b)=>a+(b.corrections_montant||0),0);
   const totNb = rows.reduce((a,b)=>a+(b.corrections_nb||0),0);
-  const avgPct = rows.filter(d=>d.corrections_pct).reduce((a,b,_,arr)=>a+b.corrections_pct/arr.length,0);
+  const pctVals = rows.filter(d=>d.corrections_pct);
+  const avgPct = pctVals.length ? pctVals.reduce((a,b)=>a+b.corrections_pct,0)/pctVals.length : 0;
   const seuil = (typeof SEUILS!=='undefined' && SEUILS.corrections_max)||4;
+
+  // Classement managers (sur % corrections moyen)
+  const byMgr={};
+  rows.forEach(r=>{ const m=r.manager_ouverture; if(!m)return; if(!byMgr[m])byMgr[m]={nom:m,pctSum:0,pctN:0,montant:0,nb:0,jours:0}; if(r.corrections_pct){byMgr[m].pctSum+=r.corrections_pct;byMgr[m].pctN++;} byMgr[m].montant+=r.corrections_montant||0; byMgr[m].nb+=r.corrections_nb||0; byMgr[m].jours++; });
+  const classement=Object.values(byMgr).map(m=>({nom:m.nom, pct:m.pctN?m.pctSum/m.pctN:null, montant:m.montant, nb:m.nb, jours:m.jours})).sort((a,b)=>(b.pct||0)-(a.pct||0));
 
   const kpis = `
   <div class="kpi-grid">
@@ -5473,23 +5575,38 @@ function anRenderCorrections(){
     <div class="chart-wrap tall"><canvas id="an-corr-canvas"></canvas></div>
   </div>`;
 
+  const clt = classement.length ? anClassement('🏆 Classement managers — corrections (pire → meilleur)', classement.length+' managers',
+    [
+      {label:'#', render:(l,i)=>anBadge(i)},
+      {label:'Manager', key:'nom'},
+      {label:'% moy', num:true, render:l=>{if(l.pct==null)return '—';const f=anFeu(l.pct,seuil,seuil*1.5,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${l.pct.toFixed(2)}%</span>`;}},
+      {label:'Montant', num:true, render:l=>fmt(l.montant)+' €'},
+      {label:'Nb', num:true, key:'nb'},
+      {label:'Jours', num:true, key:'jours'},
+    ], classement) : `<div class="table-card"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun manager renseigné sur les journées de la période (les corrections sont rattachées au manager d'ouverture saisi lors du dépôt des PDF).</div></div>`;
+
   const detail = rows.slice().reverse().map(d=>`
     <tr><td style="color:var(--accent)">${formatDate(d.date)} ${jourSemaine(new Date(d.date))}</td>
       <td class="num">${d.corrections_nb||'—'}</td>
       <td class="num" style="font-weight:600">${d.corrections_montant?fmt(d.corrections_montant)+' €':'—'}</td>
-      <td class="num">${d.corrections_pct!=null?chipS(d.corrections_pct,seuil,seuil*1.5,'l')+' '+d.corrections_pct.toFixed(2)+'%':'—'}</td>
+      <td class="num">${d.corrections_pct!=null?(()=>{const f=anFeu(d.corrections_pct,seuil,seuil*1.5,'bas');return `<span style="color:${f.col}">${f.dot} ${d.corrections_pct.toFixed(2)}%</span>`;})():'—'}</td>
       <td style="color:var(--muted2)">${d.manager_ouverture||'—'}</td></tr>`).join('');
 
-  return kpis + `<div class="table-card"><div class="table-header"><span class="table-title">Détail par jour</span></div>
-    <div class="table-wrap" style="max-height:360px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb</th><th class="num">Montant</th><th class="num">% CA</th><th>Manager</th></tr></thead><tbody>${detail}</tbody></table></div></div>`;
+  return kpis + clt + `<div class="table-card" style="margin-top:16px"><div class="table-header"><span class="table-title">Détail par jour</span></div>
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb</th><th class="num">Montant</th><th class="num">% CA</th><th>Manager</th></tr></thead><tbody>${detail}</tbody></table></div></div>`;
 }
 
-// ───────── TABLES OUVERTES (commandes ouvertes, depuis journees) ─────────
+// ───────── TABLES OUVERTES — classement managers ─────────
 function anRenderTables(){
   const rows = anJourneesPeriode().filter(d=>d.commandes_ouvertes_nb!=null||d.commandes_ouvertes_montant!=null);
   if(!rows.length) return _anEmpty('📂','Aucune table ouverte sur la période','Les commandes ouvertes proviennent de la Synthèse CA.');
   const totNb = rows.reduce((a,b)=>a+(b.commandes_ouvertes_nb||0),0);
   const totMontant = rows.reduce((a,b)=>a+(b.commandes_ouvertes_montant||0),0);
+
+  // Classement managers (manager de fermeture en priorité, sinon ouverture)
+  const byMgr={};
+  rows.forEach(r=>{ const m=r.manager_fermeture||r.manager_ouverture; if(!m)return; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0,jours:0}; byMgr[m].nb+=r.commandes_ouvertes_nb||0; byMgr[m].montant+=r.commandes_ouvertes_montant||0; byMgr[m].jours++; });
+  const classement=Object.values(byMgr).map(m=>({...m, parJour:m.nb/(m.jours||1)})).sort((a,b)=>b.parJour-a.parJour);
 
   const kpis = `
   <div class="kpi-grid">
@@ -5502,14 +5619,85 @@ function anRenderTables(){
     <div class="chart-wrap"><canvas id="an-tables-canvas"></canvas></div>
   </div>`;
 
+  const clt = classement.length ? anClassement('🏆 Classement managers — tables ouvertes (pire → meilleur)', classement.length+' managers',
+    [
+      {label:'#', render:(l,i)=>anBadge(i)},
+      {label:'Manager', key:'nom'},
+      {label:'Tables/jour', num:true, render:l=>{const f=anFeu(l.parJour,3,5,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${l.parJour.toFixed(1)}</span>`;}},
+      {label:'Total nb', num:true, key:'nb'},
+      {label:'Montant', num:true, render:l=>fmt(l.montant)+' €'},
+      {label:'Jours', num:true, key:'jours'},
+    ], classement) : `<div class="table-card"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun manager renseigné sur les journées de la période.</div></div>`;
+
   const detail = rows.slice().reverse().map(d=>`
     <tr><td style="color:var(--accent)">${formatDate(d.date)} ${jourSemaine(new Date(d.date))}</td>
       <td class="num" style="font-weight:600">${d.commandes_ouvertes_nb||'—'}</td>
       <td class="num">${d.commandes_ouvertes_montant?fmt(d.commandes_ouvertes_montant)+' €':'—'}</td>
       <td style="color:var(--muted2)">${d.manager_fermeture||d.manager_ouverture||'—'}</td></tr>`).join('');
 
-  return kpis + `<div class="table-card"><div class="table-header"><span class="table-title">Détail par jour</span></div>
-    <div class="table-wrap" style="max-height:360px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb</th><th class="num">Montant</th><th>Manager</th></tr></thead><tbody>${detail}</tbody></table></div></div>`;
+  return kpis + clt + `<div class="table-card" style="margin-top:16px"><div class="table-header"><span class="table-title">Détail par jour</span></div>
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb</th><th class="num">Montant</th><th>Manager</th></tr></thead><tbody>${detail}</tbody></table></div></div>`;
+}
+
+
+// ───────── CLASSEMENT PAR RESTO ─────────
+function anRenderRestos(){
+  const sos = AN_DATA.sosAll||[];
+  const jours = AN_DATA.journeesAll||[];
+  const anns = AN_DATA.annulationsAll||[];
+  const repas = AN_DATA.repasAll||[];
+  if(!sos.length && !jours.length && !anns.length && !repas.length){
+    return _anEmpty('🏆','Aucune donnée multi-restos','Les données des restaurants apparaîtront ici une fois saisies.');
+  }
+  const restosIds = [...new Set([
+    ...sos.map(r=>r.restaurant), ...jours.map(r=>r.restaurant),
+    ...anns.map(r=>r.restaurant), ...repas.map(r=>r.restaurant)
+  ].filter(Boolean))];
+
+  const stat = {};
+  restosIds.forEach(id=>{
+    const sosR = sos.filter(r=>r.restaurant===id && r.total_sec);
+    const jR   = jours.filter(r=>r.restaurant===id);
+    const aR   = anns.filter(r=>r.restaurant===id);
+    const rR   = repas.filter(r=>r.restaurant===id);
+    const corrPct = jR.filter(d=>d.corrections_pct);
+    const tablesNb = jR.filter(d=>d.commandes_ouvertes_nb!=null);
+    // doublons repas
+    const doublons = rR.filter(r=>(r.nb_repas||0)>=2).length;
+    stat[id]={
+      nom: (RESTAURANTS[id]?.nom)||id,
+      sos: sosR.length ? Math.round(sosR.reduce((a,b)=>a+b.total_sec,0)/sosR.length) : null,
+      corrPct: corrPct.length ? corrPct.reduce((a,b)=>a+b.corrections_pct,0)/corrPct.length : null,
+      annNb: aR.length,
+      annMontant: aR.reduce((a,b)=>a+Math.abs(b.montant||0),0),
+      tablesParJour: tablesNb.length ? tablesNb.reduce((a,b)=>a+(b.commandes_ouvertes_nb||0),0)/tablesNb.length : null,
+      repasDoublons: doublons,
+      jours: jR.length
+    };
+  });
+  const rows = Object.values(stat);
+
+  // Classements individuels (pire en haut)
+  const rkSos    = [...rows].filter(r=>r.sos!=null).sort((a,b)=>b.sos-a.sos);
+  const rkCorr   = [...rows].filter(r=>r.corrPct!=null).sort((a,b)=>b.corrPct-a.corrPct);
+  const rkAnn    = [...rows].sort((a,b)=>b.annMontant-a.annMontant);
+  const rkTables = [...rows].filter(r=>r.tablesParJour!=null).sort((a,b)=>b.tablesParJour-a.tablesParJour);
+  const rkDoub   = [...rows].sort((a,b)=>b.repasDoublons-a.repasDoublons);
+
+  const seuilCorr=(typeof SEUILS!=='undefined'&&SEUILS.corrections_max)||4;
+
+  // Tableau récap toutes catégories
+  const recap = anClassement('🏆 Vue d\'ensemble par restaurant', restosIds.length+' restaurants',
+    [
+      {label:'Restaurant', key:'nom'},
+      {label:'Temps service', num:true, render:l=>{if(l.sos==null)return '—';const f=anFeu(l.sos,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas');return `<span style="color:${f.col}">${f.dot} ${secToHMS(l.sos)}</span>`;}},
+      {label:'Corr. %', num:true, render:l=>{if(l.corrPct==null)return '—';const f=anFeu(l.corrPct,seuilCorr,seuilCorr*1.5,'bas');return `<span style="color:${f.col}">${f.dot} ${l.corrPct.toFixed(2)}%</span>`;}},
+      {label:'Annul. €', num:true, render:l=>{const f=anFeu(l.annMontant,50,150,'bas');return `<span style="color:${f.col}">${f.dot} ${fmt(l.annMontant)}€</span>`;}},
+      {label:'Tables/j', num:true, render:l=>l.tablesParJour!=null?l.tablesParJour.toFixed(1):'—'},
+      {label:'⚠ Doublons repas', num:true, render:l=>{const f=anFeu(l.repasDoublons,1,3,'bas');return `<span style="color:${f.col}">${f.dot} ${l.repasDoublons}</span>`;}},
+    ], rows);
+
+  return recap;
 }
 
 // ───────── GRAPHIQUES ─────────
@@ -5793,10 +5981,15 @@ function sauvegarderAnnulation() {
   const missAnnul = document.getElementById('chk-miss-annul')?.checked ? document.getElementById('miss-annul-txt')?.value : null;
   const missGood  = document.getElementById('chk-miss-good')?.checked  ? document.getElementById('miss-good-txt')?.value  : null;
 
+  // Manager responsable (sélectionné) sinon le manager connecté ; équipier optionnel
+  const mgrResp  = document.getElementById('ann-mgr-resp')?.value || CURRENT_USER?.nom || null;
+  const equipier = (document.getElementById('ann-equipier')?.value||'').trim() || null;
+
   const anns = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
   anns.unshift({
     id: Date.now(), date, heure, montant, comment,
-    manager: CURRENT_USER?.nom||null,
+    manager: mgrResp,
+    equipier: equipier,
     restaurant: CURRENT_USER?.resto||'BK526',
     ticket_bad_manquant: missBad||null,
     ticket_annul_manquant: missAnnul||null,
@@ -5812,7 +6005,8 @@ function sauvegarderAnnulation() {
       SB.from('annulations').insert({
         restaurant: CURRENT_USER?.resto||'BK526',
         date: dISO || null, heure, montant,
-        manager: CURRENT_USER?.nom||null,
+        manager: mgrResp,
+        equipier: equipier,
         commentaire: comment||null,
         ticket_bad_manquant: missBad||null,
         ticket_annul_manquant: missAnnul||null,
@@ -5825,7 +6019,7 @@ function sauvegarderAnnulation() {
   ANN_DATA = {date:null,heure:null,montant:null};
   ANN_PHOTOS = {bad:null,annul:null,good:null};
   ANN_PHOTOS_COUNT = 0;
-  ['ann-comment','miss-bad-txt','miss-annul-txt','miss-good-txt'].forEach(id=>{
+  ['ann-comment','miss-bad-txt','miss-annul-txt','miss-good-txt','ann-equipier'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   ['chk-miss-bad','chk-miss-annul','chk-miss-good'].forEach(id=>{
