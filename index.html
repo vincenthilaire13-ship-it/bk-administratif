@@ -1319,6 +1319,12 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
             <button class="btn btn-accent" style="width:100%" onclick="copierSQLColonnesPDF()">📋 Copier le SQL des colonnes du PDF</button>
             <div id="sql-pdf-ok" style="display:none;color:var(--green);font-size:10px;text-align:center;margin-top:6px">✓ SQL copié — collez-le dans Supabase → SQL Editor → Run</div>
           </div>
+          <div style="margin-top:12px;padding:12px 14px;border-radius:8px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25)">
+            <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:6px">🔧 Réparer les journées « Administration »</div>
+            <div style="font-size:11px;color:var(--muted2);margin-bottom:10px">Si des journées ont été enregistrées par erreur sous « Administration » (ALL), ce bouton les réattribue au restaurant BK 526 (Saint-Clément).</div>
+            <button class="btn" style="width:100%" onclick="reparerRestoAll()">🔧 Réattribuer les journées ALL → BK 526</button>
+            <div id="repair-resto-result" style="display:none;font-size:11px;text-align:center;margin-top:6px"></div>
+          </div>
         </div>
 
         <div style="margin-top:28px;font-size:11px;font-weight:600;color:var(--accent2);font-family:var(--font-head);margin-bottom:14px">Étapes de déploiement</div>
@@ -3409,6 +3415,27 @@ function copierSQLColonnesPDF(){
   }).catch(()=>window.prompt('Copiez ce SQL et collez-le dans Supabase puis SQL Editor :', SQL_COLONNES_PDF));
 }
 
+async function reparerRestoAll(){
+  const el = document.getElementById('repair-resto-result');
+  const show = (msg,col)=>{ if(el){ el.style.display='block'; el.style.color=col; el.textContent=msg; } };
+  if(!SB){ show('Base non connectée.', 'var(--red)'); return; }
+  show('Réparation en cours…', 'var(--muted2)');
+  try {
+    let total = 0;
+    // Réattribuer dans toutes les tables qui ont une colonne restaurant
+    for(const table of ['journees','sos_drive','ventes_horaire','repas_employes','annulations']){
+      try {
+        const { data, error } = await SB.from(table).update({restaurant:'BK526'}).eq('restaurant','ALL').select('date');
+        if(!error && data) total += data.length;
+      } catch(e){ /* table peut ne pas exister, on continue */ }
+    }
+    show('✓ '+total+' enregistrement(s) réattribué(s) à BK 526.', 'var(--green)');
+    if(typeof loadAll==='function') await loadAll();
+  } catch(err){
+    show('Erreur : '+(err.message||err), 'var(--red)');
+  }
+}
+
 async function verifierTables(){
   const el = document.getElementById('tables-check-result');
   if(!SB){ el.innerHTML = '<div style="color:var(--red);font-size:11px">Connectez d\'abord Supabase ci-dessus.</div>'; return; }
@@ -4727,7 +4754,7 @@ function closeModal() { document.getElementById('modal').classList.remove('open'
 
 async function saveModal() {
   const row = {
-    restaurant: CURRENT_USER?.resto || 'BK526',
+    restaurant: restoReel(),
     date:document.getElementById('m-date').value,
     ca_ht:pf('m-ca'), tickets_nb:pi('m-tickets'),
     ca_n1:pf('m-ca-n1'), drive_voitures:pi('m-drive'),
@@ -4743,7 +4770,7 @@ async function saveModal() {
 async function saveSaisie(e) {
   e.preventDefault();
   const restoEl0 = document.getElementById('s-resto');
-  const restoId = (restoEl0?.dataset?.resto) || CURRENT_USER?.resto || 'BK526';
+  const restoId = restoReel(restoEl0?.dataset?.resto);
   const row = {
     restaurant: restoId,
     date:document.getElementById('s-date').value,
@@ -4844,6 +4871,14 @@ const RESTAURANTS = {
   ALL:   { nom:'Administration', lieu:'' }
 };
 const ROLE_LABELS = {admin:'Admin',superviseur:'Superviseur',directeur:'Directeur',manager:'Manager'};
+
+// Restaurant réel pour l'enregistrement : jamais 'ALL'/'Administration'.
+// Priorité : resto détecté dans le fichier > resto actif > resto utilisateur > BK526.
+function restoReel(prefere){
+  const candidats = [prefere, ACTIVE_RESTO, CURRENT_USER?.resto];
+  for(const c of candidats){ if(c && c!=='ALL' && RESTAURANTS[c]) return c; }
+  return 'BK526';
+}
 let CURRENT_ROLE   = null;
 let CURRENT_USER   = null;
 let LOGIN_RESTO    = null; // id resto sélectionné
@@ -5331,7 +5366,7 @@ function enregistrerEquipe() {
   const comment = document.getElementById('mgr-comment')?.value;
   if(!date) { alert('Veuillez sélectionner une date.'); return; }
   const row = {
-    restaurant: CURRENT_USER?.resto || 'BK526',
+    restaurant: restoReel(),
     date,
     manager_ouverture: ouv||null,
     manager_fermeture: fer||null,
@@ -5920,7 +5955,7 @@ async function enregistrerJourneeMgr() {
     return;
   }
 
-  const resto = CURRENT_USER?.resto || ACTIVE_RESTO || 'BK526';
+  const resto = restoReel();
   const date  = MGR_JOUR.date;
   const equipe = {
     manager_ouverture: document.getElementById('mgr-ouv')?.value||null,
@@ -7732,7 +7767,7 @@ function fillImportFields(d) {
   };
   // Resto : priorité au nom détecté DANS le PDF, sinon resto de l'utilisateur connecté
   const restoEl = document.getElementById('s-resto');
-  let restoId = CURRENT_USER?.resto || 'BK526';
+  let restoId = restoReel();
   const det = detectRestoFromFilename(d.restaurant_detecte || '');
   if(det) restoId = det;
   if(restoEl) {
