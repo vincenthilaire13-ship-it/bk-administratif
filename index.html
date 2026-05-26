@@ -1486,9 +1486,12 @@ async function detecterColonnesJournees(){
 
 // Ne conserve que les colonnes existantes (réelles si détectées, sinon liste de base)
 function filtrerColonnesJournees(row){
-  const autorisees = JOURNEES_COLS_REELLES || JOURNEES_COLS_BASE;
+  // On ne filtre QUE les valeurs undefined et le champ d'affichage ecarts_caisse.
+  // On ne supprime PAS de colonnes par "détection" : si une colonne manque vraiment
+  // en base, upsert() la retire à la volée d'après le message d'erreur Postgres.
+  const exclues = ['ecarts_caisse'];
   const clean = {};
-  Object.keys(row).forEach(k=>{ if(autorisees.includes(k) && row[k]!==undefined) clean[k]=row[k]; });
+  Object.keys(row).forEach(k=>{ if(!exclues.includes(k) && row[k]!==undefined) clean[k]=row[k]; });
   return clean;
 }
 
