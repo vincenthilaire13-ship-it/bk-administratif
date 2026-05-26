@@ -1163,18 +1163,21 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
             <div style="display:flex;flex-direction:column;gap:14px">
               <div>
                 <label class="form-label" style="display:flex;align-items:center;gap:6px"><span class="role-badge role-admin">Admin</span> Code admin</label>
-                <input type="password" class="form-input" id="code-admin" placeholder="Code actuel masqué" autocomplete="new-password">
+                <input type="text" class="form-input" id="code-admin" placeholder="Code admin" autocomplete="off">
               </div>
               <div>
                 <label class="form-label" style="display:flex;align-items:center;gap:6px"><span class="role-badge role-superviseur">Superviseur</span> Code superviseur</label>
-                <input type="password" class="form-input" id="code-superviseur" placeholder="Code actuel masqué" autocomplete="new-password">
+                <input type="text" class="form-input" id="code-superviseur" placeholder="Code superviseur" autocomplete="off">
               </div>
               <div>
                 <label class="form-label" style="display:flex;align-items:center;gap:6px"><span class="role-badge role-directeur">Directeur</span> Code directeur</label>
-                <input type="password" class="form-input" id="code-directeur" placeholder="Code actuel masqué" autocomplete="new-password">
+                <input type="text" class="form-input" id="code-directeur" placeholder="Code directeur" autocomplete="off">
               </div>
             </div>
-            <div class="sub-title" style="margin-top:20px">Managers (codes individuels)</div>
+            <div class="sub-title" style="margin-top:20px">Managers (nom · restaurant · code PIN)</div>
+            <div style="display:grid;grid-template-columns:1fr 110px 90px 32px;gap:8px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:6px;padding:0 2px">
+              <span>Nom</span><span>Restaurant</span><span style="text-align:center">PIN</span><span></span>
+            </div>
             <div id="managers-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px"></div>
             <button class="btn" style="font-size:11px" onclick="addManagerCode()">+ Ajouter un manager</button>
             <div style="margin-top:20px">
@@ -4252,10 +4255,10 @@ const DEFAULT_CODES = {
   superviseur: '5678',
   directeur:   '0000',
   managers: [
-    {nom:'Manager 1', code:'1111'},
-    {nom:'Manager 2', code:'2222'},
-    {nom:'Manager 3', code:'3333'},
-    {nom:'Manager 4', code:'4444'}
+    {nom:'Manager 1', code:'1111', resto:'BK526'},
+    {nom:'Manager 2', code:'2222', resto:'BK526'},
+    {nom:'Manager 3', code:'3333', resto:'BK500'},
+    {nom:'Manager 4', code:'4444', resto:'BK509'}
   ]
 };
 
@@ -4288,14 +4291,19 @@ function selectRole(role) {
   document.getElementById('login-step-label').textContent =
     ROLE_LABELS[role] + (LOGIN_RESTO && LOGIN_RESTO!=='ALL' ? ' · ' + (RESTAURANTS[LOGIN_RESTO]?.nom||'') : '');
 
-  // Pré-remplir liste managers si besoin
+  // Pré-remplir liste managers si besoin (filtrée sur le resto choisi)
   const wrap = document.getElementById('manager-select-wrap');
   const sel  = document.getElementById('login-mgr-name');
   if(role === 'manager') {
     wrap.style.display = 'block';
     const codes = getCodes();
+    // N'afficher que les managers rattachés au resto sélectionné (compat : si pas de resto défini, on l'affiche partout)
+    const mgrs = codes.managers.filter(m=> !m.resto || m.resto===LOGIN_RESTO);
     sel.innerHTML = '<option value="">— Sélectionnez votre nom —</option>' +
-      codes.managers.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+      mgrs.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+    if(!mgrs.length){
+      sel.innerHTML = '<option value="">— Aucun manager pour ce resto —</option>';
+    }
   } else {
     wrap.style.display = 'none';
   }
@@ -4364,7 +4372,18 @@ function doLogin() {
     const nom = document.getElementById('login-mgr-name')?.value;
     if(!nom) { errEl.textContent='Sélectionnez votre nom.'; return; }
     const mgr = codes.managers.find(m=>m.nom===nom && m.code===pin);
-    if(mgr) user = { role:'manager', nom:mgr.nom, resto: LOGIN_RESTO };
+    if(mgr){
+      // Le manager est rattaché à son resto (sa fiche prime ; sinon le resto choisi)
+      const restoMgr = mgr.resto || LOGIN_RESTO;
+      // Sécurité : si la fiche manager a un resto différent de celui choisi, refuser
+      if(mgr.resto && LOGIN_RESTO && mgr.resto!==LOGIN_RESTO){
+        errEl.textContent='Ce manager n\'est pas rattaché à ce restaurant.';
+        ['pin-1','pin-2','pin-3','pin-4'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+        document.getElementById('pin-1')?.focus();
+        return;
+      }
+      user = { role:'manager', nom:mgr.nom, resto: restoMgr };
+    }
   }
 
   if(!user) {
@@ -4610,7 +4629,9 @@ function enregistrerEquipe() {
 
 function populateAnnManagerSelect() {
   const codes = getCodes();
-  const opts = codes.managers.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+  const resto = (CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') ? CURRENT_USER.resto : (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? ACTIVE_RESTO : null);
+  const mgrs = resto ? codes.managers.filter(m=>!m.resto || m.resto===resto) : codes.managers;
+  const opts = mgrs.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
   const el = document.getElementById('ann-manager');
   if(el) el.innerHTML = '<option value="">— sélectionner —</option>' + opts;
   // Select "manager responsable" du flux manager (pré-sélectionne le manager connecté)
@@ -4626,7 +4647,10 @@ function populateAnnManagerSelect() {
 
 function populateManagerSelect() {
   const codes = getCodes();
-  const opts = codes.managers.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+  // Resto actif : pour un manager/directeur = son resto ; pour admin/sup = resto sélectionné
+  const resto = (CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') ? CURRENT_USER.resto : (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? ACTIVE_RESTO : null);
+  const mgrs = resto ? codes.managers.filter(m=>!m.resto || m.resto===resto) : codes.managers;
+  const opts = mgrs.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
   ['mgr-ouv','mgr-fer','mgr-leader-ouv','mgr-leader-fer'].forEach(id=>{
     const el=document.getElementById(id);
     if(!el) return;
@@ -5263,18 +5287,24 @@ function enregistrerJourneeManager(){
 // ── Gestion codes (admin) ──
 function renderAcces(){
   const codes=getCodes();
-  // Pré-remplir champs rôles (masqués pour sécurité)
+  // Pré-remplir les 3 codes principaux EN CLAIR
+  const ca=document.getElementById('code-admin'); if(ca){ca.type='text';ca.value=codes.admin||'';}
+  const cs=document.getElementById('code-superviseur'); if(cs){cs.type='text';cs.value=codes.superviseur||'';}
+  const cd=document.getElementById('code-directeur'); if(cd){cd.type='text';cd.value=codes.directeur||'';}
+
   const list=document.getElementById('managers-list'); if(!list)return;
+  const restoOpts = (sel)=>['BK500','BK509','BK526'].map(id=>`<option value="${id}" ${sel===id?'selected':''}>${RESTAURANTS[id]?.nom||id}</option>`).join('');
   list.innerHTML=codes.managers.map((m,i)=>`
-    <div style="display:grid;grid-template-columns:1fr 120px 32px;gap:8px;align-items:center">
-      <input type="text" class="form-input" placeholder="Prénom Nom" value="${m.nom}" id="mgr-nom-${i}" style="padding:7px 10px">
-      <input type="password" class="form-input" placeholder="PIN (4 ch.)" value="${m.code}" id="mgr-code-${i}" style="padding:7px 10px;text-align:center;letter-spacing:.2em" maxlength="4">
+    <div style="display:grid;grid-template-columns:1fr 110px 90px 32px;gap:8px;align-items:center">
+      <input type="text" class="form-input" placeholder="Prénom Nom" value="${m.nom||''}" id="mgr-nom-${i}" style="padding:7px 10px">
+      <select class="form-input" id="mgr-resto-${i}" style="padding:7px 6px;font-size:11px">${restoOpts(m.resto||'BK526')}</select>
+      <input type="text" class="form-input" placeholder="PIN" value="${m.code||''}" id="mgr-code-${i}" style="padding:7px 10px;text-align:center;letter-spacing:.2em" maxlength="4">
       <button class="btn" style="padding:7px;color:var(--red)" onclick="removeManager(${i})">✕</button>
     </div>`).join('');
 }
 function addManagerCode(){
   const codes=getCodes();
-  codes.managers.push({nom:'',code:''});
+  codes.managers.push({nom:'',code:'',resto:(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:'BK526'});
   localStorage.setItem('bk_codes',JSON.stringify(codes));
   renderAcces();
 }
@@ -5293,7 +5323,8 @@ function saveCodes(){
   while(document.getElementById('mgr-nom-'+i)){
     const nom=document.getElementById('mgr-nom-'+i).value.trim();
     const code=document.getElementById('mgr-code-'+i).value.trim();
-    if(nom&&code) codes.managers.push({nom,code});
+    const resto=document.getElementById('mgr-resto-'+i)?.value||'BK526';
+    if(nom&&code) codes.managers.push({nom,code,resto});
     i++;
   }
   localStorage.setItem('bk_codes',JSON.stringify(codes));
