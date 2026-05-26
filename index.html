@@ -602,8 +602,8 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
             <div style="display:flex;align-items:center;gap:16px">
               <div style="font-size:36px">📂</div>
               <div>
-                <div class="mgr-title" style="margin-bottom:2px">Déposer les PDF de la journée</div>
-                <div class="mgr-sub" style="margin-bottom:0">Synthèse CA + Temps de service → extraction automatique</div>
+                <div class="mgr-title" style="margin-bottom:2px">Déposer les 4 PDF de la journée</div>
+                <div class="mgr-sub" style="margin-bottom:0">Synthèse CA · SOS Drive · Ventes ¼h · Repas employés</div>
               </div>
               <div style="margin-left:auto;color:var(--muted);font-size:18px">›</div>
             </div>
@@ -630,7 +630,31 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 
           <div class="mgr-card" id="mgr-step1">
             <div class="mgr-title">📂 Déposer les PDF de la journée</div>
-            <div class="mgr-sub">Glissez tous vos PDF — Synthèse CA et Temps de service en même temps</div>
+            <div class="mgr-sub">Glissez les 4 documents de la journée en même temps</div>
+
+            <div style="background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:14px">
+              <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--accent2);margin-bottom:10px;font-weight:600">📋 Les 4 documents à envoyer chaque jour</div>
+              <div style="display:flex;flex-direction:column;gap:9px;font-size:12px">
+                <div style="display:flex;align-items:flex-start;gap:10px">
+                  <span style="font-size:16px">📄</span>
+                  <div><div style="font-weight:600">Synthèse CA</div><div style="font-size:10px;color:var(--muted)">de la journée</div></div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:10px">
+                  <span style="font-size:16px">🚗</span>
+                  <div><div style="font-weight:600">SOS Drive</div><div style="font-size:10px;color:var(--muted)">rapidité de service au Drive, de la journée</div></div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:10px">
+                  <span style="font-size:16px">⏱️</span>
+                  <div><div style="font-weight:600">Rapport des ventes horaire par quart d'heure</div><div style="font-size:10px;color:var(--muted)">de la journée</div></div>
+                </div>
+                <div style="display:flex;align-items:flex-start;gap:10px">
+                  <span style="font-size:16px">🍔</span>
+                  <div><div style="font-weight:600">Repas employés</div><div style="font-size:10px;color:var(--muted)">bons repas opérationnels de la journée</div></div>
+                </div>
+              </div>
+              <div style="font-size:10px;color:var(--muted);margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">⚠️ Les 4 documents doivent être du <strong style="color:var(--muted2)">même jour</strong>. L'enregistrement est bloqué si un document manque ou si les dates ne correspondent pas.</div>
+            </div>
+
             <div class="drop-zone" id="drop-zone"
                  onclick="document.getElementById('file-input').click()"
                  ondragover="event.preventDefault();this.classList.add('drag-over')"
@@ -638,8 +662,8 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
                  ondrop="handleMgrDrop(event)"
                  style="min-height:130px">
               <div class="drop-zone-icon">📂</div>
-              <div class="drop-zone-text">Cliquez ou <span>glissez vos PDF ici</span></div>
-              <div style="font-size:10px;color:var(--muted);margin-top:4px">Plusieurs PDF acceptés</div>
+              <div class="drop-zone-text">Cliquez ou <span>glissez vos 4 PDF ici</span></div>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px">Les 4 documents en une fois</div>
             </div>
             <input type="file" id="file-input" multiple accept=".pdf" style="display:none" onchange="handleMgrFiles(this.files)">
             <div id="file-list" style="margin-bottom:12px"></div>
