@@ -525,17 +525,41 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
                 <div class="form-group"><label class="form-label">Ticket moy. (€)</label><input type="number" step="0.01" class="form-input" id="s-tm"></div>
               </div>
 
-              <div class="sub-title">Canaux HT</div>
-              <div class="form-row-4" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">Drive (€)</label><input type="number" step="0.01" class="form-input" id="s-drive-ca"></div>
-                <div class="form-group"><label class="form-label">Voitures drive</label><input type="number" class="form-input" id="s-drive-vol"></div>
-                <div class="form-group"><label class="form-label">Kiosk (€)</label><input type="number" step="0.01" class="form-input" id="s-kiosk-ca"></div>
-                <div class="form-group"><label class="form-label">Livraison (€)</label><input type="number" step="0.01" class="form-input" id="s-lv-ca"></div>
+              <div class="sub-title">Canaux — par ligne : nb (TAC) · CA HT · % du CA · ticket moyen (P.M net)</div>
+              <!-- DRIVE -->
+              <div class="form-row-4" style="margin-bottom:10px">
+                <div class="form-group"><label class="form-label">🚗 Drive — voitures</label><input type="number" class="form-input" id="s-drive-vol"></div>
+                <div class="form-group"><label class="form-label">Drive HT (€)</label><input type="number" step="0.01" class="form-input" id="s-drive-ca"></div>
+                <div class="form-group"><label class="form-label">Drive %</label><input type="number" step="0.01" class="form-input" id="s-drive-pct"></div>
+                <div class="form-group"><label class="form-label">Drive ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-drive-tm"></div>
               </div>
+              <!-- KIOSK -->
+              <div class="form-row-4" style="margin-bottom:10px">
+                <div class="form-group"><label class="form-label">🖥️ Kiosk — nb</label><input type="number" class="form-input" id="s-kiosk-nb"></div>
+                <div class="form-group"><label class="form-label">Kiosk HT (€)</label><input type="number" step="0.01" class="form-input" id="s-kiosk-ca"></div>
+                <div class="form-group"><label class="form-label">Kiosk %</label><input type="number" step="0.01" class="form-input" id="s-kiosk-pct"></div>
+                <div class="form-group"><label class="form-label">Kiosk ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-kiosk-tm"></div>
+              </div>
+              <!-- LIVRAISON -->
+              <div class="form-row-4" style="margin-bottom:10px">
+                <div class="form-group"><label class="form-label">🛵 Livraison — nb</label><input type="number" class="form-input" id="s-lv-nb"></div>
+                <div class="form-group"><label class="form-label">Livraison HT (€)</label><input type="number" step="0.01" class="form-input" id="s-lv-ca"></div>
+                <div class="form-group"><label class="form-label">Livraison %</label><input type="number" step="0.01" class="form-input" id="s-lv-pct"></div>
+                <div class="form-group"><label class="form-label">Livraison ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-lv-tm"></div>
+              </div>
+              <!-- COMPTOIR -->
+              <div class="form-row-4" style="margin-bottom:10px">
+                <div class="form-group"><label class="form-label">🧾 Comptoir — nb</label><input type="number" class="form-input" id="s-comptoir-nb"></div>
+                <div class="form-group"><label class="form-label">Comptoir HT (€)</label><input type="number" step="0.01" class="form-input" id="s-comptoir-ca"></div>
+                <div class="form-group"><label class="form-label">Comptoir %</label><input type="number" step="0.01" class="form-input" id="s-comptoir-pct"></div>
+                <div class="form-group"><label class="form-label">Comptoir ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-comptoir-tm"></div>
+              </div>
+              <!-- CLICK & COLLECT -->
               <div class="form-row-4" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">Comptoir (€)</label><input type="number" step="0.01" class="form-input" id="s-comptoir-ca"></div>
-                <div class="form-group"><label class="form-label">Click&Collect (€)</label><input type="number" step="0.01" class="form-input" id="s-cc-ca"></div>
-                <div class="form-group"><label class="form-label">Nb livraisons</label><input type="number" class="form-input" id="s-lv-nb"></div>
+                <div class="form-group"><label class="form-label">📦 Click&Collect — nb</label><input type="number" class="form-input" id="s-cc-nb"></div>
+                <div class="form-group"><label class="form-label">C&C HT (€)</label><input type="number" step="0.01" class="form-input" id="s-cc-ca"></div>
+                <div class="form-group"><label class="form-label">C&C %</label><input type="number" step="0.01" class="form-input" id="s-cc-pct"></div>
+                <div class="form-group"><label class="form-label">C&C ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-cc-tm"></div>
               </div>
 
               <div class="sub-title">Corrections / Remises</div>
@@ -3233,7 +3257,19 @@ alter table journees add column if not exists cc_ht numeric;
 alter table journees add column if not exists annulations_pct numeric;
 alter table journees add column if not exists commandes_ouvertes_pct numeric;
 alter table journees add column if not exists sauces_pct numeric;
-alter table journees add column if not exists repas_employes_pct numeric;`;
+alter table journees add column if not exists repas_employes_pct numeric;
+alter table journees add column if not exists drive_pct numeric;
+alter table journees add column if not exists kiosk_pct numeric;
+alter table journees add column if not exists kiosk_tickets int;
+alter table journees add column if not exists kiosk_ticket_moyen numeric;
+alter table journees add column if not exists livraison_pct numeric;
+alter table journees add column if not exists livraison_nb int;
+alter table journees add column if not exists comptoir_pct numeric;
+alter table journees add column if not exists comptoir_tickets int;
+alter table journees add column if not exists comptoir_ticket_moyen numeric;
+alter table journees add column if not exists cc_pct numeric;
+alter table journees add column if not exists cc_tickets int;
+alter table journees add column if not exists cc_ticket_moyen numeric;`;
 
 async function verifierTables(){
   const el = document.getElementById('tables-check-result');
@@ -4541,10 +4577,12 @@ async function saveSaisie(e) {
     ca_n1:pf('s-ca-n1'), ca_prevu:pf('s-ca-prevu'),
     tickets_nb:pi('s-tickets'), tickets_n1:pi('s-tickets-n1'),
     drive_voitures:pi('s-drive-vol'), drive_ht:pf('s-drive-ca'),
-    drive_n1:pi('s-drive-n1'), drive_ticket_moyen:pf('s-drive-tm'),
-    livraison_commandes:pi('s-lv-nb'), livraison_ht:pf('s-lv-ca'),
-    livraison_n1:pi('s-lv-n1'), livraison_ticket_moyen:pf('s-lv-tm'),
-    kiosk_ht:pf('s-kiosk-ca'), comptoir_ht:pf('s-comptoir-ca'), cc_ht:pf('s-cc-ca'),
+    drive_n1:pi('s-drive-n1'), drive_ticket_moyen:pf('s-drive-tm'), drive_pct:pf('s-drive-pct'),
+    livraison_commandes:pi('s-lv-nb'), livraison_nb:pi('s-lv-nb'), livraison_ht:pf('s-lv-ca'),
+    livraison_n1:pi('s-lv-n1'), livraison_ticket_moyen:pf('s-lv-tm'), livraison_pct:pf('s-lv-pct'),
+    kiosk_ht:pf('s-kiosk-ca'), kiosk_tickets:pi('s-kiosk-nb'), kiosk_pct:pf('s-kiosk-pct'), kiosk_ticket_moyen:pf('s-kiosk-tm'),
+    comptoir_ht:pf('s-comptoir-ca'), comptoir_tickets:pi('s-comptoir-nb'), comptoir_pct:pf('s-comptoir-pct'), comptoir_ticket_moyen:pf('s-comptoir-tm'),
+    cc_ht:pf('s-cc-ca'), cc_tickets:pi('s-cc-nb'), cc_pct:pf('s-cc-pct'), cc_ticket_moyen:pf('s-cc-tm'),
     corrections_nb:pi('s-corr-nb'), corrections_montant:pf('s-corr-mnt'), corrections_pct:pf('s-corr-pct'),
     remises_nb:pi('s-rem-nb'), remises_montant:pf('s-rem-mnt'), remises_pct:pf('s-rem-pct'),
     sauces_nb:pi('s-sauces-nb'), sauces_montant:pf('s-sauces-mnt'), sauces_pct:pf('s-sauces-pct'),
@@ -5427,14 +5465,18 @@ function parserSynthesCA(txt) {
   const totM = T.match(new RegExp('TOTAL\\s+(\\d+)\\s+'+MO+'\\s+'+MO));
   if(totM){ tickets_nb=parseInt(totM[1]); ca_ht=num(totM[2]); ca_ttc=num(totM[3]); }
 
-  // ── LIGNES CANAUX (HT + TTC) ──
-  // pdf.js : "TOTAL DRIVE 190 3 375,55 17,77 23,48 % 3 732,70 19,65"
-  //          → nb, HT, P.M(HT), %, TTC, P.M(TTC)
+  // ── LIGNES CANAUX (lignes grises TOTAL) ──
+  // ⚠️ Ordre des colonnes des lignes TOTAL : Nom TAC HT P.M_NET %CA TTC P.M_TTC
+  //   pdf.js : "TOTAL DRIVE 190 3 375,55 17,77 23,48 % 3 732,70 19,65"
+  //   → TAC=190, HT=3375,55, P.M_NET(ticket moyen HT)=17,77, %=23,48, TTC=3732,70, P.M_TTC=19,65
   function ligneCanal(label){
-    const m = T.match(new RegExp(label+'\\s+(\\d+)\\s+'+MO+'\\s+'+MO+'\\s+'+PC+'\\s+'+MO));
-    if(m) return { nb:parseInt(m[1]), ht:num(m[2]), ttc:num(m[4]) };
-    const m2 = T.match(new RegExp(label+'\\s+(\\d+)\\s+'+MO+'\\s+'+MO));
-    return m2 ? { nb:parseInt(m2[1]), ht:num(m2[2]), ttc:num(m2[3]) } : {nb:null,ht:null,ttc:null};
+    let m = T.match(new RegExp(label+'\\s+(\\d+)\\s+'+MO+'\\s+'+MO+'\\s+'+PC+'\\s+'+MO+'\\s+'+MO));
+    if(m) return { tac:parseInt(m[1]), ht:num(m[2]), pm_net:num(m[3]), pct:num(m[4]), ttc:num(m[5]), pm_ttc:num(m[6]) };
+    // fallback : Nom TAC HT %CA TTC
+    m = T.match(new RegExp(label+'\\s+(\\d+)\\s+'+MO+'\\s+'+PC+'\\s+'+MO));
+    if(m) return { tac:parseInt(m[1]), ht:num(m[2]), pm_net:null, pct:num(m[3]), ttc:num(m[4]), pm_ttc:null };
+    m = T.match(new RegExp(label+'\\s+(\\d+)\\s+'+MO+'\\s+'+MO));
+    return m ? { tac:parseInt(m[1]), ht:num(m[2]), pm_net:null, pct:null, ttc:num(m[3]), pm_ttc:null } : {tac:null,ht:null,pm_net:null,pct:null,ttc:null,pm_ttc:null};
   }
   const drive    = ligneCanal('TOTAL DRIVE');
   const kiosk    = ligneCanal('TOTAL KIOSK');
@@ -5442,14 +5484,14 @@ function parserSynthesCA(txt) {
   const comptoir = ligneCanal('TOTAL COMPTOIR');
   const cc       = ligneCanal('TOTAL CLICK\\s*&\\s*COLLECT');
 
-  const drive_ht=drive.ht, drive_ttc=drive.ttc;
-  const kiosk_ht=kiosk.ht, kiosk_ttc=kiosk.ttc;
-  const livraison_ht=livr.ht, livraison_ttc=livr.ttc, livraison_nb=livr.nb;
-  const comptoir_ht=comptoir.ht, comptoir_ttc=comptoir.ttc;
-  const cc_ht=cc.ht, cc_ttc=cc.ttc;
+  const drive_ht=drive.ht, drive_ttc=drive.ttc, drive_pct=drive.pct, drive_ticket_moyen=drive.pm_net;
+  const kiosk_ht=kiosk.ht, kiosk_ttc=kiosk.ttc, kiosk_pct=kiosk.pct, kiosk_tickets=kiosk.tac, kiosk_ticket_moyen=kiosk.pm_net;
+  const livraison_ht=livr.ht, livraison_ttc=livr.ttc, livraison_nb=livr.tac, livraison_pct=livr.pct, livraison_ticket_moyen=livr.pm_net;
+  const comptoir_ht=comptoir.ht, comptoir_ttc=comptoir.ttc, comptoir_pct=comptoir.pct, comptoir_tickets=comptoir.tac, comptoir_ticket_moyen=comptoir.pm_net;
+  const cc_ht=cc.ht, cc_ttc=cc.ttc, cc_pct=cc.pct, cc_tickets=cc.tac, cc_ticket_moyen=cc.pm_net;
 
-  // ── DRIVE : nombre de voitures = nb de la ligne TOTAL DRIVE (pas la 1ʳᵉ DRIVE_THROUGH) ──
-  let drive_voitures = drive.nb;
+  // ── DRIVE : nombre de voitures = TAC de la ligne TOTAL DRIVE ──
+  let drive_voitures = drive.tac;
   if(drive_voitures==null){
     const dvM = T.match(/DRIVE DRIVE[_ ]THROUGH\s+(\d+)/);
     if(dvM) drive_voitures = parseInt(dvM[1]);
@@ -5513,11 +5555,11 @@ function parserSynthesCA(txt) {
 
   return {
     date, ca_ht, ca_ttc, tickets_nb,
-    drive_voitures, drive_ht, drive_ttc,
-    kiosk_ht, kiosk_ttc,
-    livraison_ht, livraison_ttc, livraison_nb,
-    comptoir_ht, comptoir_ttc,
-    cc_ht, cc_ttc,
+    drive_voitures, drive_ht, drive_ttc, drive_pct, drive_ticket_moyen,
+    kiosk_ht, kiosk_ttc, kiosk_pct, kiosk_tickets, kiosk_ticket_moyen,
+    livraison_ht, livraison_ttc, livraison_nb, livraison_pct, livraison_ticket_moyen,
+    comptoir_ht, comptoir_ttc, comptoir_pct, comptoir_tickets, comptoir_ticket_moyen,
+    cc_ht, cc_ttc, cc_pct, cc_tickets, cc_ticket_moyen,
     corrections_nb, corrections_montant, corrections_pct,
     remises_nb, remises_montant, remises_pct,
     sauces_nb, sauces_montant, sauces_pct,
@@ -7328,6 +7370,52 @@ async function extrairePDF() {
   document.getElementById('btn-extraire').disabled = true;
   document.getElementById('import-err').style.display = 'none';
 
+  // ── 1) MÉTHODE FIABLE : lecture locale par pdf.js + parserSynthesCA ──
+  // (testée sur le format réel ; gère l'ordre entrelacé des colonnes et les % par canal)
+  try {
+    const arrayBuffer = await IMPORT_FILE.arrayBuffer();
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+    let fullText = '';
+    for(let p=1; p<=pdf.numPages; p++){
+      const page = await pdf.getPage(p);
+      const tc = await page.getTextContent();
+      fullText += tc.items.map(t=>t.str).join(' ') + ' ';
+    }
+    const r = parserSynthesCA(fullText);
+    if(r && r.date && (r.ca_ht!=null || r.tickets_nb!=null)){
+      // Mapper vers les champs attendus par le formulaire de saisie
+      fillImportFields({
+        date: r.date,
+        restaurant_detecte: null,
+        ca_ht: r.ca_ht, ca_ttc: r.ca_ttc, tickets_nb: r.tickets_nb,
+        panier_moyen_ht: (r.ca_ht && r.tickets_nb) ? +(r.ca_ht/r.tickets_nb).toFixed(2) : null,
+        drive_ht: r.drive_ht, drive_nb: r.drive_voitures, drive_ticket_moyen: r.drive_ticket_moyen, drive_pct: r.drive_pct,
+        kiosk_ht: r.kiosk_ht, kiosk_nb: r.kiosk_tickets, kiosk_ticket_moyen: r.kiosk_ticket_moyen, kiosk_pct: r.kiosk_pct,
+        livraison_ht: r.livraison_ht, livraison_nb: r.livraison_nb, livraison_ticket_moyen: r.livraison_ticket_moyen, livraison_pct: r.livraison_pct,
+        comptoir_ht: r.comptoir_ht, comptoir_nb: r.comptoir_tickets, comptoir_ticket_moyen: r.comptoir_ticket_moyen, comptoir_pct: r.comptoir_pct,
+        cc_ht: r.cc_ht, cc_nb: r.cc_tickets, cc_ticket_moyen: r.cc_ticket_moyen, cc_pct: r.cc_pct,
+        corrections_nb: r.corrections_nb, corrections_montant: r.corrections_montant, corrections_pct: r.corrections_pct,
+        remises_nb: r.remises_nb, remises_montant: r.remises_montant, remises_pct: r.remises_pct,
+        sauces_nb: r.sauces_nb, sauces_montant: r.sauces_montant, sauces_pct: r.sauces_pct,
+        annulations_nb: r.annulations_nb, annulations_montant: r.annulations_montant, annulations_pct: r.annulations_pct,
+        commandes_ouvertes_nb: r.commandes_ouvertes_nb, commandes_ouvertes_montant: r.commandes_ouvertes_montant, commandes_ouvertes_pct: r.commandes_ouvertes_pct,
+        repas_employes_nb: r.repas_employes_nb, repas_employes_montant: r.repas_employes_montant, repas_employes_pct: r.repas_employes_pct,
+        erreur_caisse: r.erreur_caisse,
+        cb: r.cb, especes: r.especes, uber_eats: r.uber_eats, deliveroo: r.deliveroo, bk_livraison: r.bk_livraison, trd: r.trd
+      });
+      document.getElementById('import-loading').style.display = 'none';
+      document.getElementById('import-preview').style.display = 'block';
+      document.getElementById('import-preview').scrollIntoView({behavior:'smooth'});
+      return; // ✓ succès via méthode fiable
+    }
+    console.warn('parserSynthesCA insuffisant, bascule sur IA', r);
+  } catch(errLocal){
+    console.warn('Lecture pdf.js échouée, bascule sur IA', errLocal);
+  }
+
+  // ── 2) FALLBACK : extraction par IA ──
   try {
     // Lire le PDF en base64
     const base64 = await new Promise((res, rej) => {
@@ -7472,14 +7560,27 @@ function fillImportFields(d) {
   set('s-date',          d.date);
   set('s-ca-ht',         d.ca_ht);
   set('s-tickets',       d.tickets_nb);
-  // Canaux en HT uniquement
+  // Canaux : nb (TAC) · HT · % · ticket moyen (P.M net)
   set('s-drive-ca',      d.drive_ht);
   set('s-drive-vol',     d.drive_nb      ?? d.drive_voitures);
+  set('s-drive-pct',     d.drive_pct);
+  set('s-drive-tm',      d.drive_ticket_moyen);
   set('s-kiosk-ca',      d.kiosk_ht);
+  set('s-kiosk-nb',      d.kiosk_nb);
+  set('s-kiosk-pct',     d.kiosk_pct);
+  set('s-kiosk-tm',      d.kiosk_ticket_moyen);
   set('s-lv-ca',         d.livraison_ht);
   set('s-lv-nb',         d.livraison_nb);
+  set('s-lv-pct',        d.livraison_pct);
+  set('s-lv-tm',         d.livraison_ticket_moyen);
   set('s-comptoir-ca',   d.comptoir_ht);
+  set('s-comptoir-nb',   d.comptoir_nb);
+  set('s-comptoir-pct',  d.comptoir_pct);
+  set('s-comptoir-tm',   d.comptoir_ticket_moyen);
   set('s-cc-ca',         d.cc_ht);
+  set('s-cc-nb',         d.cc_nb);
+  set('s-cc-pct',        d.cc_pct);
+  set('s-cc-tm',         d.cc_ticket_moyen);
   set('s-corr-nb',       d.corrections_nb);
   set('s-corr-mnt',      d.corrections_montant);
   set('s-corr-pct',      d.corrections_pct);
