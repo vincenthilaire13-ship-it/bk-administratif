@@ -3658,11 +3658,10 @@ async function checkFichiersManquants(){
   if(!box) return;
   if(!SB){ box.innerHTML=''; return; }
 
-  // Suivi filtré sur le restaurant actuellement affiché
+  // Suivi des dépôts : un directeur ne voit que son resto ; admin/superviseur voient les 3.
   let restos;
   if(CURRENT_USER?.role === 'directeur' && CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') restos = [CURRENT_USER.resto];
-  else if(ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') restos = [ACTIVE_RESTO];
-  else restos = ['BK500','BK509','BK526']; // vue "tous" seulement si aucun resto sélectionné
+  else restos = ['BK500','BK509','BK526']; // contrôle global pour admin/superviseur
 
   // Dernier jour à contrôler = hier (la journée du jour n'est pas encore close)
   const hier = new Date(); hier.setDate(hier.getDate()-1);
@@ -3674,7 +3673,7 @@ async function checkFichiersManquants(){
   try {
     const q = (table)=>{ let r=SB.from(table).select('restaurant,date').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO); return r; };
     const [j,s,v,rp] = await Promise.all([ q('journees'), q('sos_drive'), q('ventes_horaire'), q('repas_employes') ]);
-    const setOf = (rows)=>{ const m=new Set(); (rows.data||[]).forEach(x=>m.add(x.restaurant+'|'+x.date)); return m; };
+    const setOf = (rows)=>{ const m=new Set(); (rows.data||[]).forEach(x=>{ const dt=(x.date||'').slice(0,10); let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; m.add(rt+'|'+dt); }); return m; };
     const has = { synthese:setOf(j), sos:setOf(s), ventes:setOf(v), repas:setOf(rp) };
     const labels = { synthese:'Synthèse CA', sos:'SOS Drive', ventes:'Ventes au quart d\'heure', repas:'Bons repas' };
 
