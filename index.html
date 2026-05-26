@@ -3598,6 +3598,8 @@ async function loadAll() {
     try {
       const { data, error } = await SB.from('journees').select('*');
       if(!error && data && data.length){
+        // Sécurité : toute donnée mal rangée sous 'ALL' est rattachée à BK526 (Administration n'existe pas)
+        data.forEach(d=>{ if(d.restaurant==='ALL'||d.restaurant==='Administration') d.restaurant='BK526'; });
         const sb26 = data.filter(d=> (d.date||'').slice(0,4)==='2026');
         const sb25 = data.filter(d=> (d.date||'').slice(0,4)==='2025');
         // Fusion : les lignes Supabase complètent/écrasent le seed (même resto+date)
@@ -6446,6 +6448,20 @@ async function anRefresh(){
     AN_DATA.annulationsAll = annA.data||[];
     AN_DATA.repasAll = repasA.data||[];
 
+    // ── ANNULATIONS : toujours TOUTES les journées (aucun filtre de date) ──
+    // pour l'historique complet depuis janvier 2025 et le rapprochement avec les photos managers.
+    try {
+      let rAnn = SB.from('annulations').select('*');
+      if(resto) rAnn = rAnn.eq('restaurant', resto);
+      const annTout = await rAnn.order('date',{ascending:false});
+      AN_DATA.annulationsTout = annTout.data||[];
+      // journées complètes (pour récupérer annulations_nb attendu de la Synthèse CA)
+      let rJ = SB.from('journees').select('restaurant,date,annulations_nb,annulations_montant,manager_ouverture,manager_fermeture');
+      if(resto) rJ = rJ.eq('restaurant', resto);
+      const jTout = await rJ.order('date',{ascending:false});
+      AN_DATA.journeesTout = jTout.data||[];
+    } catch(e){ console.warn('chargement annulations complet', e); AN_DATA.annulationsTout=[]; AN_DATA.journeesTout=[]; }
+
     anRender();
   } catch(err){
     console.error('anRefresh', err);
@@ -6736,47 +6752,89 @@ function anRepasParPeriode(rows){
 
 // ───────── ANNULATIONS — classement manager + équipier ─────────
 function anRenderAnnulations(){
-  let rows = [...AN_DATA.annulations];
+  // ⚠️ Annulations : on prend TOUTES les journées (historique complet), pas la fenêtre de dates.
+  let rows = [...(AN_DATA.annulationsTout || AN_DATA.annulations || [])];
   try {
     const local = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
-    const from=document.getElementById('an-date-from').value, to=document.getElementById('an-date-to').value;
     const resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null);
     const seen=new Set(rows.map(r=>r.id));
     local.forEach(a=>{
       const dISO = a.date && a.date.includes('/') ? a.date.split('/').reverse().join('-') : a.date;
-      if(from&&dISO<from) return; if(to&&dISO>to) return;
       if(resto&&a.restaurant!==resto) return;
-      rows.push({date:dISO, heure:a.heure, montant:a.montant, manager:a.manager, equipier:a.equipier, commentaire:a.comment, _local:true});
+      rows.push({date:dISO, heure:a.heure, montant:a.montant, manager:a.manager, equipier:a.equipier, commentaire:a.comment, photo:a.photo, _local:true});
     });
   } catch(e){}
 
-  if(!rows.length) return _anEmpty('🚫','Aucune annulation sur la période','Les annulations déclarées par les managers apparaîtront ici.');
   rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-
   const totMontant = rows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
   const nb = rows.length;
 
-  // Par manager
-  const byMgr={}; rows.forEach(r=>{const m=r.manager||'(non renseigné)'; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0);});
-  const cltMgr=Object.values(byMgr).sort((a,b)=>b.montant-a.montant);
-  // Par équipier
-  const byEq={}; rows.forEach(r=>{ if(!r.equipier)return; const e=r.equipier; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=Math.abs(r.montant||0);});
-  const cltEq=Object.values(byEq).sort((a,b)=>b.montant-a.montant);
+  // ── RAPPROCHEMENT PHOTOS (à partir du 17/05/2026) ──
+  // Pour chaque journée ≥ 17/05/2026, comparer le nb d'annulations enregistrées (= photographiées)
+  // au nb attendu de la Synthèse CA (journees.annulations_nb). On signale s'il manque des photos.
+  const DATE_DEBUT_PHOTOS = '2026-05-17';
+  const journees = (AN_DATA.journeesTout || AN_DATA.journeesAll || []);
+  // nb d'annulations enregistrées par journée (restaurant|date)
+  const parJour = {};
+  rows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!parJour[k])parJour[k]={enregistrees:0,montant:0}; parJour[k].enregistrees++; parJour[k].montant+=Math.abs(r.montant||0); });
+  const suivi = journees
+    .filter(j=> j.date >= DATE_DEBUT_PHOTOS && (j.annulations_nb!=null))
+    .map(j=>{
+      const k=(j.restaurant||'')+'|'+j.date;
+      const attendu = j.annulations_nb||0;
+      const photographiees = (parJour[k]?.enregistrees)||0;
+      const manque = Math.max(0, attendu - photographiees);
+      let statut, col, ico;
+      if(attendu===0){ statut='Aucune annulation'; col='var(--green)'; ico='✓'; }
+      else if(photographiees>=attendu){ statut='Complet ('+photographiees+'/'+attendu+')'; col='var(--green)'; ico='✓'; }
+      else if(photographiees===0){ statut='Aucune photo ('+photographiees+'/'+attendu+')'; col='var(--red)'; ico='⛔'; }
+      else { statut='Incomplet ('+photographiees+'/'+attendu+')'; col='var(--yellow)'; ico='⚠️'; }
+      return {date:j.date, restaurant:j.restaurant, attendu, photographiees, manque, statut, col, ico};
+    })
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  const totAttendu = suivi.reduce((a,b)=>a+b.attendu,0);
+  const totPhoto = suivi.reduce((a,b)=>a+b.photographiees,0);
+  const totManque = suivi.reduce((a,b)=>a+b.manque,0);
+  const joursIncomplets = suivi.filter(s=>s.manque>0).length;
 
   const kpis = `
   <div class="kpi-grid">
-    <div class="kpi bad"><div class="kpi-label">Nb annulations</div><div class="kpi-val">${nb}</div></div>
+    <div class="kpi bad"><div class="kpi-label">Total annulations (historique)</div><div class="kpi-val">${nb}</div></div>
     <div class="kpi bad"><div class="kpi-label">Montant total</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
-    <div class="kpi neutral"><div class="kpi-label">Montant moyen</div><div class="kpi-val">${fmt(totMontant/(nb||1))} €</div></div>
+    <div class="kpi ${totManque>0?'bad':'ok'}"><div class="kpi-label">Photos manquantes (depuis 17/05)</div><div class="kpi-val">${totManque}</div></div>
+    <div class="kpi ${joursIncomplets>0?'warn':'ok'}"><div class="kpi-label">Jours incomplets</div><div class="kpi-val">${joursIncomplets}</div></div>
   </div>`;
 
-  const cltMgrTbl = anClassement('🏆 Classement managers — annulations (pire → meilleur)', cltMgr.length+' managers',
+  // Tableau de rapprochement photos
+  const suiviRows = suivi.slice(0,120).map(s=>`
+    <tr>
+      <td style="color:var(--accent)">${formatDate(s.date)}</td>
+      <td class="num">${s.attendu}</td>
+      <td class="num">${s.photographiees}</td>
+      <td class="num" style="font-weight:600;color:${s.manque>0?'var(--red)':'var(--green)'}">${s.manque>0?s.manque:'0'}</td>
+      <td><span style="color:${s.col};font-weight:600">${s.ico} ${s.statut}</span></td>
+    </tr>`).join('');
+  const suiviTbl = suivi.length ? `
+  <div class="table-card" style="margin-top:16px">
+    <div class="table-header"><span class="table-title">📸 Rapprochement photos — annulations (depuis le 17/05/2026)</span><span style="font-size:10px;color:var(--muted)">${totPhoto}/${totAttendu} photographiées</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Compare le nombre d'annulations de la Synthèse CA (attendu) avec celles enregistrées/photographiées par les managers. ⚠️ ou ⛔ = des photos manquent.</div>
+    <div class="table-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Attendu (CA)</th><th class="num">Photographiées</th><th class="num">Manque</th><th>Statut</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
+  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Le rapprochement photos démarre le 17/05/2026. Aucune journée concernée pour l'instant (ou Synthèse CA non importée).</div></div>`;
+
+  // Par manager / équipier (sur tout l'historique)
+  const byMgr={}; rows.forEach(r=>{const m=r.manager||'(non renseigné)'; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0);});
+  const cltMgr=Object.values(byMgr).sort((a,b)=>b.montant-a.montant);
+  const byEq={}; rows.forEach(r=>{ if(!r.equipier)return; const e=r.equipier; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=Math.abs(r.montant||0);});
+  const cltEq=Object.values(byEq).sort((a,b)=>b.montant-a.montant);
+
+  const cltMgrTbl = cltMgr.length ? anClassement('🏆 Classement managers — annulations (pire → meilleur)', cltMgr.length+' managers',
     [
       {label:'#', render:(l,i)=>anBadge(i)},
       {label:'Manager', key:'nom'},
       {label:'Nb', num:true, key:'nb'},
       {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,30,80,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
-    ], cltMgr);
+    ], cltMgr) : '';
 
   const cltEqTbl = cltEq.length ? anClassement('🧑‍🍳 Classement équipiers — annulations (pire → meilleur)', cltEq.length+' équipiers identifiés',
     [
@@ -6784,21 +6842,23 @@ function anRenderAnnulations(){
       {label:'Équipier', key:'nom'},
       {label:'Nb', num:true, key:'nb'},
       {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,30,80,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
-    ], cltEq) : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun équipier renseigné sur les annulations de la période. Lors de la déclaration d'une annulation, saisissez le nom de l'équipier pour suivre les responsabilités individuelles.</div></div>`;
+    ], cltEq) : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun équipier renseigné sur les annulations. Saisissez le nom de l'équipier lors de la déclaration pour suivre les responsabilités individuelles.</div></div>`;
 
-  const detail = rows.slice(0,80).map(r=>`
+  const detail = rows.slice(0,150).map(r=>`
     <tr><td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
       <td style="color:var(--muted2)">${r.heure||'—'}</td>
       <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
       <td>${r.manager||'—'}</td>
       <td style="color:var(--muted2)">${r.equipier||'—'}</td>
+      <td>${r.photo?'<span style="color:var(--green)">📸 oui</span>':'<span style="color:var(--muted)">—</span>'}</td>
       <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`).join('');
-
-  return kpis + cltMgrTbl + `<div style="height:16px"></div>` + cltEqTbl + `
+  const detailTbl = rows.length ? `
   <div class="table-card" style="margin-top:16px">
-    <div class="table-header"><span class="table-title">Détail des annulations</span></div>
-    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Manager</th><th>Équipier</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
-  </div>`;
+    <div class="table-header"><span class="table-title">Détail des annulations (historique complet)</span><span style="font-size:10px;color:var(--muted)">${nb} annulations</span></div>
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Manager</th><th>Équipier</th><th>Photo</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
+  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune annulation détaillée enregistrée. Les annulations détaillées (heure, manager, équipier, photo) seront reliées demain depuis les PDF/CSV.</div></div>`;
+
+  return kpis + suiviTbl + `<div style="height:16px"></div>` + cltMgrTbl + (cltMgr.length?`<div style="height:16px"></div>`:'') + cltEqTbl + detailTbl;
 }
 
 // ───────── CORRECTIONS — classement managers (depuis journees) ─────────
@@ -6986,7 +7046,7 @@ function anRenderRestos(){
   const restosIds = [...new Set([
     ...sos.map(r=>r.restaurant), ...jours.map(r=>r.restaurant),
     ...anns.map(r=>r.restaurant), ...repas.map(r=>r.restaurant)
-  ].filter(Boolean))];
+  ].filter(Boolean))].filter(id=>id!=='ALL' && id!=='Administration');
 
   const stat = {};
   restosIds.forEach(id=>{
