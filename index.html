@@ -6456,6 +6456,14 @@ async function anRefresh(){
     AN_DATA.annulationsAll = annA.data||[];
     AN_DATA.repasAll = repasA.data||[];
 
+    // ── SOS / TEMPS DE SERVICE : toutes les journées (aucun filtre de date) ──
+    try {
+      let rSos = SB.from('sos_drive').select('*');
+      if(resto) rSos = rSos.eq('restaurant', resto);
+      const sosTout = await rSos.order('date',{ascending:false});
+      AN_DATA.sosTout = sosTout.data||[];
+    } catch(e){ console.warn('chargement sos complet', e); AN_DATA.sosTout=[]; }
+
     // ── ANNULATIONS : toujours TOUTES les journées (aucun filtre de date) ──
     // pour l'historique complet depuis janvier 2025 et le rapprochement avec les photos managers.
     try {
@@ -6535,8 +6543,9 @@ const _anEmpty = (ico,titre,sub)=>`<div class="empty"><div class="empty-icon">${
 const SOS_SEUIL_ORANGE = 165;   // 02:45 (objectif "Total")
 const SOS_SEUIL_ROUGE  = 210;   // 03:30
 function anRenderSOS(){
-  const rows = AN_DATA.sos.filter(r=>r.total_sec);
-  if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service','Les SOS Drive déposés par les managers apparaîtront ici.');
+  // Temps de service : tout l'historique (pas la fenêtre de dates)
+  const rows = (AN_DATA.sosTout || AN_DATA.sos || []).filter(r=>r.total_sec);
+  if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service','Importez un PDF SOS Drive dans Saisie — il apparaîtra ici automatiquement.');
   const moy = Math.round(rows.reduce((a,b)=>a+b.total_sec,0)/rows.length);
   const best = rows.reduce((a,b)=>a.total_sec<b.total_sec?a:b);
   const worst= rows.reduce((a,b)=>a.total_sec>b.total_sec?a:b);
@@ -7686,8 +7695,8 @@ async function traiterPDFSecondaire(type, fullText){
             total_voitures: sos.totalJour?.voitures ?? null,
             ca: sos.totalJour?.ca ?? null,
             ticket_moyen: sos.totalJour?.tm ?? null,
-            // détail des tranches (en JSON texte, pour analyse fine par rush plus tard)
-            tranches: JSON.stringify(sos.tranches||[]),
+            // détail des tranches (jsonb : on envoie l'objet, pas une string)
+            tranches: sos.tranches||[],
             // temps de service par tranche clé (pour analyser midi vs soir)
             ts_matinee: tr.matinee?.total_sec ?? null,
             ts_dejeuner: tr.dejeuner?.total_sec ?? null,
@@ -7708,8 +7717,8 @@ async function traiterPDFSecondaire(type, fullText){
             if(col && col in lj){ delete lj[col]; const r2=await SB.from('sos_drive').insert(lj); error=r2.error; essais++; }
             else break;
           }
-          if(error) console.warn('sos_drive insert', error);
-        } catch(e){ console.warn('sos_drive', e); }
+          if(error){ console.warn('sos_drive insert', error); finir(false, '✗ SOS lu (07:32) mais non rangé : '+(error.message||error)+' — vérifiez les colonnes de sos_drive (Configuration → SQL).'); return; }
+        } catch(e){ console.warn('sos_drive', e); finir(false,'✗ SOS : '+(e.message||e)); return; }
         // 2) Mettre aussi les temps midi/soir dans la journée
         let clean = filtrerColonnesJournees({restaurant:resto, date:sos.date, ts_drive_midi: tr.dejeuner?.total_sec ?? null, ts_drive_soir: tr.diner?.total_sec ?? null});
         try {
