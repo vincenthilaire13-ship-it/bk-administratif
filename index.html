@@ -302,6 +302,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-mgrspace" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
     <div class="nav-section role-superadmin-only" style="display:none">Analyse</div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('analyses')"><span>📊</span><span>Analyses</span></div>
+    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('equipiers')"><span>👥</span><span>Équipiers</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
@@ -923,6 +924,8 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
         <button class="btn an-tab" data-an="annulations"     onclick="anSwitch('annulations')">🚫 Annulations</button>
         <button class="btn an-tab" data-an="corrections"     onclick="anSwitch('corrections')">✏️ Corrections</button>
         <button class="btn an-tab" data-an="tables"          onclick="anSwitch('tables')">📂 Tables ouvertes</button>
+        <button class="btn an-tab" data-an="parmanager"      onclick="anSwitch('parmanager')">👔 Par manager</button>
+        <button class="btn an-tab" data-an="parleader"       onclick="anSwitch('parleader')">⭐ Par leader</button>
         <button class="btn an-tab" data-an="restos"          onclick="anSwitch('restos')">🏆 Classement restos</button>
       </div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
@@ -942,6 +945,22 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <section class="section" id="sec-managers">
       <div id="managers-content">
         <div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Suivi managers</div><div class="empty-sub">Chargement des données…</div></div>
+      </div>
+    </section>
+
+    <!-- ÉQUIPIERS (rangés automatiquement depuis les bons repas) -->
+    <section class="section" id="sec-equipiers">
+      <div style="max-width:900px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div>
+            <div style="font-size:18px;font-weight:700">👥 Équipiers</div>
+            <div style="font-size:11px;color:var(--muted)">Liste construite automatiquement à partir des fichiers « Bons repas » déposés. Aucune saisie manuelle.</div>
+          </div>
+          <button class="btn" onclick="chargerEquipiers()">↺ Actualiser</button>
+        </div>
+        <div id="equipiers-content">
+          <div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Chargement…</div></div>
+        </div>
       </div>
     </section>
 
@@ -1223,6 +1242,8 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
               <button class="btn btn-accent" style="width:100%;padding:11px" onclick="saveCodes()">💾 Enregistrer tout</button>
               <button class="btn" style="width:100%;padding:9px;margin-top:8px;font-size:11px;color:var(--muted2)" onclick="rechargerNomsPlannings()">↻ Recharger les noms officiels des plannings (managers + leaders)</button>
               <div style="font-size:10px;color:var(--muted);margin-top:6px;text-align:center">Remplace les listes actuelles par les vrais noms des 3 plannings (PIN 0000)</div>
+              <button class="btn" style="width:100%;padding:9px;margin-top:12px;font-size:11px" onclick="diagnostiquerSync()">🔧 Diagnostiquer la synchronisation</button>
+              <div id="diag-sync-result" style="margin-top:10px"></div>
             </div>
           </div>
         </div>
@@ -2913,7 +2934,7 @@ const SEED_BK500_2026 = [
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',analyses:'Analyses',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',analyses:'Analyses',equipiers:'Équipiers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)'};
 function nav(id) {
   const targetSec = document.getElementById('sec-'+id);
   if(!targetSec) { console.warn("nav: section sec-"+id+" introuvable"); return; }
@@ -2931,6 +2952,7 @@ function nav(id) {
   if(id==='acces') renderAcces();
   if(id==='managers') renderManagers();
   if(id==='analyses') anInit();
+  if(id==='equipiers') chargerEquipiers();
   if(id==='manager'){
     showMgrSection('home');
     const nameEl = document.getElementById('mgr-hello-name');
@@ -3030,6 +3052,10 @@ const SB_KEY_DEFAULT = 'sb_publishable_OjZ_TMHBKogqLzhay1JNJw_mUo5Zru0';
 
 // ── Vérificateur de tables (évite d'ouvrir le dashboard Supabase) ──
 const SQL_COMPLET = `-- Tables d'analyse BK — à coller dans Supabase SQL Editor
+create table if not exists equipiers (restaurant text, code text, nom text, vu_le date, primary key(restaurant,code));
+alter table equipiers enable row level security;
+drop policy if exists "open_all_equipiers" on equipiers;
+create policy "open_all_equipiers" on equipiers for all using (true) with check (true);
 create table if not exists app_config (cle text primary key, valeur jsonb, updated_at timestamptz default now());
 alter table app_config enable row level security;
 drop policy if exists "open_all_config" on app_config;
@@ -3066,7 +3092,8 @@ async function verifierTables(){
     {nom:'ventes_horaire', label:'Ventes horaire ¼h'},
     {nom:'annulations', label:'Annulations'},
     {nom:'journees', label:'Journées (CA)'},
-    {nom:'app_config', label:'Codes partagés (multi-appareils)'}
+    {nom:'app_config', label:'Codes partagés (multi-appareils)'},
+    {nom:'equipiers', label:'Équipiers (rangés auto)'}
   ];
   const res = [];
   for(const t of tables){
@@ -3172,25 +3199,47 @@ async function saveConfig() {
 }
 
 async function loadAll() {
-  // Données complètes et propres (HT) intégrées dans le code — source unique de vérité.
-  // On n'utilise PAS les lignes Supabase pour l'affichage : elles sont en ancien format
-  // (_ttc) et incomplètes, ce qui fausserait la répartition par canal et les comparaisons.
+  // Le seed reste la base (données historiques propres en HT).
+  // On y FUSIONNE les journées déposées dans Supabase (journees) pour que
+  // la liste des journées, le dashboard et l'historique soient à jour.
   const seed25 = getSeedForResto(2025);
   const seed26 = getSeedForResto(2026);
   window._ALL_DATA25 = seed25;
   window._ALL_DATA26 = seed26;
   if(SB){
     document.getElementById('db-status').textContent = 'Connecté';
-    // Récupérer les codes d'accès partagés (managers/leaders/PIN) depuis Supabase
     chargerCodesSupabase().then(ok=>{
       if(ok && typeof populateManagerSelect==='function') try{populateManagerSelect();}catch(e){}
     });
+    // Récupérer les journées réellement déposées (toutes dates) et les fusionner
+    try {
+      const { data, error } = await SB.from('journees').select('*');
+      if(!error && data && data.length){
+        const sb26 = data.filter(d=> (d.date||'').slice(0,4)==='2026');
+        const sb25 = data.filter(d=> (d.date||'').slice(0,4)==='2025');
+        // Fusion : les lignes Supabase complètent/écrasent le seed (même resto+date)
+        const fusion = (seed, sb) => {
+          const map = {};
+          seed.forEach(d=>{ map[(d.restaurant||'BK526')+'|'+d.date]=d; });
+          sb.forEach(d=>{
+            const k=(d.restaurant||'BK526')+'|'+d.date;
+            // garder le seed s'il a ca_ht et que la ligne SB n'en a pas
+            if(!map[k]) map[k]=d;
+            else map[k] = {...map[k], ...d, ca_ht: (d.ca_ht!=null?d.ca_ht:map[k].ca_ht)};
+          });
+          return Object.values(map);
+        };
+        window._ALL_DATA26 = fusion(seed26, sb26);
+        window._ALL_DATA25 = fusion(seed25, sb25);
+      }
+    } catch(e){ console.warn('chargement journees Supabase', e); }
   }
   applyRestoFilter();
   document.getElementById('last-update').textContent = 'Màj '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
   renderDashboard();
-  // La connexion Supabase est prête : (re)charger les grilles + validations du
-  // planning si la section a déjà été initialisée (sinon ce sera fait à son init).
+  // Rafraîchir la liste des journées si la section est affichée
+  if(typeof buildJourneeSelect==='function' && document.getElementById('select-journee')) try{buildJourneeSelect();}catch(e){}
+  // La connexion Supabase est prête : (re)charger les grilles + validations du planning
   try{
     if(window.SB && window.__hrDone && typeof window.hrChargerGrilles==='function'){
       window.hrChargerGrilles().then(()=>{
@@ -5306,20 +5355,40 @@ const _num = (s) => s==null ? null : parseFloat(String(s).replace(/[\s€]/g,'')
 function parserRepas(txt){
   const dm = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2,4})/);
   const date = dm ? `20${dm[3].slice(-2)}-${dm[2]}-${dm[1]}` : null;
-  const re = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\- ]+?)\s+(\d{1,4})\s+(\d{1,2})\s+(\d{1,3},\d{2})\s+(\d{1,3},\d{2})€?\s+(\d{1,3})/g;
   const byCode = new Map();
-  let m;
-  while((m = re.exec(txt))!==null){
-    let nom = m[1].trim().replace(/\s+/g,' ');
-    if(/BENEFICIAIRE|TOTAL|R[eé]capitulatif|COURONNES|Vendeurs|SAINT CLEMENT|journ[eé]e fiscale|Edit[eé] le|Operationnel/i.test(nom)) continue;
-    const code = m[2];
-    const rec = { nom, code, nb_repas:parseInt(m[3],10), valorisation:_num(m[4]), supplement:_num(m[5]), couronnes:parseInt(m[6],10) };
-    if(!byCode.has(code)){ byCode.set(code, rec); }
-    else { const ex=byCode.get(code); if(rec.nom.length>ex.nom.length) ex.nom=rec.nom; }
+  const skip = nom => /BENEFICIAIRE|TOTAL|R[eé]capitulatif|COURONNES|Vendeurs|SAINT[\s-]?CLEMENT|journ[eé]e fiscale|Edit[eé] le|Operationnel|MATRICULE|Repas Employ/i.test(nom);
+
+  const ajoute = (nom, code, nb, valo, supp, cour) => {
+    nom = nom.trim().replace(/\s+/g,' ');
+    if(!nom || skip(nom)) return;
+    const rec = { nom, code:String(code), nb_repas:parseInt(nb,10)||0, valorisation:_num(valo), supplement:_num(supp||'0'), couronnes:parseInt(cour,10)||0 };
+    if(!byCode.has(rec.code)) byCode.set(rec.code, rec);
+    else { const ex=byCode.get(rec.code); if(rec.nom.length>ex.nom.length) ex.nom=rec.nom; }
+  };
+
+  // Regex 1 : NOM CODE NB VALO SUPP(€) COURONNES  (format standard)
+  let m, n1=0;
+  const re1 = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\- ]+?)\s+(\d{1,4})\s+(\d{1,2})\s+(\d{1,3},\d{2})\s+(\d{1,3},\d{2})\s*€?\s+(\d{1,3})/g;
+  while((m = re1.exec(txt))!==null){ ajoute(m[1],m[2],m[3],m[4],m[5],m[6]); n1++; }
+
+  // Regex 2 (secours) : si rien trouvé, format plus permissif (€ collé, espaces variables, couronnes optionnelles)
+  if(byCode.size===0){
+    const re2 = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\-\s]+?)\s+(\d{1,4})\s+(\d{1,2})\s+(\d{1,3}[.,]\d{2})\s+(\d{1,3}[.,]\d{2})\s*€?\s*(\d{0,3})/g;
+    while((m = re2.exec(txt))!==null){ ajoute(m[1],m[2],m[3],m[4],m[5],m[6]||'0'); }
   }
+
+  // Regex 3 (ultime secours) : ligne par ligne, on cherche "texte ... code nb valo"
+  if(byCode.size===0){
+    txt.split(/\n/).forEach(line=>{
+      const mm = line.match(/^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\-\s]+?)\s+(\d{1,4})\s+(\d{1,2})\s+(\d{1,3}[.,]\d{2})/);
+      if(mm) ajoute(mm[1],mm[2],mm[3],mm[4],'0','0');
+    });
+  }
+
   const employes = [...byCode.values()];
   const tot = txt.match(/TOTAL\s+(?:\d{2}\/\d{2}\/\d{4})?\s*(\d{1,3})\s+(\d{1,4},\d{2})\s+(\d{1,3},\d{2})€/);
-  const total = tot ? { nb_repas:parseInt(tot[1],10), valorisation:_num(tot[2]), supplement:_num(tot[3]) } : null;
+  const total = tot ? { nb_repas:parseInt(tot[1],10), valorisation:_num(tot[2]), supplement:_num(tot[3]) }
+                    : { nb_repas: employes.reduce((a,e)=>a+e.nb_repas,0), valorisation: employes.reduce((a,e)=>a+e.valorisation,0) };
   return { date, employes, total };
 }
 
@@ -5454,23 +5523,69 @@ async function enregistrerJourneeMgr() {
   if(btn){ btn.disabled=true; btn.textContent='⏳ Enregistrement…'; }
 
   try {
-    // 1) JOURNÉES (synthèse CA + équipe) — table existante
-    const rowJournee = { restaurant:resto, date, ...(MGR_JOUR.synthese||{}), ...equipe };
+    let erreurs = [];
+    // 1) JOURNÉES (synthèse CA + équipe)
     if(SB){
-      await SB.from('journees').upsert(rowJournee,{onConflict:'restaurant,date'});
+      // Champs équipe sûrs pour journees (manager + directeur + commentaire ; PAS les leaders qui n'existent pas dans journees)
+      const equipeJournee = {
+        manager_ouverture: equipe.manager_ouverture,
+        manager_fermeture: equipe.manager_fermeture,
+        directeur_midi: equipe.directeur_midi,
+        directeur_soir: equipe.directeur_soir,
+        commentaire: equipe.commentaire
+      };
+      const rowJournee = { restaurant:resto, date, ...(MGR_JOUR.synthese||{}), ...equipeJournee };
+      // retirer un éventuel champ 'date' dupliqué de la synthèse déjà géré
+      let { error:eJ } = await SB.from('journees').upsert(rowJournee,{onConflict:'restaurant,date'});
+      if(eJ){
+        console.warn('journees upsert complet échoué, retry minimal', eJ);
+        // Retry avec uniquement les colonnes essentielles connues
+        const minimal = {
+          restaurant:resto, date,
+          ca_ht: MGR_JOUR.synthese?.ca_ht ?? null,
+          ca_ttc: MGR_JOUR.synthese?.ca_ttc ?? null,
+          tickets_nb: MGR_JOUR.synthese?.tickets_nb ?? null,
+          corrections_nb: MGR_JOUR.synthese?.corrections_nb ?? null,
+          corrections_montant: MGR_JOUR.synthese?.corrections_montant ?? null,
+          corrections_pct: MGR_JOUR.synthese?.corrections_pct ?? null,
+          annulations_nb: MGR_JOUR.synthese?.annulations_nb ?? null,
+          annulations_montant: MGR_JOUR.synthese?.annulations_montant ?? null,
+          commandes_ouvertes_nb: MGR_JOUR.synthese?.commandes_ouvertes_nb ?? null,
+          commandes_ouvertes_montant: MGR_JOUR.synthese?.commandes_ouvertes_montant ?? null,
+          repas_employes_nb: MGR_JOUR.synthese?.repas_employes_nb ?? null,
+          repas_employes_montant: MGR_JOUR.synthese?.repas_employes_montant ?? null,
+          manager_ouverture: equipe.manager_ouverture,
+          manager_fermeture: equipe.manager_fermeture,
+          directeur_midi: equipe.directeur_midi,
+          directeur_soir: equipe.directeur_soir,
+          commentaire: equipe.commentaire
+        };
+        const { error:eJ2 } = await SB.from('journees').upsert(minimal,{onConflict:'restaurant,date'});
+        if(eJ2){ erreurs.push('Journée : '+eJ2.message); console.error('journees minimal échoué', eJ2); }
+      }
     } else {
-      const idx=DATA.findIndex(d=>d.date===date); if(idx>=0) DATA[idx]={...DATA[idx],...rowJournee}; else DATA.push(rowJournee);
+      const idx=DATA.findIndex(d=>d.date===date); const row={restaurant:resto,date,...(MGR_JOUR.synthese||{})}; if(idx>=0) DATA[idx]={...DATA[idx],...row}; else DATA.push(row);
     }
 
     // 2) REPAS EMPLOYÉS (détail nominatif)
     if(MGR_JOUR.repas?.employes?.length && SB){
-      // purge des lignes du jour puis insert (évite doublons)
       await SB.from('repas_employes').delete().eq('restaurant',resto).eq('date',date);
       const rows = MGR_JOUR.repas.employes.map(e=>({
         restaurant:resto, date, nom:e.nom, code:String(e.code),
         nb_repas:e.nb_repas, valorisation:e.valorisation, supplement:e.supplement, couronnes:e.couronnes
       }));
-      await SB.from('repas_employes').insert(rows);
+      const { error:eR } = await SB.from('repas_employes').insert(rows);
+      if(eR){ erreurs.push('Repas : '+eR.message); console.error('repas_employes', eR); }
+
+      // RANGEMENT AUTO DES ÉQUIPIERS : on alimente la liste équipiers (sans doublon) à partir du fichier repas
+      try {
+        const equipiers = MGR_JOUR.repas.employes.map(e=>({
+          restaurant:resto, code:String(e.code), nom:e.nom, vu_le:date
+        }));
+        // upsert par (restaurant, code) : crée si nouveau, met à jour le nom/date sinon
+        const { error:eEq } = await SB.from('equipiers').upsert(equipiers,{onConflict:'restaurant,code'});
+        if(eEq) console.warn('equipiers upsert', eEq); // pas bloquant
+      } catch(e){ console.warn('rangement équipiers', e); }
     }
 
     // 3) SOS DRIVE (temps de service)
@@ -5495,30 +5610,46 @@ async function enregistrerJourneeMgr() {
       const {error:eSos} = await SB.from('sos_drive').upsert(fullSos,{onConflict:'restaurant,date'});
       if(eSos){ // colonnes leaders/directeur pas encore créées → retry sans elles
         console.warn('sos_drive full upsert', eSos);
-        await SB.from('sos_drive').upsert(baseSos,{onConflict:'restaurant,date'});
+        const {error:eSos2} = await SB.from('sos_drive').upsert(baseSos,{onConflict:'restaurant,date'});
+        if(eSos2){ erreurs.push('SOS Drive : '+eSos2.message); console.error('sos_drive base', eSos2); }
       }
     }
 
-    // 4) VENTES HORAIRE ¼h (pour les horaires)
+    // 4) VENTES HORAIRE ¼h
     if(MGR_JOUR.ventes && SB){
-      await SB.from('ventes_horaire').upsert({
+      const { error:eV } = await SB.from('ventes_horaire').upsert({
         restaurant:resto, date,
         tickets_total: MGR_JOUR.ventes.tickets||null,
         ht_total: MGR_JOUR.ventes.ht||null,
         tranches: MGR_JOUR.ventes.tranches||[]
       },{onConflict:'restaurant,date'});
+      if(eV){ erreurs.push('Ventes : '+eV.message); console.error('ventes_horaire', eV); }
     }
 
-    // OK
+    // Recharger les données depuis Supabase pour que tout s'affiche immédiatement
+    if(SB && typeof loadAll==='function'){ try{ await loadAll(); }catch(e){} }
+
+    // RÉSULTAT — honnête : on affiche les vraies erreurs s'il y en a
     const ok=document.getElementById('mgr-save-ok');
-    if(ok){ ok.textContent='✓ Journée complète enregistrée (4 documents rangés) !'; ok.style.display='block'; }
+    if(erreurs.length){
+      if(ok){
+        ok.innerHTML='⚠️ Enregistrement partiel — erreurs :<br>'+erreurs.map(e=>'• '+e).join('<br>')+
+          '<br><br>Vérifiez que toutes les tables existent (Configuration → Vérifier les tables).';
+        ok.style.color='var(--red)'; ok.style.display='block';
+      }
+      if(btn){ btn.disabled=false; btn.textContent='💾 Réessayer'; }
+      return;
+    }
+    if(ok){ ok.textContent='✓ Journée complète enregistrée (4 documents rangés) !'; ok.style.color='var(--green)'; ok.style.display='block'; }
     renderDashboard();
     setTimeout(()=>{ if(ok) ok.style.display='none'; resetMgrFlow(); showMgrSection('home'); }, 2600);
   } catch(err){
     console.error('Erreur enregistrement journée:', err);
-    alert('Erreur lors de l\'enregistrement : '+(err.message||err));
+    const ok=document.getElementById('mgr-save-ok');
+    if(ok){ ok.innerHTML='❌ Erreur : '+(err.message||err); ok.style.color='var(--red)'; ok.style.display='block'; }
+    else alert('Erreur lors de l\'enregistrement : '+(err.message||err));
   } finally {
-    if(btn){ btn.disabled=false; btn.textContent='💾 Enregistrer la journée'; }
+    if(btn && btn.textContent==='⏳ Enregistrement…'){ btn.disabled=false; btn.textContent='💾 Enregistrer la journée'; }
   }
 }
 
@@ -5589,6 +5720,91 @@ async function rechargerNomsPlannings(){
   if(okEl){
     okEl.textContent = okSync ? '✓ Noms rechargés et synchronisés sur tous les appareils !' : '✓ Noms rechargés (⚠️ synchro Supabase indisponible — vérifiez app_config)';
     okEl.style.display='block'; setTimeout(()=>okEl.style.display='none', 4000);
+  }
+}
+
+// Diagnostic complet de la synchronisation des codes
+async function diagnostiquerSync(){
+  const box=document.getElementById('diag-sync-result');
+  if(!box) return;
+  box.innerHTML='<div style="font-size:11px;color:var(--muted)">Diagnostic en cours…</div>';
+  let html='<div style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:12px;font-size:11px;line-height:1.7">';
+
+  // 1) Connexion
+  html += SB ? '✅ Connecté à Supabase<br>' : '❌ NON connecté à Supabase<br>';
+
+  // 2) Codes en local
+  const local = getCodes();
+  html += `📱 En local sur cet appareil : ${(local.managers||[]).length} managers, ${(local.leaders||[]).length} leaders, ${(local.directeurs||[]).length} directeurs<br>`;
+
+  // 3) Codes dans Supabase
+  if(SB){
+    try {
+      const { data, error } = await SB.from('app_config').select('valeur,updated_at').eq('cle','codes').maybeSingle();
+      if(error){
+        html += `❌ Table app_config : <span style="color:var(--red)">${error.message}</span><br>`;
+        html += '<span style="color:var(--yellow)">→ La table app_config n\'existe pas. Cliquez sur Configuration → Vérifier les tables → Copier le SQL.</span>';
+      } else if(!data || !data.valeur){
+        html += '⚠️ Table app_config existe mais <strong>VIDE</strong> (aucun code enregistré dedans)<br>';
+        html += '<span style="color:var(--yellow)">→ Cliquez sur « 💾 Enregistrer tout » ci-dessus pour y écrire les codes.</span>';
+      } else {
+        const v=data.valeur;
+        html += `☁️ Dans Supabase (partagé) : ${(v.managers||[]).length} managers, ${(v.leaders||[]).length} leaders, ${(v.directeurs||[]).length} directeurs<br>`;
+        html += `🕐 Dernière écriture : ${data.updated_at?new Date(data.updated_at).toLocaleString('fr-FR'):'?'}<br>`;
+        html += '<span style="color:var(--green)">✅ Les codes sont bien dans Supabase. Les autres appareils les recevront au prochain démarrage.</span>';
+      }
+    } catch(e){
+      html += `❌ Erreur lecture : ${e.message}`;
+    }
+  }
+  html += '</div>';
+  box.innerHTML=html;
+}
+
+// Charge et affiche la liste des équipiers (rangée auto depuis les bons repas), groupée par resto
+async function chargerEquipiers(){
+  const el = document.getElementById('equipiers-content');
+  if(!el) return;
+  if(!SB){ el.innerHTML='<div class="empty"><div class="empty-icon">🔌</div><div class="empty-title">Non connecté</div></div>'; return; }
+  el.innerHTML='<div class="empty"><div class="empty-icon">⏳</div><div class="empty-title">Chargement…</div></div>';
+  try {
+    let q = SB.from('equipiers').select('*');
+    // Cloisonnement : un directeur ne voit que son resto
+    const resto = (CURRENT_USER?.role==='directeur' && CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL')
+      ? CURRENT_USER.resto
+      : (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? ACTIVE_RESTO : null);
+    if(resto) q = q.eq('restaurant', resto);
+    const { data, error } = await q;
+    if(error){ el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Table équipiers introuvable</div><div class="empty-sub">Créez-la via Configuration → Vérifier les tables.</div></div>'; return; }
+    if(!data || !data.length){ el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Aucun équipier pour le moment</div><div class="empty-sub">La liste se remplira automatiquement dès le premier dépôt de « Bons repas ».</div></div>'; return; }
+
+    // Grouper par resto, trier par nom
+    const parResto={};
+    data.forEach(e=>{ const r=e.restaurant||'?'; (parResto[r]=parResto[r]||[]).push(e); });
+    let html='';
+    Object.keys(parResto).sort().forEach(r=>{
+      const list=parResto[r].sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+      html += `<div class="table-card" style="margin-bottom:16px">
+        <div class="table-header"><span class="table-title">${RESTAURANTS[r]?.nom||r}</span><span style="font-size:10px;color:var(--muted)">${list.length} équipiers</span></div>
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead><tr style="color:var(--muted);font-size:10px;text-transform:uppercase">
+            <th style="text-align:left;padding:6px 12px">Nom</th>
+            <th style="text-align:left;padding:6px 12px">Code</th>
+            <th style="text-align:right;padding:6px 12px">Vu le</th>
+          </tr></thead><tbody>`;
+      list.forEach(e=>{
+        html += `<tr style="border-top:1px solid var(--border2)">
+          <td style="padding:7px 12px;font-weight:500">${e.nom||'—'}</td>
+          <td style="padding:7px 12px;color:var(--muted2)">${e.code||'—'}</td>
+          <td style="padding:7px 12px;text-align:right;color:var(--muted)">${e.vu_le?formatDate(e.vu_le):'—'}</td>
+        </tr>`;
+      });
+      html += `</tbody></table></div>`;
+    });
+    el.innerHTML=html;
+  } catch(e){
+    console.error('chargerEquipiers', e);
+    el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Erreur de chargement</div></div>';
   }
 }
 
@@ -5841,6 +6057,8 @@ function anRender(){
   else if(AN_TAB==='annulations') el.innerHTML = anRenderAnnulations();
   else if(AN_TAB==='corrections') el.innerHTML = anRenderCorrections();
   else if(AN_TAB==='tables')  el.innerHTML = anRenderTables();
+  else if(AN_TAB==='parmanager') el.innerHTML = anRenderParPersonne('manager');
+  else if(AN_TAB==='parleader')  el.innerHTML = anRenderParPersonne('leader');
   else if(AN_TAB==='restos')  el.innerHTML = anRenderRestos();
   // dessiner les graphiques après injection HTML
   setTimeout(()=>{ try{ anDrawCharts(); }catch(e){console.warn(e);} }, 30);
@@ -6178,6 +6396,88 @@ function anRenderTables(){
 
 
 // ───────── CLASSEMENT PAR RESTO ─────────
+// ───────── VUE D'ENSEMBLE PAR MANAGER ou PAR LEADER ─────────
+// Agrège TOUTES les catégories (temps service, repas, annulations, corrections, tables) par personne
+function anRenderParPersonne(type){
+  const estLeader = (type==='leader');
+  const sos = AN_DATA.sos||[];
+  const jours = anJourneesPeriode();
+  const anns = (()=>{ let r=[...(AN_DATA.annulations||[])]; try{
+    const local=JSON.parse(localStorage.getItem('bk_annulations')||'[]');
+    const from=document.getElementById('an-date-from').value,to=document.getElementById('an-date-to').value;
+    const resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null);
+    local.forEach(a=>{const d=a.date&&a.date.includes('/')?a.date.split('/').reverse().join('-'):a.date; if(from&&d<from)return; if(to&&d>to)return; if(resto&&a.restaurant!==resto)return; r.push({date:d,montant:a.montant,manager:a.manager});});
+  }catch(e){} return r; })();
+
+  // Champs selon le type
+  const champOuv = estLeader ? 'leader_ouverture' : 'manager_ouverture';
+  const champFer = estLeader ? 'leader_fermeture' : 'manager_fermeture';
+
+  // Agrégat par personne
+  const stat = {};
+  const get = (nom)=>{ if(!stat[nom]) stat[nom]={nom, sosSum:0,sosN:0, jours:new Set(), corrPctSum:0,corrPctN:0, corrEur:0, tablesNb:0, tablesJ:0, annNb:0,annEur:0}; return stat[nom]; };
+
+  // Temps de service (sos_drive)
+  sos.forEach(r=>{
+    if(r.total_sec==null) return;
+    [r[champOuv], r[champFer]].filter(Boolean).forEach(nom=>{
+      const s=get(nom); s.sosSum+=r.total_sec; s.sosN++; s.jours.add(r.date);
+    });
+  });
+
+  // Corrections & tables (journees) — seulement pour manager (le leader n'est pas dans journees)
+  if(!estLeader){
+    jours.forEach(d=>{
+      const nom=d.manager_ouverture; if(!nom) return;
+      const s=get(nom);
+      if(d.corrections_pct){ s.corrPctSum+=d.corrections_pct; s.corrPctN++; }
+      s.corrEur+=d.corrections_montant||0;
+      if(d.commandes_ouvertes_nb!=null){ s.tablesNb+=d.commandes_ouvertes_nb; s.tablesJ++; }
+    });
+    // Annulations par manager
+    anns.forEach(a=>{ const nom=a.manager; if(!nom)return; const s=get(nom); s.annNb++; s.annEur+=Math.abs(a.montant||0); });
+  }
+
+  const lignes = Object.values(stat).map(s=>({
+    nom:s.nom,
+    sosMoy: s.sosN? Math.round(s.sosSum/s.sosN): null,
+    jours: s.jours.size,
+    corrPct: s.corrPctN? s.corrPctSum/s.corrPctN : null,
+    corrEur: s.corrEur,
+    tablesParJour: s.tablesJ? s.tablesNb/s.tablesJ : null,
+    annNb: s.annNb, annEur: s.annEur
+  }));
+
+  if(!lignes.length){
+    return _anEmpty(estLeader?'⭐':'👔', `Aucune donnée par ${type}`,
+      `Les analyses par ${type} apparaîtront dès que des journées seront déposées avec le ${type} d'ouverture/fermeture renseigné dans « Ma journée ».`);
+  }
+
+  // Tri par temps de service décroissant (pire en haut)
+  lignes.sort((a,b)=>(b.sosMoy||0)-(a.sosMoy||0));
+
+  const seuilCorr=(typeof SEUILS!=='undefined'&&SEUILS.corrections_max)||4;
+  const colonnes = estLeader ? [
+    {label:'#', render:(l,i)=>anBadge(i)},
+    {label:'Leader', key:'nom'},
+    {label:'Temps service', num:true, render:l=>{if(l.sosMoy==null)return '—';const f=anFeu(l.sosMoy,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas');return `<span style="color:${f.col};font-weight:600">${f.dot} ${secToHMS(l.sosMoy)}</span>`;}},
+    {label:'Jours', num:true, key:'jours'},
+  ] : [
+    {label:'#', render:(l,i)=>anBadge(i)},
+    {label:'Manager', key:'nom'},
+    {label:'Temps service', num:true, render:l=>{if(l.sosMoy==null)return '—';const f=anFeu(l.sosMoy,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas');return `<span style="color:${f.col};font-weight:600">${f.dot} ${secToHMS(l.sosMoy)}</span>`;}},
+    {label:'Corr. %', num:true, render:l=>{if(l.corrPct==null)return '—';const f=anFeu(l.corrPct,seuilCorr,seuilCorr*1.5,'bas');return `<span style="color:${f.col}">${f.dot} ${l.corrPct.toFixed(2)}%</span>`;}},
+    {label:'Annul.', num:true, render:l=>l.annNb?`${l.annNb} (${fmt(l.annEur)}€)`:'—'},
+    {label:'Tables/j', num:true, render:l=>l.tablesParJour!=null?l.tablesParJour.toFixed(1):'—'},
+    {label:'Jours', num:true, key:'jours'},
+  ];
+
+  const titre = estLeader ? '⭐ Vue d\'ensemble par leader' : '👔 Vue d\'ensemble par manager';
+  const sousTitre = lignes.length+(estLeader?' leaders':' managers')+(estLeader?' · temps de service uniquement (les corrections/annulations sont au niveau manager)':'');
+
+  return anClassement(titre, sousTitre, colonnes, lignes);
+}
+
 function anRenderRestos(){
   const sos = AN_DATA.sosAll||[];
   const jours = AN_DATA.journeesAll||[];
