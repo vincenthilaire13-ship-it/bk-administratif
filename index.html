@@ -4449,9 +4449,11 @@ async function persistCodes(codes){
         { cle:'codes', valeur: codes, updated_at: new Date().toISOString() },
         { onConflict:'cle' }
       );
-      if(error) console.warn('persistCodes Supabase', error);
+      if(error){ console.warn('persistCodes Supabase', error); return false; }
+      return true;
     }
   } catch(e){ console.warn('persistCodes', e); }
+  return false;
 }
 
 // Charge les codes partagés depuis Supabase et écrase le cache local si trouvés
@@ -4492,29 +4494,38 @@ function selectRole(role) {
   document.getElementById('login-step-label').textContent =
     ROLE_LABELS[role] + (LOGIN_RESTO && LOGIN_RESTO!=='ALL' ? ' · ' + (RESTAURANTS[LOGIN_RESTO]?.nom||'') : '');
 
-  // Pré-remplir liste managers/directeurs si besoin (filtrée sur le resto choisi)
-  const wrap = document.getElementById('manager-select-wrap');
-  const sel  = document.getElementById('login-mgr-name');
-  const lbl  = wrap ? wrap.querySelector('.login-label') : null;
-  if(role === 'manager') {
-    wrap.style.display = 'block';
-    if(lbl) lbl.textContent = 'Votre nom (manager)';
-    const codes = getCodes();
-    const mgrs = codes.managers.filter(m=> !m.resto || m.resto===LOGIN_RESTO);
-    sel.innerHTML = mgrs.length
-      ? '<option value="">— Sélectionnez votre nom —</option>' + mgrs.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('')
-      : '<option value="">— Aucun manager pour ce resto —</option>';
-  } else if(role === 'directeur') {
-    wrap.style.display = 'block';
-    if(lbl) lbl.textContent = 'Votre nom (directeur)';
-    const codes = getCodes();
-    const dirs = (codes.directeurs||[]).filter(d=> !d.resto || d.resto===LOGIN_RESTO);
-    sel.innerHTML = dirs.length
-      ? '<option value="">— Sélectionnez votre nom —</option>' + dirs.map(d=>`<option value="${d.nom}">${d.nom}</option>`).join('')
-      : '<option value="">— Aucun directeur pour ce resto —</option>';
-  } else {
-    wrap.style.display = 'none';
+  // Construire la liste des noms (managers/directeurs) à partir des codes connus
+  const remplirListe = () => {
+    const wrap = document.getElementById('manager-select-wrap');
+    const sel  = document.getElementById('login-mgr-name');
+    const lbl  = wrap ? wrap.querySelector('.login-label') : null;
+    if(role === 'manager') {
+      wrap.style.display = 'block';
+      if(lbl) lbl.textContent = 'Votre nom (manager)';
+      const codes = getCodes();
+      const mgrs = codes.managers.filter(m=> !m.resto || m.resto===LOGIN_RESTO);
+      sel.innerHTML = mgrs.length
+        ? '<option value="">— Sélectionnez votre nom —</option>' + mgrs.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('')
+        : '<option value="">— Aucun manager pour ce resto —</option>';
+    } else if(role === 'directeur') {
+      wrap.style.display = 'block';
+      if(lbl) lbl.textContent = 'Votre nom (directeur)';
+      const codes = getCodes();
+      const dirs = (codes.directeurs||[]).filter(d=> !d.resto || d.resto===LOGIN_RESTO);
+      sel.innerHTML = dirs.length
+        ? '<option value="">— Sélectionnez votre nom —</option>' + dirs.map(d=>`<option value="${d.nom}">${d.nom}</option>`).join('')
+        : '<option value="">— Aucun directeur pour ce resto —</option>';
+    } else {
+      wrap.style.display = 'none';
+    }
+  };
+
+  remplirListe(); // affichage immédiat avec ce qu'on a
+  // Puis recharger depuis Supabase et re-remplir (au cas où un autre appareil a modifié les codes)
+  if(SB && typeof chargerCodesSupabase==='function'){
+    chargerCodesSupabase().then(ok=>{ if(ok) remplirListe(); });
   }
+
   // Reset PIN
   ['pin-1','pin-2','pin-3','pin-4'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
@@ -4559,7 +4570,11 @@ function getPin() {
 function updatePinPlaceholder(){}
 
 // ── Connexion ──
-function doLogin() {
+async function doLogin() {
+  // Recharger les codes les plus récents depuis Supabase (multi-appareils) avant vérification
+  if(SB && typeof chargerCodesSupabase==='function'){
+    try { await chargerCodesSupabase(); } catch(e){}
+  }
   const codes = getCodes();
   const pin   = getPin();
   const role  = LOGIN_ROLE;
@@ -5526,7 +5541,7 @@ function enregistrerJourneeManager(){
 
 // ── Gestion codes (admin) ──
 // Recharge les vrais noms managers + leaders des plannings (garde admin/sup/directeurs)
-function rechargerNomsPlannings(){
+async function rechargerNomsPlannings(){
   if(!confirm('Remplacer les managers et leaders actuels par les noms officiels des 3 plannings ?\n\nLes managers auront le PIN 0000 (à changer ensuite).\nLes codes admin/superviseur/directeurs ne sont pas touchés.')) return;
   const codes=getCodes();
   codes.managers = [
@@ -5544,10 +5559,14 @@ function rechargerNomsPlannings(){
     {nom:'MEHDI',resto:'BK509'},{nom:'NOEMIE',resto:'BK509'},{nom:'EWAN',resto:'BK509'},{nom:'GREGORY',resto:'BK509'},
     {nom:'JEAN RAPHAEL',resto:'BK500'},{nom:'NOLAN',resto:'BK500'},{nom:'NOURDINE',resto:'BK500'},{nom:'MANON',resto:'BK500'},{nom:'MORGAN',resto:'BK500'}
   ];
-  persistCodes(codes);
+  const okSync = await persistCodes(codes);
   renderAcces();
   populateManagerSelect();
-  showAlert('acces-ok');
+  const okEl = document.getElementById('acces-ok');
+  if(okEl){
+    okEl.textContent = okSync ? '✓ Noms rechargés et synchronisés sur tous les appareils !' : '✓ Noms rechargés (⚠️ synchro Supabase indisponible — vérifiez app_config)';
+    okEl.style.display='block'; setTimeout(()=>okEl.style.display='none', 4000);
+  }
 }
 
 function renderAcces(){
@@ -5620,7 +5639,7 @@ function removeLeader(i){
   const codes=getCodes(); (codes.leaders||[]).splice(i,1);
   persistCodes(codes); renderAcces();
 }
-function saveCodes(){
+async function saveCodes(){
   const codes=getCodes();
   const a=document.getElementById('code-admin')?.value;
   const s=document.getElementById('code-superviseur')?.value;
@@ -5658,9 +5677,13 @@ function saveCodes(){
     li++;
   }
 
-  persistCodes(codes);
+  const okSync = await persistCodes(codes);
   populateManagerSelect();
-  showAlert('acces-ok');
+  const okEl = document.getElementById('acces-ok');
+  if(okEl){
+    okEl.textContent = okSync ? '✓ Codes enregistrés et synchronisés sur tous les appareils !' : '✓ Codes enregistrés (⚠️ synchro Supabase indisponible — vérifiez la table app_config)';
+    okEl.style.display='block'; setTimeout(()=>okEl.style.display='none', 4000);
+  }
 }
 
 
