@@ -1310,18 +1310,18 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
   tickets_nb int, tickets_n1 int,
   ticket_moyen_ttc numeric,
   -- Kiosk
-  kiosk_ttc numeric, kiosk_tickets int,
+  kiosk_ttc numeric, kiosk_ht numeric, kiosk_tickets int,
   kiosk_place_ttc numeric, kiosk_emporter_ttc numeric,
   -- Drive
-  drive_ttc numeric, drive_voitures int,
+  drive_ttc numeric, drive_ht numeric, drive_voitures int,
   drive_n1 numeric, drive_ticket_moyen numeric,
   -- Livraison
-  livraison_ttc numeric, livraison_commandes int,
+  livraison_ttc numeric, livraison_ht numeric, livraison_nb int, livraison_commandes int,
   livraison_n1 numeric, livraison_ticket_moyen numeric,
   -- Comptoir
-  comptoir_ttc numeric, comptoir_tickets int,
+  comptoir_ttc numeric, comptoir_ht numeric, comptoir_tickets int,
   -- Click & Collect
-  cc_ttc numeric, cc_tickets int,
+  cc_ttc numeric, cc_ht numeric, cc_tickets int,
   -- Mode conso
   sur_place_tickets int, emporter_tickets int,
   -- Encaissements
@@ -1336,9 +1336,9 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
   -- Sauces offertes
   sauces_nb int, sauces_montant numeric, sauces_pct numeric,
   -- Annulations
-  annulations_nb int, annulations_montant numeric,
+  annulations_nb int, annulations_montant numeric, annulations_pct numeric,
   -- Commandes ouvertes
-  commandes_ouvertes_nb int, commandes_ouvertes_montant numeric,
+  commandes_ouvertes_nb int, commandes_ouvertes_montant numeric, commandes_ouvertes_pct numeric,
   -- Repas employés
   repas_employes_nb int, repas_employes_montant numeric, repas_employes_pct numeric,
   -- Ventes annexes
@@ -1363,7 +1363,17 @@ create policy "mise a jour" on journees for update using (true);
 alter table journees enable row level security;
 create policy "lecture publique" on journees for select using (true);
 create policy "ecriture authentifiee" on journees for insert with check (true);
-create policy "mise a jour" on journees for update using (true);</pre>
+create policy "mise a jour" on journees for update using (true);
+
+-- ⚠️ SI LA TABLE journees EXISTE DÉJÀ : ajoutez les colonnes manquantes (HT + %)
+alter table journees add column if not exists drive_ht numeric;
+alter table journees add column if not exists kiosk_ht numeric;
+alter table journees add column if not exists livraison_ht numeric;
+alter table journees add column if not exists livraison_nb int;
+alter table journees add column if not exists comptoir_ht numeric;
+alter table journees add column if not exists cc_ht numeric;
+alter table journees add column if not exists annulations_pct numeric;
+alter table journees add column if not exists commandes_ouvertes_pct numeric;</pre>
         </div>
       </div>
     </section>
@@ -3212,7 +3222,18 @@ drop policy if exists "open_all_ann" on annulations;
 create policy "open_all_repas" on repas_employes for all using (true) with check (true);
 create policy "open_all_sos" on sos_drive for all using (true) with check (true);
 create policy "open_all_ventes" on ventes_horaire for all using (true) with check (true);
-create policy "open_all_ann" on annulations for all using (true) with check (true);`;
+create policy "open_all_ann" on annulations for all using (true) with check (true);
+-- Colonnes CA HT & pourcentages de la table journees (remplissage complet des journées)
+alter table journees add column if not exists drive_ht numeric;
+alter table journees add column if not exists kiosk_ht numeric;
+alter table journees add column if not exists livraison_ht numeric;
+alter table journees add column if not exists livraison_nb int;
+alter table journees add column if not exists comptoir_ht numeric;
+alter table journees add column if not exists cc_ht numeric;
+alter table journees add column if not exists annulations_pct numeric;
+alter table journees add column if not exists commandes_ouvertes_pct numeric;
+alter table journees add column if not exists sauces_pct numeric;
+alter table journees add column if not exists repas_employes_pct numeric;`;
 
 async function verifierTables(){
   const el = document.getElementById('tables-check-result');
@@ -3238,6 +3259,14 @@ async function verifierTables(){
   let equipierOk = false;
   try { const {error} = await SB.from('annulations').select('equipier').limit(1); equipierOk = !error; } catch(e){}
 
+  // Vérifier les colonnes HT/% de la table journees (cause n°1 des cases vides)
+  const colsJournee = ['drive_ht','kiosk_ht','livraison_ht','livraison_nb','comptoir_ht','cc_ht','annulations_pct','commandes_ouvertes_pct','sauces_pct','repas_employes_pct'];
+  const colsManquantes = [];
+  for(const c of colsJournee){
+    try { const {error} = await SB.from('journees').select(c).limit(1); if(error) colsManquantes.push(c); }
+    catch(e){ colsManquantes.push(c); }
+  }
+
   const manquantes = res.filter(r=>!r.ok);
   let html = '<div style="display:flex;flex-direction:column;gap:6px">';
   res.forEach(r=>{
@@ -3248,16 +3277,35 @@ async function verifierTables(){
   html += `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:6px 10px;border-radius:8px;background:var(--bg3);border:1px solid ${equipierOk?'rgba(62,207,142,.25)':'rgba(251,191,36,.25)'}">
     <span>${equipierOk?'✅':'⚠️'}</span><span style="flex:1">Colonne « équipier » (annulations)</span>
     <span style="font-size:10px;color:${equipierOk?'var(--green)':'var(--yellow)'}">${equipierOk?'présente':'optionnelle'}</span></div>`;
+
+  // Bloc colonnes journees (HT / %)
+  html += `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:6px 10px;border-radius:8px;background:var(--bg3);border:1px solid ${colsManquantes.length===0?'rgba(62,207,142,.25)':'rgba(248,113,113,.35)'}">
+    <span>${colsManquantes.length===0?'✅':'❌'}</span><span style="flex:1">Colonnes CA HT &amp; pourcentages (journées)</span>
+    <span style="font-size:10px;color:${colsManquantes.length===0?'var(--green)':'var(--red)'}">${colsManquantes.length===0?'complètes':colsManquantes.length+' manquante(s)'}</span></div>`;
   html += '</div>';
 
-  if(manquantes.length===0 && equipierOk){
-    html += '<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);color:var(--green);font-size:11px">✓ Tout est en place ! Les analyses sont opérationnelles.</div>';
-  } else if(manquantes.length===0 && !equipierOk){
-    html += '<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:var(--yellow);font-size:11px">Les tables existent. La colonne « équipier » est optionnelle (l\'appli fonctionne sans). Pour l\'activer, exécutez : <code>alter table annulations add column if not exists equipier text;</code></div>';
-  } else {
+  if(colsManquantes.length>0){
+    const sqlAlter = colsManquantes.map(c=>{
+      const type = (c==='livraison_nb') ? 'int' : 'numeric';
+      return `alter table journees add column if not exists ${c} ${type};`;
+    }).join('\n');
+    window.__SQL_ALTER_JOURNEES = sqlAlter;
+    html += `<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);font-size:11px">
+      ⚠️ <strong>C'est la cause des cases vides du 25 mai.</strong> La table « journées » n'a pas les colonnes CA HT et pourcentages. Collez ce SQL dans Supabase → SQL Editor, puis réimportez la journée :
+      <pre style="margin-top:8px;padding:8px;background:var(--bg3);border-radius:6px;color:var(--text);font-size:10px;white-space:pre-wrap;line-height:1.6">${sqlAlter}</pre>
+      </div>
+      <button class="btn" style="width:100%;margin-top:8px" onclick="(function(){navigator.clipboard.writeText(window.__SQL_ALTER_JOURNEES).then(()=>{var o=document.getElementById('sql-alter-ok');if(o){o.style.display='block';setTimeout(()=>o.style.display='none',3000);}}).catch(()=>window.prompt('Copiez ce SQL :',window.__SQL_ALTER_JOURNEES));})()">📋 Copier le SQL des colonnes manquantes</button>
+      <div id="sql-alter-ok" style="display:none;color:var(--green);font-size:10px;text-align:center;margin-top:6px">✓ SQL copié</div>`;
+  }
+
+  if(manquantes.length>0){
     html += `<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--red);font-size:11px">${manquantes.length} table(s) manquante(s). Copiez le SQL ci-dessous dans Supabase → SQL Editor.</div>
     <button class="btn" style="width:100%;margin-top:10px" onclick="copierSQL()">📋 Copier le SQL complet</button>
     <div id="sql-copie-ok" style="display:none;color:var(--green);font-size:10px;text-align:center;margin-top:6px">✓ SQL copié dans le presse-papier</div>`;
+  } else if(colsManquantes.length===0 && equipierOk){
+    html += '<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);color:var(--green);font-size:11px">✓ Tout est en place ! Toutes les cases de la journée seront remplies.</div>';
+  } else if(colsManquantes.length===0 && !equipierOk){
+    html += '<div style="margin-top:12px;padding:10px 14px;border-radius:8px;background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);color:var(--yellow);font-size:11px">Les tables et colonnes principales existent. La colonne « équipier » est optionnelle. Pour l\'activer : <code>alter table annulations add column if not exists equipier text;</code></div>';
   }
   el.innerHTML = html;
 }
@@ -5347,102 +5395,89 @@ function parserSynthesCA(txt) {
     date = `${yr}-${dm[2]}-${dm[1]}`;
   }
 
+  // ⚠️ pdf.js renvoie les colonnes dans un ordre ENTRELACÉ et avec des espaces
+  // insécables (\u00a0) dans les milliers. On normalise tout d'abord.
+  const T = txt.replace(/\u00a0/g,' ').replace(/\s+/g,' ');
+  const MO = '(\\d[\\d ]*,\\d{2})';      // un montant FR : "1 201,75" ou "13,20"
+  const PC = '(\\d+,\\d+)\\s*%';          // un pourcentage : "7,57 %"
+
   // ── TOTAL (tickets CA_HT CA_TTC) ──
-  // Format : TOTAL 1038 16 257,24 17 911,79 ...
+  // pdf.js : "TOTAL 825 14 375,31 15 867,58 17,42 19,23"
   let tickets_nb=null, ca_ht=null, ca_ttc=null;
-  const totM = txt.match(/TOTAL\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
-  if(totM) {
-    tickets_nb = parseInt(totM[1]);
-    ca_ht  = num(totM[2]);
-    ca_ttc = num(totM[3]);
+  const totM = T.match(new RegExp('TOTAL\\s+(\\d+)\\s+'+MO+'\\s+'+MO));
+  if(totM){ tickets_nb=parseInt(totM[1]); ca_ht=num(totM[2]); ca_ttc=num(totM[3]); }
+
+  // ── LIGNES CANAUX (HT + TTC) ──
+  // pdf.js : "TOTAL DRIVE 190 3 375,55 17,77 23,48 % 3 732,70 19,65"
+  //          → nb, HT, P.M(HT), %, TTC, P.M(TTC)
+  function ligneCanal(label){
+    const m = T.match(new RegExp(label+'\\s+(\\d+)\\s+'+MO+'\\s+'+MO+'\\s+'+PC+'\\s+'+MO));
+    if(m) return { nb:parseInt(m[1]), ht:num(m[2]), ttc:num(m[4]) };
+    const m2 = T.match(new RegExp(label+'\\s+(\\d+)\\s+'+MO+'\\s+'+MO));
+    return m2 ? { nb:parseInt(m2[1]), ht:num(m2[2]), ttc:num(m2[3]) } : {nb:null,ht:null,ttc:null};
   }
+  const drive    = ligneCanal('TOTAL DRIVE');
+  const kiosk    = ligneCanal('TOTAL KIOSK');
+  const livr     = ligneCanal('TOTAL HOME DELIVERY');
+  const comptoir = ligneCanal('TOTAL COMPTOIR');
+  const cc       = ligneCanal('TOTAL CLICK\\s*&\\s*COLLECT');
 
-  // ── DRIVE ──
-  let drive_voitures=null, drive_ttc=null;
-  const dvM = txt.match(/DRIVE[_\s]THROUGH\s+(\d+)/);
-  if(dvM) drive_voitures = parseInt(dvM[1]);
-  const dtM = txt.match(/TOTAL DRIVE\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
-  if(dtM) drive_ttc = num(dtM[3]);
+  const drive_ht=drive.ht, drive_ttc=drive.ttc;
+  const kiosk_ht=kiosk.ht, kiosk_ttc=kiosk.ttc;
+  const livraison_ht=livr.ht, livraison_ttc=livr.ttc, livraison_nb=livr.nb;
+  const comptoir_ht=comptoir.ht, comptoir_ttc=comptoir.ttc;
+  const cc_ht=cc.ht, cc_ttc=cc.ttc;
 
-  // ── KIOSK ──
-  let kiosk_ttc=null;
-  const ktM = txt.match(/TOTAL KIOSK\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
-  if(ktM) kiosk_ttc = num(ktM[3]);
-
-  // ── LIVRAISON ──
-  let livraison_nb=null, livraison_ttc=null;
-  const lvM = txt.match(/TOTAL HOME DELIVERY\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
-  if(lvM) { livraison_nb=parseInt(lvM[1]); livraison_ttc=num(lvM[3]); }
-
-  // ── COMPTOIR ──
-  let comptoir_ttc=null;
-  const cpM = txt.match(/TOTAL COMPTOIR\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
-  if(cpM) comptoir_ttc = num(cpM[3]);
-
-  // ── CLICK & COLLECT ──
-  let cc_ttc=null;
-  const ccM = txt.match(/TOTAL CLICK\s*&\s*COLLECT\s+(\d+)\s+(\d[\d\s]*,\d+)\s+(\d[\d\s]*,\d+)/);
-  if(ccM) cc_ttc = num(ccM[3]);
+  // ── DRIVE : nombre de voitures = nb de la ligne TOTAL DRIVE (pas la 1ʳᵉ DRIVE_THROUGH) ──
+  let drive_voitures = drive.nb;
+  if(drive_voitures==null){
+    const dvM = T.match(/DRIVE DRIVE[_ ]THROUGH\s+(\d+)/);
+    if(dvM) drive_voitures = parseInt(dvM[1]);
+  }
 
   // ── CORRECTIONS ──
-  // Format ligne : "Corrections Nbr Montant % CA 170 899,80 5,02 %"
-  // Dans le texte PDF les colonnes se suivent
+  // pdf.js : "Corrections % CA Nbr Montant 1 201,75 226 7,57 %" → Montant, Nbr, %
   let corrections_nb=null, corrections_montant=null, corrections_pct=null;
-  const coM = txt.match(/Corrections\s*Nbr\s*Montant\s*%\s*CA\s*(\d+)\s*(\d[\d\s]*,\d+)\s*(\d+,\d+)\s*%/);
-  if(coM) {
-    corrections_nb=parseInt(coM[1]);
-    corrections_montant=num(coM[2]);
-    corrections_pct=num(coM[3]);
-  } else {
-    // Fallback : juste le nombre et montant
-    const coF = txt.match(/Corrections[\s\S]{0,40}?(\d{2,4})\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%/);
-    if(coF){corrections_nb=parseInt(coF[1]);corrections_montant=num(coF[2]);corrections_pct=num(coF[3]);}
-  }
+  const coM = T.match(new RegExp('Corrections[\\s\\S]*?Montant\\s+'+MO+'\\s+(\\d+)\\s+'+PC));
+  if(coM){ corrections_montant=num(coM[1]); corrections_nb=parseInt(coM[2]); corrections_pct=num(coM[3]); }
 
-  // ── REMISES ──
-  // Dans le PDF : "Remises Nbr Montant % CA Sauces offertes Nbr Montant % CA 207 1 156,61 6,46 % 1342 405,70 2,26 %"
-  // Les remises et sauces sont sur la même ligne dans le texte PDF
+  // ── REMISES + SAUCES OFFERTES ──
+  // pdf.js : "...Montant 211 6,68 % 1 060,47 2,42 % 383,60 1227"
+  //   Remises : Nbr=211, %=6,68, Montant=1 060,47 | Sauces : %=2,42, Montant=383,60, Nbr=1227
   let remises_nb=null, remises_montant=null, remises_pct=null;
   let sauces_nb=null, sauces_montant=null, sauces_pct=null;
-  const remSauM = txt.match(/Remises\s*Nbr\s*Montant\s*%\s*CA\s*Sauces\s*offertes\s*Nbr\s*Montant\s*%\s*CA\s*(\d+)\s*(\d[\d\s]*,\d+)\s*(\d+,\d+)\s*%\s*(\d+)\s*(\d[\d\s]*,\d+)\s*(\d+,\d+)/);
-  if(remSauM) {
-    remises_nb=parseInt(remSauM[1]); remises_montant=num(remSauM[2]); remises_pct=num(remSauM[3]);
-    sauces_nb=parseInt(remSauM[4]);  sauces_montant=num(remSauM[5]);  sauces_pct=num(remSauM[6]);
-  } else {
-    // Fallback séparé
-    const remF = txt.match(/Remises[\s\S]{0,20}?(\d{2,4})\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%/);
-    if(remF){remises_nb=parseInt(remF[1]);remises_montant=num(remF[2]);remises_pct=num(remF[3]);}
-    const sauF = txt.match(/Sauces offertes[\s\S]{0,20}?(\d{3,5})\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%/);
-    if(sauF){sauces_nb=parseInt(sauF[1]);sauces_montant=num(sauF[2]);sauces_pct=num(sauF[3]);}
+  const rsM = T.match(new RegExp('Remises[\\s\\S]*?Montant\\s+(\\d+)\\s+'+PC+'\\s+'+MO+'\\s+'+PC+'\\s+'+MO+'\\s+(\\d+)'));
+  if(rsM){
+    remises_nb=parseInt(rsM[1]); remises_pct=num(rsM[2]); remises_montant=num(rsM[3]);
+    sauces_pct=num(rsM[4]); sauces_montant=num(rsM[5]); sauces_nb=parseInt(rsM[6]);
   }
 
-  // ── ANNULATIONS / COMMANDES OUVERTES / REPAS EMPLOYES ──
-  // Format : "Annulations Commandes Ouvertes Repas Employés Nbr Montant % CA Nbr Montant % CA Nbr V Faciale % CA 1 10,00 0,06 % 5 45,30 0,25 % 21 266,65 1,49 %"
-  let annulations_nb=null, annulations_montant=null;
-  let commandes_ouvertes_nb=null, commandes_ouvertes_montant=null;
+  // ── ANNULATIONS / COMMANDES OUVERTES / REPAS EMPLOYÉS ──
+  // pdf.js : "...Nbr 13,20 21 255,30 5 133,15 0,08 % 0,84 % 1,61 % 1 1"
+  //   Montants entrelacés : 13,20(annul) | 21(repas nb) 255,30(repas mnt) | 5(cmd nb) 133,15(cmd mnt)
+  //   % dans l'ordre des colonnes : 0,08(annul) 0,84(cmd) 1,61(repas) ; puis annul nb = 1
+  let annulations_nb=null, annulations_montant=null, annulations_pct=null;
+  let commandes_ouvertes_nb=null, commandes_ouvertes_montant=null, commandes_ouvertes_pct=null;
   let repas_employes_nb=null, repas_employes_montant=null, repas_employes_pct=null;
 
-  const annCoRep = txt.match(/Annulations[\s\S]{0,80}?Repas\s*Employ[\s\S]{0,60}?CA\s*(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%\s*(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%\s*(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)\s*%/);
-  if(annCoRep) {
-    annulations_nb=parseInt(annCoRep[1]); annulations_montant=num(annCoRep[2]);
-    commandes_ouvertes_nb=parseInt(annCoRep[4]); commandes_ouvertes_montant=num(annCoRep[5]);
-    repas_employes_nb=parseInt(annCoRep[7]); repas_employes_montant=num(annCoRep[8]); repas_employes_pct=num(annCoRep[9]);
-  } else {
-    // Fallback individuel
-    const annF = txt.match(/Annulations[\s\S]{0,20}?\n?\s*(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)/);
-    if(annF){annulations_nb=parseInt(annF[1]);annulations_montant=num(annF[2]);}
-    const coF2 = txt.match(/Commandes Ouvertes[\s\S]{0,20}?(\d+)\s+(\d[\d\s]*,\d+)/);
-    if(coF2 && coF2[1]!==String(annulations_nb)){commandes_ouvertes_nb=parseInt(coF2[1]);commandes_ouvertes_montant=num(coF2[2]);}
-    const repF = txt.match(/Repas\s*Employ[\s\S]{0,30}?(\d+)\s+(\d[\d\s]*,\d+)\s+(\d+,\d+)/);
-    if(repF){repas_employes_nb=parseInt(repF[1]);repas_employes_montant=num(repF[2]);repas_employes_pct=num(repF[3]);}
+  const acrZone = T.split(/Repas Employ[ée]s?/).pop();
+  const acr = acrZone.match(new RegExp(
+    MO+'\\s+(\\d+)\\s+'+MO+'\\s+(\\d+)\\s+'+MO+'\\s+'+PC+'\\s+'+PC+'\\s+'+PC+'\\s+(\\d+)'
+  ));
+  if(acr){
+    annulations_montant=num(acr[1]);  annulations_pct=num(acr[6]);  annulations_nb=parseInt(acr[9]);
+    repas_employes_nb=parseInt(acr[2]); repas_employes_montant=num(acr[3]); repas_employes_pct=num(acr[8]);
+    commandes_ouvertes_nb=parseInt(acr[4]); commandes_ouvertes_montant=num(acr[5]); commandes_ouvertes_pct=num(acr[7]);
   }
 
-  // ── ENCAISSEMENTS ──
+  // ── ENCAISSEMENTS (théorique Prélevé Compté/Déposé) ──
+  // pdf.js : "0,00 0,00 10 090,41 CB 10 090,41" — Compté/Déposé juste avant le libellé.
   const getEnc = (label) => {
     const esc = label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    const r = new RegExp(esc+'\\s+([\\d\\s,]+)\\s+0,00\\s+([\\d\\s,]+)\\s+[\\d,\\-]+');
-    const m = txt.match(r);
-    return m ? num(m[2]) : null;
+    let m = T.match(new RegExp('0,00\\s+0,00\\s+'+MO+'\\s+'+esc+'\\b'));
+    if(m) return num(m[1]);
+    m = T.match(new RegExp(esc+'\\s+'+MO));
+    return m ? num(m[1]) : null;
   };
   const cb           = getEnc('CB');
   const especes      = getEnc('ESPECES');
@@ -5451,25 +5486,24 @@ function parserSynthesCA(txt) {
   const bk_livraison = getEnc('LIVRAISON BK');
   const trd          = getEnc('TRD');
 
-  // ── ERREUR CAISSE ──
+  // ── ÉCART / ERREUR CAISSE ──
   let erreur_caisse = null;
-  const errM = txt.match(/TOTAL CA ENCAISSE\s+[\d\s,]+\s+0,00\s+[\d\s,]+\s+([\-\d,]+)/);
-  if(errM) erreur_caisse = num(errM[1]);
-
-  // Erreur caisse
-  // erreur_caisse déjà extrait ci-dessus
+  const errM = T.match(new RegExp('TOTAL CA ENCAISSE\\s+'+MO+'\\s+'+MO+'\\s+([\\-\\d,]+)'));
+  if(errM) erreur_caisse = num(errM[3]);
 
   return {
     date, ca_ht, ca_ttc, tickets_nb,
-    drive_voitures, drive_ttc,
-    kiosk_ttc, livraison_ttc, livraison_nb,
-    comptoir_ttc, cc_ttc,
+    drive_voitures, drive_ht, drive_ttc,
+    kiosk_ht, kiosk_ttc,
+    livraison_ht, livraison_ttc, livraison_nb,
+    comptoir_ht, comptoir_ttc,
+    cc_ht, cc_ttc,
     corrections_nb, corrections_montant, corrections_pct,
     remises_nb, remises_montant, remises_pct,
-    sauces_nb, sauces_montant,
-    annulations_nb, annulations_montant,
-    commandes_ouvertes_nb, commandes_ouvertes_montant,
-    repas_employes_nb, repas_employes_montant,
+    sauces_nb, sauces_montant, sauces_pct,
+    annulations_nb, annulations_montant, annulations_pct,
+    commandes_ouvertes_nb, commandes_ouvertes_montant, commandes_ouvertes_pct,
+    repas_employes_nb, repas_employes_montant, repas_employes_pct,
     erreur_caisse, cb, especes, uber_eats, deliveroo, bk_livraison, trd
   };
 }
@@ -5662,30 +5696,47 @@ async function enregistrerJourneeMgr() {
       // retirer un éventuel champ 'date' dupliqué de la synthèse déjà géré
       let { error:eJ } = await SB.from('journees').upsert(rowJournee,{onConflict:'restaurant,date'});
       if(eJ){
-        console.warn('journees upsert complet échoué, retry minimal', eJ);
-        // Retry avec uniquement les colonnes essentielles connues
-        const minimal = {
-          restaurant:resto, date,
-          ca_ht: MGR_JOUR.synthese?.ca_ht ?? null,
-          ca_ttc: MGR_JOUR.synthese?.ca_ttc ?? null,
-          tickets_nb: MGR_JOUR.synthese?.tickets_nb ?? null,
-          corrections_nb: MGR_JOUR.synthese?.corrections_nb ?? null,
-          corrections_montant: MGR_JOUR.synthese?.corrections_montant ?? null,
-          corrections_pct: MGR_JOUR.synthese?.corrections_pct ?? null,
-          annulations_nb: MGR_JOUR.synthese?.annulations_nb ?? null,
-          annulations_montant: MGR_JOUR.synthese?.annulations_montant ?? null,
-          commandes_ouvertes_nb: MGR_JOUR.synthese?.commandes_ouvertes_nb ?? null,
-          commandes_ouvertes_montant: MGR_JOUR.synthese?.commandes_ouvertes_montant ?? null,
-          repas_employes_nb: MGR_JOUR.synthese?.repas_employes_nb ?? null,
-          repas_employes_montant: MGR_JOUR.synthese?.repas_employes_montant ?? null,
-          manager_ouverture: equipe.manager_ouverture,
-          manager_fermeture: equipe.manager_fermeture,
-          directeur_midi: equipe.directeur_midi,
-          directeur_soir: equipe.directeur_soir,
-          commentaire: equipe.commentaire
-        };
-        const { error:eJ2 } = await SB.from('journees').upsert(minimal,{onConflict:'restaurant,date'});
-        if(eJ2){ erreurs.push('Journée : '+eJ2.message); console.error('journees minimal échoué', eJ2); }
+        console.warn('journees upsert complet échoué, retry en retirant les colonnes optionnelles', eJ);
+        // On NE perd PAS de données : on repart du row complet et on retire seulement
+        // les colonnes susceptibles de ne pas exister encore dans la base.
+        const fallback = { ...rowJournee };
+        const colonnesOptionnelles = ['drive_ht','kiosk_ht','livraison_ht','livraison_nb','comptoir_ht','cc_ht','annulations_pct','commandes_ouvertes_pct','sauces_pct'];
+        colonnesOptionnelles.forEach(c=>{ delete fallback[c]; });
+        const { error:eJ2 } = await SB.from('journees').upsert(fallback,{onConflict:'restaurant,date'});
+        if(eJ2){
+          // Dernier recours : ne garder que les colonnes essentielles très sûres
+          console.warn('journees retry partiel échoué, retry minimal', eJ2);
+          const minimal = {
+            restaurant:resto, date,
+            ca_ht: MGR_JOUR.synthese?.ca_ht ?? null,
+            ca_ttc: MGR_JOUR.synthese?.ca_ttc ?? null,
+            tickets_nb: MGR_JOUR.synthese?.tickets_nb ?? null,
+            corrections_nb: MGR_JOUR.synthese?.corrections_nb ?? null,
+            corrections_montant: MGR_JOUR.synthese?.corrections_montant ?? null,
+            corrections_pct: MGR_JOUR.synthese?.corrections_pct ?? null,
+            remises_nb: MGR_JOUR.synthese?.remises_nb ?? null,
+            remises_montant: MGR_JOUR.synthese?.remises_montant ?? null,
+            remises_pct: MGR_JOUR.synthese?.remises_pct ?? null,
+            sauces_nb: MGR_JOUR.synthese?.sauces_nb ?? null,
+            sauces_montant: MGR_JOUR.synthese?.sauces_montant ?? null,
+            annulations_nb: MGR_JOUR.synthese?.annulations_nb ?? null,
+            annulations_montant: MGR_JOUR.synthese?.annulations_montant ?? null,
+            commandes_ouvertes_nb: MGR_JOUR.synthese?.commandes_ouvertes_nb ?? null,
+            commandes_ouvertes_montant: MGR_JOUR.synthese?.commandes_ouvertes_montant ?? null,
+            repas_employes_nb: MGR_JOUR.synthese?.repas_employes_nb ?? null,
+            repas_employes_montant: MGR_JOUR.synthese?.repas_employes_montant ?? null,
+            repas_employes_pct: MGR_JOUR.synthese?.repas_employes_pct ?? null,
+            drive_voitures: MGR_JOUR.synthese?.drive_voitures ?? null,
+            manager_ouverture: equipe.manager_ouverture,
+            manager_fermeture: equipe.manager_fermeture,
+            directeur_midi: equipe.directeur_midi,
+            directeur_soir: equipe.directeur_soir,
+            commentaire: equipe.commentaire
+          };
+          const { error:eJ3 } = await SB.from('journees').upsert(minimal,{onConflict:'restaurant,date'});
+          if(eJ3){ erreurs.push('Journée : '+eJ3.message+' — pensez à exécuter le script SQL (ALTER TABLE) dans Configuration.'); console.error('journees minimal échoué', eJ3); }
+          else erreurs.push('⚠️ Journée enregistrée en mode réduit : exécutez le script SQL (ALTER TABLE) dans Configuration pour sauvegarder les CA HT et les % manquants.');
+        }
       }
     } else {
       const idx=DATA.findIndex(d=>d.date===date); const row={restaurant:resto,date,...(MGR_JOUR.synthese||{})}; if(idx>=0) DATA[idx]={...DATA[idx],...row}; else DATA.push(row);
