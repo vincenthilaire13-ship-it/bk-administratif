@@ -297,6 +297,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-section role-mgrspace" style="display:none">Ma journée</div>
     <div class="nav-item role-mgrspace" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
     <div class="nav-section role-superadmin-only" style="display:none">Analyse</div>
+    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('analyses')"><span>📊</span><span>Analyses</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('managers')"><span>👥</span><span>Suivi managers</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('ventes')"><span>⏱️</span><span>Ventes demi-heure</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
@@ -699,7 +700,8 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
               <label class="form-label">💬 Commentaire</label>
               <input type="text" class="form-input" id="mgr-comment" placeholder="Événement, météo, incident...">
             </div>
-            <button class="btn btn-accent" style="width:100%;padding:12px;font-size:13px" onclick="enregistrerJourneeMgr()">💾 Enregistrer la journée</button>
+            <div id="mgr-coherence-alert" style="display:none;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);color:var(--red);padding:10px 14px;border-radius:var(--radius-sm);font-size:11px;margin-bottom:12px;line-height:1.5"></div>
+            <button class="btn btn-accent" id="mgr-btn-save" style="width:100%;padding:12px;font-size:13px" onclick="enregistrerJourneeMgr()">💾 Enregistrer la journée</button>
             <div class="mgr-alert-ok" id="mgr-save-ok">✓ Journée enregistrée !</div>
           </div>
         </div>
@@ -875,6 +877,29 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     </section>
 
     <!-- SUIVI MANAGERS -->
+    <!-- ════════ ANALYSES ════════ -->
+    <section class="section" id="sec-analyses">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px" id="an-tabs">
+        <button class="btn an-tab btn-accent" data-an="sos"  onclick="anSwitch('sos')">🚗 Temps de service</button>
+        <button class="btn an-tab" data-an="repas"           onclick="anSwitch('repas')">🍔 Bons repas</button>
+        <button class="btn an-tab" data-an="annulations"     onclick="anSwitch('annulations')">🚫 Annulations</button>
+        <button class="btn an-tab" data-an="corrections"     onclick="anSwitch('corrections')">✏️ Corrections</button>
+        <button class="btn an-tab" data-an="tables"          onclick="anSwitch('tables')">📂 Tables ouvertes</button>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
+        <span style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)">Période</span>
+        <input type="date" class="form-input" id="an-date-from" style="width:auto;padding:6px 10px" onchange="anRefresh()">
+        <span style="color:var(--muted)">→</span>
+        <input type="date" class="form-input" id="an-date-to" style="width:auto;padding:6px 10px" onchange="anRefresh()">
+        <button class="btn" style="font-size:10px;padding:5px 10px" onclick="anSetPeriode(7)">7 j</button>
+        <button class="btn" style="font-size:10px;padding:5px 10px" onclick="anSetPeriode(30)">30 j</button>
+        <button class="btn" style="font-size:10px;padding:5px 10px" onclick="anSetPeriode(90)">90 j</button>
+      </div>
+      <div id="an-content">
+        <div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Analyses</div><div class="empty-sub">Chargement…</div></div>
+      </div>
+    </section>
+
     <section class="section" id="sec-managers">
       <div id="managers-content">
         <div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Suivi managers</div><div class="empty-sub">Chargement des données…</div></div>
@@ -2825,7 +2850,7 @@ const SEED_BK500_2026 = [
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',analyses:'Analyses',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)'};
 function nav(id) {
   const targetSec = document.getElementById('sec-'+id);
   if(!targetSec) { console.warn("nav: section sec-"+id+" introuvable"); return; }
@@ -2842,6 +2867,7 @@ function nav(id) {
   if(id==='seuils') renderSeuils();
   if(id==='acces') renderAcces();
   if(id==='managers') renderManagers();
+  if(id==='analyses') anInit();
   if(id==='manager'){
     showMgrSection('home');
     const nameEl = document.getElementById('mgr-hello-name');
@@ -4534,6 +4560,29 @@ function handleMgrFiles(files) {
   if(FILES_LIST.length > 0) lireTousPDFs(FILES_LIST);
 }
 
+// ══════════════════════════════════════════════════════════════
+//  DÉPÔT DES 4 PDF DE LA JOURNÉE — détection + contrôle cohérence
+// ══════════════════════════════════════════════════════════════
+// Les 4 documents attendus chaque jour
+const MGR_PDF_ATTENDUS = [
+  {key:'synthese', label:'Synthèse CA',          ico:'📄'},
+  {key:'repas',    label:'Repas employés',       ico:'🍔'},
+  {key:'ventes',   label:'Ventes horaire ¼h',    ico:'⏱️'},
+  {key:'sos',      label:'SOS Drive (temps service)', ico:'🚗'},
+];
+// Objet rassemblant les données du jour, rempli au fur et à mesure
+let MGR_JOUR = null;
+
+function detecterTypePDF(txt){
+  if(/Rapidit[ée] de service au Drive|SOS\s*DRIVE/i.test(txt)) return 'sos';
+  // Synthèse AVANT repas (la synthèse contient le mot "Repas Employés" dans un tableau)
+  if(/Synth[èe]se CA/i.test(txt) || (/TOTAL DRIVE/i.test(txt) && /TOTAL KIOSK/i.test(txt))) return 'synthese';
+  if(/VENTES HORAIRE|PAR QUART D'HEURE|DEMI HEU/i.test(txt)) return 'ventes';
+  // Repas : titre spécifique "Repas Employé Operationnel" (pas juste "Repas Employés")
+  if(/Repas\s*Employ[ée]\s*Operationnel|BENEFICIAIRE.*MATRICULE|MATRICULE\s*NBR REPAS/i.test(txt)) return 'repas';
+  return null;
+}
+
 async function lireTousPDFs(files) {
   document.getElementById('mgr-loading').style.display = 'block';
   document.getElementById('mgr-pdf-err').style.display = 'none';
@@ -4542,8 +4591,8 @@ async function lireTousPDFs(files) {
   const pdfjsLib = window['pdfjs-dist/build/pdf'];
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-  let synthese = null;
-  let ventesData = null;
+  // Réinitialiser l'objet du jour
+  MGR_JOUR = { synthese:null, repas:null, ventes:null, sos:null, dates:{}, fichiers:{} };
   const summaries = [];
 
   for(let i=0; i<files.length; i++) {
@@ -4559,52 +4608,113 @@ async function lireTousPDFs(files) {
         txt += tc.items.map(t=>t.str).join(' ') + ' ';
       }
 
-      // Détecter le type de PDF
-      if(txt.includes('Synthèse CA') || txt.includes('TOTAL DRIVE') || txt.includes('TOTAL KIOSK')) {
-        synthese = parserSynthesCA(txt);
-        summaries.push({nom:file.name, type:'Synthèse CA', ok:true, date:synthese?.date});
-      } else if(txt.includes('VENTES HORAIRE') || txt.includes('DEMI HEU') || txt.includes('COMPTOIR') && txt.includes('CABINE')) {
-        ventesData = txt;
-        summaries.push({nom:file.name, type:'Ventes demi-heure', ok:true});
+      const type = detecterTypePDF(txt);
+      if(type === 'synthese'){
+        MGR_JOUR.synthese = parserSynthesCA(txt);
+        MGR_JOUR.dates.synthese = MGR_JOUR.synthese?.date || null;
+        MGR_JOUR.fichiers.synthese = file.name;
+        summaries.push({key:'synthese', nom:file.name, label:'Synthèse CA', ok:true, date:MGR_JOUR.synthese?.date});
+      } else if(type === 'repas'){
+        MGR_JOUR.repas = parserRepas(txt);
+        MGR_JOUR.dates.repas = MGR_JOUR.repas?.date || null;
+        MGR_JOUR.fichiers.repas = file.name;
+        summaries.push({key:'repas', nom:file.name, label:'Repas employés', ok:true, date:MGR_JOUR.repas?.date, info:`${MGR_JOUR.repas.employes.length} employés · ${MGR_JOUR.repas.total?.nb_repas||'?'} repas`});
+      } else if(type === 'ventes'){
+        MGR_JOUR.ventes = parserVentesHoraire(txt);
+        MGR_JOUR.dates.ventes = MGR_JOUR.ventes?.date || null;
+        MGR_JOUR.fichiers.ventes = file.name;
+        MGR_VENTES_TXT = txt;
+        summaries.push({key:'ventes', nom:file.name, label:'Ventes horaire ¼h', ok:true, date:MGR_JOUR.ventes?.date, info:`${MGR_JOUR.ventes.tickets||'?'} tickets`});
+      } else if(type === 'sos'){
+        MGR_JOUR.sos = parserSOS(txt);
+        MGR_JOUR.dates.sos = MGR_JOUR.sos?.date || null;
+        MGR_JOUR.fichiers.sos = file.name;
+        summaries.push({key:'sos', nom:file.name, label:'SOS Drive', ok:true, date:MGR_JOUR.sos?.date, info:MGR_JOUR.sos.totalJour?('Temps moyen '+secToHMS(MGR_JOUR.sos.totalJour.total_sec)):''});
       } else {
-        summaries.push({nom:file.name, type:'Autre document', ok:null});
+        summaries.push({key:null, nom:file.name, label:'Document non reconnu', ok:false});
       }
     } catch(err) {
-      summaries.push({nom:file.name, type:'Erreur lecture', ok:false});
+      summaries.push({key:null, nom:file.name, label:'Erreur lecture ('+file.name+')', ok:false});
+      console.error(err);
     }
   }
 
   document.getElementById('mgr-loading').style.display = 'none';
 
-  if(!synthese && !ventesData) {
+  // ── CONTRÔLE DE COHÉRENCE ──
+  const presents = MGR_PDF_ATTENDUS.filter(p=>MGR_JOUR[p.key]);
+  const manquants = MGR_PDF_ATTENDUS.filter(p=>!MGR_JOUR[p.key]);
+  const datesDistinctes = [...new Set(Object.values(MGR_JOUR.dates).filter(Boolean))];
+
+  // Construire le tableau récapitulatif de contrôle
+  let recap = '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:4px">';
+  for(const p of MGR_PDF_ATTENDUS){
+    const s = summaries.find(x=>x.key===p.key);
+    const present = !!MGR_JOUR[p.key];
+    recap += `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:6px 10px;border-radius:8px;background:var(--bg3);border:1px solid ${present?'rgba(62,207,142,.25)':'rgba(248,113,113,.25)'}">
+      <span style="font-size:14px">${p.ico}</span>
+      <span style="flex:1">${p.label}</span>
+      ${present
+        ? `<span style="color:var(--muted2);font-size:10px">${s?.info||''}</span><span style="color:var(--green);font-weight:600">✓</span>`
+        : `<span style="color:var(--red);font-size:10px">manquant</span><span style="color:var(--red)">✗</span>`}
+    </div>`;
+  }
+  // documents non reconnus
+  summaries.filter(s=>s.ok===false).forEach(s=>{
+    recap += `<div style="font-size:10px;color:var(--red);padding:2px 10px">⚠ ${s.label}</div>`;
+  });
+  recap += '</div>';
+
+  // Bloc d'alerte cohérence
+  let bloque = false;
+  let alerte = '';
+  if(manquants.length > 0){
+    bloque = true;
+    alerte = `🚫 <strong>${manquants.length} document(s) manquant(s)</strong> : ${manquants.map(m=>m.label).join(', ')}. Déposez les 4 PDF pour pouvoir valider.`;
+  } else if(datesDistinctes.length > 1){
+    bloque = true;
+    alerte = `🚫 <strong>Les dates ne correspondent pas !</strong> Dates trouvées : ${datesDistinctes.map(d=>formatDate(d)).join(' · ')}. Vérifiez que les 4 PDF sont bien du même jour.`;
+  }
+
+  // Aucun PDF reconnu du tout
+  if(presents.length === 0){
     const e = document.getElementById('mgr-pdf-err');
-    e.textContent = '✗ Aucun PDF reconnu. Vérifiez vos fichiers (Synthèse CA ou Ventes horaire).';
+    e.innerHTML = '✗ Aucun PDF reconnu. Vérifiez vos fichiers.';
     e.style.display = 'block';
+    document.getElementById('mgr-pdf-summary').innerHTML = recap;
+    document.getElementById('mgr-step2').style.display = 'block';
     return;
   }
 
-  // Stocker pour enregistrement
-  MGR_EXTRACTED = synthese || {};
-  MGR_VENTES_TXT = ventesData;
+  const dateJour = datesDistinctes[0] || null;
+  MGR_JOUR.date = dateJour;
 
-  // Afficher étape 2
+  // Affichage étape 2
   document.getElementById('mgr-step2').style.display = 'block';
   document.getElementById('mgr-step2').scrollIntoView({behavior:'smooth'});
 
-  // Date et CA
-  const dateLabel = MGR_EXTRACTED.date
-    ? formatDate(MGR_EXTRACTED.date)+' — '+jourSemaine(new Date(MGR_EXTRACTED.date))
-    : '—';
+  const dateLabel = dateJour ? formatDate(dateJour)+' — '+jourSemaine(new Date(dateJour)) : '— date non détectée —';
   document.getElementById('mgr-date-label').textContent = dateLabel;
-  document.getElementById('mgr-ca-label').textContent = (MGR_EXTRACTED.ca_ht||MGR_EXTRACTED.ca_ttc)
-    ? 'CA HT : '+fmt(caHT(MGR_EXTRACTED))+' €  ·  '+(MGR_EXTRACTED.tickets_nb||'—')+' tickets'
-    : (ventesData ? 'Ventes horaire chargées' : 'PDF chargé');
+  const syn = MGR_JOUR.synthese;
+  document.getElementById('mgr-ca-label').textContent = syn && (syn.ca_ht||syn.ca_ttc)
+    ? 'CA HT : '+fmt(caHT(syn))+' €  ·  '+(syn.tickets_nb||'—')+' tickets'
+    : 'Documents chargés';
 
-  // Résumé des fichiers
-  document.getElementById('mgr-pdf-summary').innerHTML = summaries.map(s=>`
-    <span style="font-size:10px;padding:3px 8px;border-radius:99px;border:1px solid ${s.ok===true?'rgba(62,207,142,.3)':s.ok===false?'rgba(248,113,113,.3)':'var(--border2)'};color:${s.ok===true?'var(--green)':s.ok===false?'var(--red)':'var(--muted2)'}">
-      ${s.ok===true?'✓':s.ok===false?'✗':'?'} ${s.type}
-    </span>`).join('');
+  document.getElementById('mgr-pdf-summary').innerHTML = recap;
+
+  // Gérer le bouton de validation (bloqué si incohérence)
+  const btn = document.getElementById('mgr-btn-save');
+  const errBox = document.getElementById('mgr-coherence-alert');
+  if(bloque){
+    if(errBox){ errBox.innerHTML = alerte; errBox.style.display='block'; }
+    if(btn){ btn.disabled = true; btn.style.opacity='.45'; btn.style.cursor='not-allowed'; }
+  } else {
+    if(errBox){ errBox.style.display='none'; }
+    if(btn){ btn.disabled = false; btn.style.opacity='1'; btn.style.cursor='pointer'; }
+  }
+
+  // Conserver compat ancienne logique
+  MGR_EXTRACTED = MGR_JOUR.synthese || {};
 
   populateManagerSelect();
 }
@@ -4791,25 +4901,152 @@ function parserSynthesCA(txt) {
 
 let MGR_EXTRACTED = null;
 
+// ══════════════════════════════════════════════════════════════
+//  PARSERS DES NOUVEAUX PDF (Repas, SOS Drive, Ventes horaire ¼h)
+// ══════════════════════════════════════════════════════════════
+const hmsToSec = (s) => { if(!s||s==='-')return null; const p=String(s).split(':').map(x=>parseInt(x,10)); return p.length===2?p[0]*60+p[1]:null; };
+const secToHMS = (sec) => { if(sec==null)return'—'; const m=Math.floor(sec/60),s=sec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); };
+const _num = (s) => s==null ? null : parseFloat(String(s).replace(/[\s€]/g,'').replace(',','.'));
+
+// ── REPAS EMPLOYÉS (détail nominatif) ──
+function parserRepas(txt){
+  const dm = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2,4})/);
+  const date = dm ? `20${dm[3].slice(-2)}-${dm[2]}-${dm[1]}` : null;
+  const re = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\- ]+?)\s+(\d{1,4})\s+(\d{1,2})\s+(\d{1,3},\d{2})\s+(\d{1,3},\d{2})€?\s+(\d{1,3})/g;
+  const byCode = new Map();
+  let m;
+  while((m = re.exec(txt))!==null){
+    let nom = m[1].trim().replace(/\s+/g,' ');
+    if(/BENEFICIAIRE|TOTAL|R[eé]capitulatif|COURONNES|Vendeurs|SAINT CLEMENT|journ[eé]e fiscale|Edit[eé] le|Operationnel/i.test(nom)) continue;
+    const code = m[2];
+    const rec = { nom, code, nb_repas:parseInt(m[3],10), valorisation:_num(m[4]), supplement:_num(m[5]), couronnes:parseInt(m[6],10) };
+    if(!byCode.has(code)){ byCode.set(code, rec); }
+    else { const ex=byCode.get(code); if(rec.nom.length>ex.nom.length) ex.nom=rec.nom; }
+  }
+  const employes = [...byCode.values()];
+  const tot = txt.match(/TOTAL\s+(?:\d{2}\/\d{2}\/\d{4})?\s*(\d{1,3})\s+(\d{1,4},\d{2})\s+(\d{1,3},\d{2})€/);
+  const total = tot ? { nb_repas:parseInt(tot[1],10), valorisation:_num(tot[2]), supplement:_num(tot[3]) } : null;
+  return { date, employes, total };
+}
+
+// ── SOS DRIVE (temps de service) ──
+function parserSOS(txt){
+  let date=null;
+  const dm = txt.match(/(\d{4})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{1,2})/i);
+  if(dm){ const M={janvier:'01',février:'02',mars:'03',avril:'04',mai:'05',juin:'06',juillet:'07',août:'08',septembre:'09',octobre:'10',novembre:'11',décembre:'12'};
+    date=`${dm[1]}-${M[dm[2].toLowerCase()]}-${String(dm[3]).padStart(2,'0')}`; }
+  let resto=null;
+  const rm = txt.match(/(Montpellier\s+Saint[- ]Cl[eé]ment|Saint[- ]Jean[- ]de[- ]V[eé]das|Pr[eé]s\s+d'Ar[eè]nes)/i);
+  if(rm) resto = rm[1].trim();
+
+  const tk = txt.split(/\s+/);
+  const isTime = t => /^\d{1,2}:\d{2}$/.test(t) || t==='-';
+
+  function read(startIdx){
+    let i=startIdx;
+    while(i<tk.length && !isTime(tk[i])) i++;
+    const times=[];
+    while(i<tk.length && times.length<10){
+      if(isTime(tk[i])){ times.push(tk[i]); i++; }
+      else if(tk[i]==='midi'){ i++; }
+      else break;
+    }
+    let ca=null,tm=null,cmd=null,voit=null;
+    const rest=[]; let j=i;
+    while(j<tk.length && rest.length<8){
+      const t=tk[j];
+      if(t==='-'){ j++; continue; }
+      if(isTime(t)) break;
+      if(/^(Total|Matin|Déjeun|Après|Dîner|Soir|Nuit|Peak|Objectifs|Montpellier|Saint|Près)/i.test(t)) break;
+      rest.push(t); j++;
+    }
+    const monies=[], ints=[];
+    for(const t of rest){
+      if(/^€?\d[\d ]*,\d{2}€?$/.test(t)) monies.push(_num(t));
+      else if(/^\d+$/.test(t)) ints.push(parseInt(t,10));
+    }
+    ca=monies[0]??null; tm=monies[1]??null; cmd=ints[0]??null; voit=ints[1]??null;
+    const n=times.length;
+    return {
+      attente:times[0]||null,
+      total: n>=2 ? times[n-2] : null,
+      depart: n>=1 ? times[n-1] : null,
+      total_sec: hmsToSec(n>=2 ? times[n-2] : null),
+      ca, tm, commandes:cmd, voitures:voit
+    };
+  }
+
+  const map=[
+    {key:'matinee',anchor:'Matinée',plage:'7h-12h'},
+    {key:'dejeuner',anchor:'Déjeuner',plage:'12h-14h'},
+    {key:'apresmidi',anchor:'Après-',plage:'14h-19h'},
+    {key:'diner',anchor:'Dîner',plage:'19h-21h'},
+    {key:'soir',anchor:'Soir',plage:'21h-23h'},
+    {key:'nuit',anchor:'Nuit',plage:'23h-4h'},
+    {key:'peaknuit',anchor:'Peak',plage:'4h-7h'},
+  ];
+  const tranches=[];
+  for(const mp of map){
+    const idx = tk.indexOf(mp.anchor);
+    if(idx<0) continue;
+    tranches.push({key:mp.key, plage:mp.plage, ...read(idx+1)});
+  }
+  let totalJour=null;
+  const tIdx = tk.findIndex((t,i)=> t==='Total' && tk[i+1]==='/');
+  if(tIdx>=0) totalJour = read(tIdx+2);
+  return { date, resto, tranches, totalJour };
+}
+
+// ── VENTES HORAIRE ¼h (total + tranches, pour les horaires) ──
+function parserVentesHoraire(txt){
+  const dm = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2,4})/);
+  const date = dm ? `20${dm[3].slice(-2)}-${dm[2]}-${dm[1]}` : null;
+  // Total : "... 14375,31 1492,27 TOTAL 825" ou "TOTAL 825 ..."
+  let tickets=null, ht=null;
+  const m2 = txt.match(/(\d{4,6},\d{2})\s+(\d{3,5},\d{2})\s+TOTAL\s+(\d+)/);
+  if(m2){ ht=_num(m2[1]); tickets=parseInt(m2[3],10); }
+  else {
+    const m3 = txt.match(/TOTAL\s+(\d+)\b/);
+    if(m3) tickets=parseInt(m3[1],10);
+  }
+  // Tranches simples : HH:MM ... (pour usage horaires futur) — on stocke heure + total approximatif
+  const tranches=[];
+  const re=/(\d{2}:\d{2})\s+(\d+)/g; let mm;
+  const seen=new Set();
+  while((mm=re.exec(txt))!==null){
+    if(seen.has(mm[1])) continue; seen.add(mm[1]);
+    tranches.push({heure:mm[1], nb:parseInt(mm[2],10)});
+  }
+  return { date, tickets, ht, tranches };
+}
+
+
 function resetMgrFlow() {
-  MGR_EXTRACTED = null; MGR_VENTES_TXT = null; FILES_LIST = [];
+  MGR_EXTRACTED = null; MGR_VENTES_TXT = null; FILES_LIST = []; MGR_JOUR = null;
   document.getElementById('file-list').innerHTML = '';
   document.getElementById('file-input').value = '';
   document.getElementById('mgr-step2').style.display = 'none';
   document.getElementById('mgr-pdf-err').style.display = 'none';
   document.getElementById('mgr-pdf-summary').innerHTML = '';
+  const ca = document.getElementById('mgr-coherence-alert'); if(ca) ca.style.display='none';
 }
 
-function enregistrerJourneeMgr() {
-  if(!MGR_EXTRACTED?.date && !MGR_VENTES_TXT) {
-    alert('Aucune donnée extraite. Déposez au moins un PDF.');
+async function enregistrerJourneeMgr() {
+  if(!MGR_JOUR || !MGR_JOUR.date){
+    alert('Aucune donnée valide. Déposez les 4 PDF du même jour.');
     return;
   }
-  const date = MGR_EXTRACTED?.date || new Date().toISOString().slice(0,10);
-  const row = {
-    restaurant: CURRENT_USER?.resto||'BK526',
-    date,
-    ...(MGR_EXTRACTED||{}),
+  // Re-contrôle de sécurité : 4 PDF + même date
+  const manquants = MGR_PDF_ATTENDUS.filter(p=>!MGR_JOUR[p.key]);
+  const dates = [...new Set(Object.values(MGR_JOUR.dates).filter(Boolean))];
+  if(manquants.length>0 || dates.length>1){
+    alert('Validation impossible : il manque des documents ou les dates diffèrent.');
+    return;
+  }
+
+  const resto = CURRENT_USER?.resto || ACTIVE_RESTO || 'BK526';
+  const date  = MGR_JOUR.date;
+  const equipe = {
     manager_ouverture: document.getElementById('mgr-ouv')?.value||null,
     manager_fermeture: document.getElementById('mgr-fer')?.value||null,
     leader_ouverture:  document.getElementById('mgr-leader-ouv')?.value||null,
@@ -4819,16 +5056,64 @@ function enregistrerJourneeMgr() {
     commentaire:       document.getElementById('mgr-comment')?.value||''
   };
 
-  // Si ventes horaire aussi présentes, les stocker localement
-  if(MGR_VENTES_TXT) {
-    const ventesKey = 'bk_ventes_'+date;
-    try { localStorage.setItem(ventesKey, MGR_VENTES_TXT.slice(0,50000)); } catch(e){}
-  }
+  const btn = document.getElementById('mgr-btn-save');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Enregistrement…'; }
 
-  if(typeof upsert==='function') upsert(row,'mgr-save-ok','mgr-save-ok');
-  else {
+  try {
+    // 1) JOURNÉES (synthèse CA + équipe) — table existante
+    const rowJournee = { restaurant:resto, date, ...(MGR_JOUR.synthese||{}), ...equipe };
+    if(SB){
+      await SB.from('journees').upsert(rowJournee,{onConflict:'restaurant,date'});
+    } else {
+      const idx=DATA.findIndex(d=>d.date===date); if(idx>=0) DATA[idx]={...DATA[idx],...rowJournee}; else DATA.push(rowJournee);
+    }
+
+    // 2) REPAS EMPLOYÉS (détail nominatif)
+    if(MGR_JOUR.repas?.employes?.length && SB){
+      // purge des lignes du jour puis insert (évite doublons)
+      await SB.from('repas_employes').delete().eq('restaurant',resto).eq('date',date);
+      const rows = MGR_JOUR.repas.employes.map(e=>({
+        restaurant:resto, date, nom:e.nom, code:String(e.code),
+        nb_repas:e.nb_repas, valorisation:e.valorisation, supplement:e.supplement, couronnes:e.couronnes
+      }));
+      await SB.from('repas_employes').insert(rows);
+    }
+
+    // 3) SOS DRIVE (temps de service)
+    if(MGR_JOUR.sos && SB){
+      const t = MGR_JOUR.sos.totalJour||{};
+      await SB.from('sos_drive').upsert({
+        restaurant:resto, date,
+        total_sec: t.total_sec||null,
+        total_voitures: t.voitures||null,
+        total_commandes: t.commandes||null,
+        total_ca: t.ca||null,
+        tranches: MGR_JOUR.sos.tranches||[],
+        manager_ouverture: equipe.manager_ouverture,
+        manager_fermeture: equipe.manager_fermeture
+      },{onConflict:'restaurant,date'});
+    }
+
+    // 4) VENTES HORAIRE ¼h (pour les horaires)
+    if(MGR_JOUR.ventes && SB){
+      await SB.from('ventes_horaire').upsert({
+        restaurant:resto, date,
+        tickets_total: MGR_JOUR.ventes.tickets||null,
+        ht_total: MGR_JOUR.ventes.ht||null,
+        tranches: MGR_JOUR.ventes.tranches||[]
+      },{onConflict:'restaurant,date'});
+    }
+
+    // OK
     const ok=document.getElementById('mgr-save-ok');
-    if(ok){ok.style.display='block';setTimeout(()=>{ok.style.display='none';resetMgrFlow();},3000);}
+    if(ok){ ok.textContent='✓ Journée complète enregistrée (4 documents rangés) !'; ok.style.display='block'; }
+    renderDashboard();
+    setTimeout(()=>{ if(ok) ok.style.display='none'; resetMgrFlow(); showMgrSection('home'); }, 2600);
+  } catch(err){
+    console.error('Erreur enregistrement journée:', err);
+    alert('Erreur lors de l\'enregistrement : '+(err.message||err));
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='💾 Enregistrer la journée'; }
   }
 }
 
@@ -4924,6 +5209,344 @@ function checkSession(){
 }
 
 // ══ SUIVI MANAGERS ══
+// ══════════════════════════════════════════════════════════════
+//  SECTION ANALYSES (Temps service · Repas · Annulations · Corrections · Tables ouvertes)
+// ══════════════════════════════════════════════════════════════
+let AN_TAB = 'sos';
+let AN_DATA = { sos:[], repas:[], annulations:[] };
+let _anLoaded = false;
+
+function anSetPeriode(jours){
+  const to = new Date();
+  const from = new Date(); from.setDate(from.getDate()-jours+1);
+  document.getElementById('an-date-from').value = from.toISOString().slice(0,10);
+  document.getElementById('an-date-to').value   = to.toISOString().slice(0,10);
+  anRefresh();
+}
+
+function anSwitch(tab){
+  AN_TAB = tab;
+  document.querySelectorAll('.an-tab').forEach(b=>b.classList.toggle('btn-accent', b.dataset.an===tab));
+  anRender();
+}
+
+async function anInit(){
+  // période par défaut : 30 derniers jours si pas encore réglée
+  if(!document.getElementById('an-date-from').value){
+    anSetPeriode(30); // déclenche anRefresh
+  } else {
+    anRefresh();
+  }
+}
+
+async function anRefresh(){
+  const from = document.getElementById('an-date-from').value;
+  const to   = document.getElementById('an-date-to').value;
+  const resto = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') ? ACTIVE_RESTO : (CURRENT_USER?.resto||null);
+  document.getElementById('an-content').innerHTML = '<div class="empty"><div class="empty-icon" style="animation:pulse 1.5s infinite">📊</div><div class="empty-title">Chargement des données…</div></div>';
+
+  if(!SB){
+    document.getElementById('an-content').innerHTML = '<div class="empty"><div class="empty-icon">🔌</div><div class="empty-title">Base non connectée</div><div class="empty-sub">Connectez Supabase dans Configuration pour voir les analyses.</div></div>';
+    return;
+  }
+
+  try {
+    const q = (table)=>{
+      let r = SB.from(table).select('*');
+      if(from) r = r.gte('date', from);
+      if(to)   r = r.lte('date', to);
+      if(resto) r = r.eq('restaurant', resto);
+      return r.order('date',{ascending:true});
+    };
+    const [sos, repas, ann] = await Promise.all([
+      q('sos_drive'), q('repas_employes'), q('annulations')
+    ]);
+    AN_DATA.sos = sos.data||[];
+    AN_DATA.repas = repas.data||[];
+    AN_DATA.annulations = ann.data||[];
+    // Corrections & tables ouvertes : depuis journees (en mémoire DATA filtré par période)
+    anRender();
+  } catch(err){
+    console.error('anRefresh', err);
+    document.getElementById('an-content').innerHTML = '<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Erreur de chargement</div><div class="empty-sub">'+(err.message||err)+'</div></div>';
+  }
+}
+
+function anJourneesPeriode(){
+  const from = document.getElementById('an-date-from').value;
+  const to   = document.getElementById('an-date-to').value;
+  return (DATA||[]).filter(d=> (!from||d.date>=from) && (!to||d.date<=to));
+}
+
+function anRender(){
+  const el = document.getElementById('an-content');
+  if(AN_TAB==='sos')          el.innerHTML = anRenderSOS();
+  else if(AN_TAB==='repas')   el.innerHTML = anRenderRepas();
+  else if(AN_TAB==='annulations') el.innerHTML = anRenderAnnulations();
+  else if(AN_TAB==='corrections') el.innerHTML = anRenderCorrections();
+  else if(AN_TAB==='tables')  el.innerHTML = anRenderTables();
+  // dessiner les graphiques après injection HTML
+  setTimeout(()=>{ try{ anDrawCharts(); }catch(e){console.warn(e);} }, 30);
+}
+
+const _anEmpty = (ico,titre,sub)=>`<div class="empty"><div class="empty-icon">${ico}</div><div class="empty-title">${titre}</div><div class="empty-sub">${sub}</div></div>`;
+
+// ───────── TEMPS DE SERVICE (SOS) ─────────
+let _anSosChart=null;
+function anRenderSOS(){
+  const rows = AN_DATA.sos.filter(r=>r.total_sec);
+  if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service','Les SOS Drive déposés par les managers apparaîtront ici.');
+  const moy = Math.round(rows.reduce((a,b)=>a+b.total_sec,0)/rows.length);
+  const best = rows.reduce((a,b)=>a.total_sec<b.total_sec?a:b);
+  const worst= rows.reduce((a,b)=>a.total_sec>b.total_sec?a:b);
+  const totVoit = rows.reduce((a,b)=>a+(b.total_voitures||0),0);
+  const SEUIL = 165; // objectif total ~02:45 ? ici on prend l'objectif "Total" 02:45=165s
+
+  const kpis = `
+  <div class="kpi-grid">
+    <div class="kpi ${moy<=SEUIL?'ok':'bad'}"><div class="kpi-label">Temps moyen / jour</div><div class="kpi-val">${secToHMS(moy)}</div><div style="font-size:10px;color:var(--muted2)">${rows.length} jours analysés</div></div>
+    <div class="kpi ok"><div class="kpi-label">Meilleur jour</div><div class="kpi-val">${secToHMS(best.total_sec)}</div><div style="font-size:10px;color:var(--muted2)">${formatDate(best.date)}</div></div>
+    <div class="kpi bad"><div class="kpi-label">Jour le + lent</div><div class="kpi-val">${secToHMS(worst.total_sec)}</div><div style="font-size:10px;color:var(--muted2)">${formatDate(worst.date)}</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Voitures totales</div><div class="kpi-val">${fmt(totVoit)}</div><div style="font-size:10px;color:var(--muted2)">${Math.round(totVoit/rows.length)} / jour</div></div>
+  </div>`;
+
+  // Moyenne par tranche (sur la période)
+  const trancheLabels = {matinee:'Matinée',dejeuner:'Déjeuner',apresmidi:'Après-midi',diner:'Dîner',soir:'Soir',nuit:'Nuit',peaknuit:'Peak nuit'};
+  const trancheAgg = {};
+  rows.forEach(r=>{
+    (r.tranches||[]).forEach(t=>{
+      if(t.total_sec==null) return;
+      if(!trancheAgg[t.key]) trancheAgg[t.key]={sum:0,n:0,voit:0,ca:0};
+      trancheAgg[t.key].sum+=t.total_sec; trancheAgg[t.key].n++; trancheAgg[t.key].voit+=t.voitures||0; trancheAgg[t.key].ca+=t.ca||0;
+    });
+  });
+  const trancheRows = Object.keys(trancheLabels).filter(k=>trancheAgg[k]).map(k=>{
+    const a=trancheAgg[k]; const m=Math.round(a.sum/a.n);
+    return `<tr><td>${trancheLabels[k]}</td><td class="num" style="font-weight:600;color:${m<=SEUIL?'var(--green)':'var(--red)'}">${secToHMS(m)}</td><td class="num">${a.voit}</td><td class="num">${fmt(a.ca)} €</td></tr>`;
+  }).join('');
+
+  const tableJours = rows.slice().reverse().map(r=>`
+    <tr>
+      <td style="color:var(--accent)">${formatDate(r.date)} ${jourSemaine(new Date(r.date))}</td>
+      <td class="num" style="font-weight:600;color:${r.total_sec<=SEUIL?'var(--green)':'var(--red)'}">${secToHMS(r.total_sec)}</td>
+      <td class="num">${r.total_voitures||'—'}</td>
+      <td class="num">${r.total_ca?fmt(r.total_ca)+' €':'—'}</td>
+      <td style="color:var(--muted2)">${r.manager_ouverture||'—'}${r.manager_fermeture&&r.manager_fermeture!==r.manager_ouverture?' / '+r.manager_fermeture:''}</td>
+    </tr>`).join('');
+
+  return kpis + `
+  <div class="chart-card full" style="margin-bottom:16px">
+    <div class="chart-label">Évolution du temps de service total / jour</div>
+    <div class="chart-wrap tall"><canvas id="an-sos-canvas"></canvas></div>
+  </div>
+  <div class="chart-grid">
+    <div class="table-card">
+      <div class="table-header"><span class="table-title">Moyenne par tranche horaire</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Tranche</th><th class="num">Temps moy.</th><th class="num">Voitures</th><th class="num">CA</th></tr></thead><tbody>${trancheRows}</tbody></table></div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><span class="table-title">Détail par jour</span></div>
+      <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Total</th><th class="num">Voit.</th><th class="num">CA</th><th>Manager</th></tr></thead><tbody>${tableJours}</tbody></table></div>
+    </div>
+  </div>`;
+}
+
+// ───────── BONS REPAS ─────────
+function anRenderRepas(){
+  const rows = AN_DATA.repas;
+  if(!rows.length) return _anEmpty('🍔','Aucun bon repas enregistré','Les repas employés déposés par les managers apparaîtront ici.');
+
+  const jours = [...new Set(rows.map(r=>r.date))];
+  const totRepas = rows.reduce((a,b)=>a+(b.nb_repas||0),0);
+  const totValo  = rows.reduce((a,b)=>a+(b.valorisation||0),0);
+  const totSupp  = rows.reduce((a,b)=>a+(b.supplement||0),0);
+
+  // Agrégat par employé
+  const byEmp = {};
+  rows.forEach(r=>{
+    const k = r.code||r.nom;
+    if(!byEmp[k]) byEmp[k]={nom:r.nom, code:r.code, repas:0, valo:0, supp:0, jours:new Set()};
+    byEmp[k].repas+=r.nb_repas||0; byEmp[k].valo+=r.valorisation||0; byEmp[k].supp+=r.supplement||0; byEmp[k].jours.add(r.date);
+  });
+  const emps = Object.values(byEmp).sort((a,b)=>b.repas-a.repas);
+
+  const kpis = `
+  <div class="kpi-grid">
+    <div class="kpi neutral"><div class="kpi-label">Total repas</div><div class="kpi-val">${totRepas}</div><div style="font-size:10px;color:var(--muted2)">${jours.length} jours</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Valorisation totale</div><div class="kpi-val">${fmt(totValo)} €</div><div style="font-size:10px;color:var(--muted2)">${(totValo/(totRepas||1)).toFixed(2)} €/repas</div></div>
+    <div class="kpi ${totSupp>0?'warn':'ok'}"><div class="kpi-label">Suppléments</div><div class="kpi-val">${totValo?fmt(totSupp):0} €</div><div style="font-size:10px;color:var(--muted2)">à la charge employé</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Employés concernés</div><div class="kpi-val">${emps.length}</div><div style="font-size:10px;color:var(--muted2)">${(totRepas/(jours.length||1)).toFixed(1)} repas/jour</div></div>
+  </div>`;
+
+  const empRows = emps.map(e=>`
+    <tr>
+      <td style="font-weight:600;color:var(--accent)">${e.nom}</td>
+      <td style="color:var(--muted)">${e.code||'—'}</td>
+      <td class="num" style="font-weight:600">${e.repas}</td>
+      <td class="num">${e.jours.size}</td>
+      <td class="num">${fmt(e.valo)} €</td>
+      <td class="num" style="color:${e.supp>0?'var(--yellow)':'var(--muted)'}">${e.supp>0?fmt(e.supp)+' €':'—'}</td>
+    </tr>`).join('');
+
+  return kpis + `
+  <div class="chart-card full" style="margin-bottom:16px">
+    <div class="chart-label">Repas par jour</div>
+    <div class="chart-wrap"><canvas id="an-repas-canvas"></canvas></div>
+  </div>
+  <div class="table-card">
+    <div class="table-header"><span class="table-title">Classement par employé</span><span style="font-size:10px;color:var(--muted)">${emps.length} employés</span></div>
+    <div class="table-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr><th>Employé</th><th>Code</th><th class="num">Repas</th><th class="num">Jours</th><th class="num">Valorisation</th><th class="num">Supplément</th></tr></thead><tbody>${empRows}</tbody></table></div>
+  </div>`;
+}
+
+// ───────── ANNULATIONS ─────────
+function anRenderAnnulations(){
+  // fusionner Supabase + localStorage (ancien)
+  let rows = [...AN_DATA.annulations];
+  try {
+    const local = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
+    const from=document.getElementById('an-date-from').value, to=document.getElementById('an-date-to').value;
+    const resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null);
+    local.forEach(a=>{
+      const dISO = a.date && a.date.includes('/') ? a.date.split('/').reverse().join('-') : a.date;
+      if(from&&dISO<from) return; if(to&&dISO>to) return;
+      if(resto&&a.restaurant!==resto) return;
+      rows.push({date:dISO, heure:a.heure, montant:a.montant, manager:a.manager, commentaire:a.comment, _local:true});
+    });
+  } catch(e){}
+
+  if(!rows.length) return _anEmpty('🚫','Aucune annulation sur la période','Les annulations déclarées par les managers apparaîtront ici.');
+  rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  const totMontant = rows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
+  const nb = rows.length;
+  const byMgr={};
+  rows.forEach(r=>{ const m=r.manager||'—'; if(!byMgr[m])byMgr[m]={nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0); });
+  const mgrRows = Object.entries(byMgr).sort((a,b)=>b[1].montant-a[1].montant).map(([m,s])=>`<tr><td style="color:var(--accent)">${m}</td><td class="num">${s.nb}</td><td class="num" style="color:var(--red)">${fmt(s.montant)} €</td></tr>`).join('');
+
+  const kpis = `
+  <div class="kpi-grid">
+    <div class="kpi bad"><div class="kpi-label">Nb annulations</div><div class="kpi-val">${nb}</div></div>
+    <div class="kpi bad"><div class="kpi-label">Montant total</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Montant moyen</div><div class="kpi-val">${fmt(totMontant/(nb||1))} €</div></div>
+  </div>`;
+
+  const detail = rows.slice(0,80).map(r=>`
+    <tr>
+      <td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
+      <td style="color:var(--muted2)">${r.heure||'—'}</td>
+      <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
+      <td>${r.manager||'—'}</td>
+      <td style="color:var(--muted2)">${r.commentaire||''}</td>
+    </tr>`).join('');
+
+  return kpis + `
+  <div class="chart-grid">
+    <div class="table-card">
+      <div class="table-header"><span class="table-title">Par manager</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Manager</th><th class="num">Nb</th><th class="num">Montant</th></tr></thead><tbody>${mgrRows}</tbody></table></div>
+    </div>
+    <div class="table-card">
+      <div class="table-header"><span class="table-title">Détail</span></div>
+      <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Manager</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
+    </div>
+  </div>`;
+}
+
+// ───────── CORRECTIONS (depuis journees) ─────────
+function anRenderCorrections(){
+  const rows = anJourneesPeriode().filter(d=>d.corrections_montant!=null||d.corrections_nb!=null);
+  if(!rows.length) return _anEmpty('✏️','Aucune correction sur la période','Les corrections proviennent de la Synthèse CA.');
+  const totMontant = rows.reduce((a,b)=>a+(b.corrections_montant||0),0);
+  const totNb = rows.reduce((a,b)=>a+(b.corrections_nb||0),0);
+  const avgPct = rows.filter(d=>d.corrections_pct).reduce((a,b,_,arr)=>a+b.corrections_pct/arr.length,0);
+  const seuil = (typeof SEUILS!=='undefined' && SEUILS.corrections_max)||4;
+
+  const kpis = `
+  <div class="kpi-grid">
+    <div class="kpi ${avgPct<=seuil?'ok':'bad'}"><div class="kpi-label">% moyen / CA</div><div class="kpi-val">${avgPct.toFixed(2)}%</div><div style="font-size:10px;color:var(--muted2)">seuil ${seuil}%</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Montant total</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Nb corrections</div><div class="kpi-val">${fmt(totNb)}</div><div style="font-size:10px;color:var(--muted2)">${rows.length} jours</div></div>
+  </div>
+  <div class="chart-card full" style="margin-bottom:16px">
+    <div class="chart-label">% corrections / CA par jour</div>
+    <div class="chart-wrap tall"><canvas id="an-corr-canvas"></canvas></div>
+  </div>`;
+
+  const detail = rows.slice().reverse().map(d=>`
+    <tr><td style="color:var(--accent)">${formatDate(d.date)} ${jourSemaine(new Date(d.date))}</td>
+      <td class="num">${d.corrections_nb||'—'}</td>
+      <td class="num" style="font-weight:600">${d.corrections_montant?fmt(d.corrections_montant)+' €':'—'}</td>
+      <td class="num">${d.corrections_pct!=null?chipS(d.corrections_pct,seuil,seuil*1.5,'l')+' '+d.corrections_pct.toFixed(2)+'%':'—'}</td>
+      <td style="color:var(--muted2)">${d.manager_ouverture||'—'}</td></tr>`).join('');
+
+  return kpis + `<div class="table-card"><div class="table-header"><span class="table-title">Détail par jour</span></div>
+    <div class="table-wrap" style="max-height:360px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb</th><th class="num">Montant</th><th class="num">% CA</th><th>Manager</th></tr></thead><tbody>${detail}</tbody></table></div></div>`;
+}
+
+// ───────── TABLES OUVERTES (commandes ouvertes, depuis journees) ─────────
+function anRenderTables(){
+  const rows = anJourneesPeriode().filter(d=>d.commandes_ouvertes_nb!=null||d.commandes_ouvertes_montant!=null);
+  if(!rows.length) return _anEmpty('📂','Aucune table ouverte sur la période','Les commandes ouvertes proviennent de la Synthèse CA.');
+  const totNb = rows.reduce((a,b)=>a+(b.commandes_ouvertes_nb||0),0);
+  const totMontant = rows.reduce((a,b)=>a+(b.commandes_ouvertes_montant||0),0);
+
+  const kpis = `
+  <div class="kpi-grid">
+    <div class="kpi ${totNb<rows.length*3?'ok':'warn'}"><div class="kpi-label">Total tables ouvertes</div><div class="kpi-val">${totNb}</div><div style="font-size:10px;color:var(--muted2)">${(totNb/(rows.length||1)).toFixed(1)} / jour</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Montant total</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Jours analysés</div><div class="kpi-val">${rows.length}</div></div>
+  </div>
+  <div class="chart-card full" style="margin-bottom:16px">
+    <div class="chart-label">Tables ouvertes par jour</div>
+    <div class="chart-wrap"><canvas id="an-tables-canvas"></canvas></div>
+  </div>`;
+
+  const detail = rows.slice().reverse().map(d=>`
+    <tr><td style="color:var(--accent)">${formatDate(d.date)} ${jourSemaine(new Date(d.date))}</td>
+      <td class="num" style="font-weight:600">${d.commandes_ouvertes_nb||'—'}</td>
+      <td class="num">${d.commandes_ouvertes_montant?fmt(d.commandes_ouvertes_montant)+' €':'—'}</td>
+      <td style="color:var(--muted2)">${d.manager_fermeture||d.manager_ouverture||'—'}</td></tr>`).join('');
+
+  return kpis + `<div class="table-card"><div class="table-header"><span class="table-title">Détail par jour</span></div>
+    <div class="table-wrap" style="max-height:360px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb</th><th class="num">Montant</th><th>Manager</th></tr></thead><tbody>${detail}</tbody></table></div></div>`;
+}
+
+// ───────── GRAPHIQUES ─────────
+let _anCharts = {};
+function anDrawCharts(){
+  Object.values(_anCharts).forEach(c=>{try{c.destroy();}catch(e){}});
+  _anCharts={};
+  const grid = getComputedStyle(document.body).getPropertyValue('--muted')||'#6b6b7a';
+  const baseOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{x:{ticks:{font:{size:9},color:'#9d9daa',maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{display:false}},
+            y:{ticks:{font:{size:10},color:'#9d9daa'},grid:{color:'rgba(255,255,255,.05)'},beginAtZero:true}}};
+
+  if(AN_TAB==='sos'){
+    const c=document.getElementById('an-sos-canvas'); if(!c)return;
+    const rows=AN_DATA.sos.filter(r=>r.total_sec);
+    _anCharts.sos=new Chart(c,{type:'line',data:{labels:rows.map(r=>formatDate(r.date)),
+      datasets:[{data:rows.map(r=>r.total_sec),borderColor:'#f5a623',backgroundColor:'rgba(245,166,35,.1)',fill:true,tension:.3,pointRadius:3}]},
+      options:{...baseOpts,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>'Temps : '+secToHMS(ctx.parsed.y)}}},
+        scales:{...baseOpts.scales,y:{...baseOpts.scales.y,ticks:{...baseOpts.scales.y.ticks,callback:v=>secToHMS(v)}}}}});
+  } else if(AN_TAB==='repas'){
+    const c=document.getElementById('an-repas-canvas'); if(!c)return;
+    const byDay={}; AN_DATA.repas.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+(r.nb_repas||0);});
+    const days=Object.keys(byDay).sort();
+    _anCharts.repas=new Chart(c,{type:'bar',data:{labels:days.map(formatDate),datasets:[{data:days.map(d=>byDay[d]),backgroundColor:'#60a5fa',borderRadius:3}]},options:baseOpts});
+  } else if(AN_TAB==='corrections'){
+    const c=document.getElementById('an-corr-canvas'); if(!c)return;
+    const rows=anJourneesPeriode().filter(d=>d.corrections_pct!=null);
+    _anCharts.corr=new Chart(c,{type:'line',data:{labels:rows.map(d=>formatDate(d.date)),
+      datasets:[{data:rows.map(d=>d.corrections_pct),borderColor:'#f87171',backgroundColor:'rgba(248,113,113,.1)',fill:true,tension:.3,pointRadius:3}]},
+      options:{...baseOpts,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.parsed.y.toFixed(2)+'%'}}}}});
+  } else if(AN_TAB==='tables'){
+    const c=document.getElementById('an-tables-canvas'); if(!c)return;
+    const rows=anJourneesPeriode().filter(d=>d.commandes_ouvertes_nb!=null);
+    _anCharts.tables=new Chart(c,{type:'bar',data:{labels:rows.map(d=>formatDate(d.date)),datasets:[{data:rows.map(d=>d.commandes_ouvertes_nb),backgroundColor:'#a78bfa',borderRadius:3}]},options:baseOpts});
+  }
+}
+
 function renderManagers() {
   const el = document.getElementById('managers-content');
   if(!el) return;
@@ -5181,6 +5804,22 @@ function sauvegarderAnnulation() {
     createdAt: new Date().toISOString()
   });
   localStorage.setItem('bk_annulations', JSON.stringify(anns.slice(0,500)));
+
+  // Persister aussi dans Supabase pour l'analyse multi-postes
+  try {
+    if(SB){
+      const dISO = date && date.includes('/') ? date.split('/').reverse().join('-') : date;
+      SB.from('annulations').insert({
+        restaurant: CURRENT_USER?.resto||'BK526',
+        date: dISO || null, heure, montant,
+        manager: CURRENT_USER?.nom||null,
+        commentaire: comment||null,
+        ticket_bad_manquant: missBad||null,
+        ticket_annul_manquant: missAnnul||null,
+        ticket_good_manquant: missGood||null
+      }).then(({error})=>{ if(error) console.warn('SB annulation', error); });
+    }
+  } catch(e){ console.warn(e); }
 
   // Reset complet
   ANN_DATA = {date:null,heure:null,montant:null};
