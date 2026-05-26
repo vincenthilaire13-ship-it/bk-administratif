@@ -476,8 +476,8 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 
         <!-- Zone dépôt PDF -->
         <div class="mgr-card">
-          <div class="mgr-title">📥 Importer la Synthèse CA (PDF)</div>
-          <div class="mgr-sub">Déposez le PDF de la journée — les données sont extraites automatiquement par IA</div>
+          <div class="mgr-title">📥 Importer un PDF</div>
+          <div class="mgr-sub">Synthèse CA · SOS Drive · Ventes ¼h · Repas employés — le type est détecté automatiquement</div>
           <div class="drop-zone" id="import-drop-zone"
                onclick="document.getElementById('import-file-input').click()"
                ondragover="event.preventDefault();this.classList.add('drag-over')"
@@ -485,7 +485,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
                ondrop="handleImportDrop(event)">
             <div class="drop-zone-icon">📄</div>
             <div class="drop-zone-text">Cliquez ou <span>glissez le PDF ici</span></div>
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Synthèse CA Journalière · PDF uniquement</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">Synthèse CA · SOS Drive · Ventes ¼h · Repas employés · PDF</div>
           </div>
           <input type="file" id="import-file-input" accept=".pdf" style="display:none" onchange="handleImportFile(this.files[0])">
           <div id="import-file-name" style="font-size:11px;color:var(--muted2);margin-bottom:10px;display:none"></div>
@@ -3086,7 +3086,7 @@ async function renderImports(){
 
     const restos = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL')
       ? [ACTIVE_RESTO]
-      : Object.keys(RESTAURANTS);
+      : Object.keys(RESTAURANTS).filter(r=>r!=='ALL');
 
     const jours = [];
     let d = new Date(from+'T00:00:00');
@@ -5822,29 +5822,26 @@ function parserRepas(txt){
     else { const ex=byCode.get(rec.code); if(rec.nom.length>ex.nom.length) ex.nom=rec.nom; }
   };
 
-  // Regex 1 : NOM CODE NB VALO SUPP(€) COURONNES  (format standard)
+  // ⚠️ Ordre pdf.js réel : [COURONNES] NOM CODE VALORISATION NBR_REPAS SUPPLEMENT€
+  //   ex : "12 ADAMOWSKI CLAIRE 635 11,50 1 0,00€"
   let m, n1=0;
-  const re1 = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\- ]+?)\s+(\d{1,4})\s+(\d{1,2})\s+(\d{1,3},\d{2})\s+(\d{1,3},\d{2})\s*€?\s+(\d{1,3})/g;
-  while((m = re1.exec(txt))!==null){ ajoute(m[1],m[2],m[3],m[4],m[5],m[6]); n1++; }
-
-  // Regex 2 (secours) : si rien trouvé, format plus permissif (€ collé, espaces variables, couronnes optionnelles)
-  if(byCode.size===0){
-    const re2 = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\-\s]+?)\s+(\d{1,4})\s+(\d{1,2})\s+(\d{1,3}[.,]\d{2})\s+(\d{1,3}[.,]\d{2})\s*€?\s*(\d{0,3})/g;
-    while((m = re2.exec(txt))!==null){ ajoute(m[1],m[2],m[3],m[4],m[5],m[6]||'0'); }
+  const re1 = /(\d{1,3})\s+([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\- ]+?)\s+(\d{1,4})\s+(\d{1,3},\d{2})\s+(\d{1,2})\s+(\d{1,3},\d{2})\s*€?/g;
+  while((m = re1.exec(txt))!==null){
+    // m: couronnes, nom, code, valorisation, nb_repas, supplement
+    ajoute(m[2], m[3], m[5], m[4], m[6], m[1]); n1++;
   }
 
-  // Regex 3 (ultime secours) : ligne par ligne, on cherche "texte ... code nb valo"
+  // Secours : ancien ordre NOM CODE NB VALO SUPP COURONNES
   if(byCode.size===0){
-    txt.split(/\n/).forEach(line=>{
-      const mm = line.match(/^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\-\s]+?)\s+(\d{1,4})\s+(\d{1,2})\s+(\d{1,3}[.,]\d{2})/);
-      if(mm) ajoute(mm[1],mm[2],mm[3],mm[4],'0','0');
-    });
+    const re2 = /([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’\- ]+?)\s+(\d{1,4})\s+(\d{1,2})\s+(\d{1,3},\d{2})\s+(\d{1,3},\d{2})\s*€?\s+(\d{1,3})/g;
+    while((m = re2.exec(txt))!==null){ ajoute(m[1],m[2],m[3],m[4],m[5],m[6]); }
   }
 
   const employes = [...byCode.values()];
-  const tot = txt.match(/TOTAL\s+(?:\d{2}\/\d{2}\/\d{4})?\s*(\d{1,3})\s+(\d{1,4},\d{2})\s+(\d{1,3},\d{2})€/);
-  const total = tot ? { nb_repas:parseInt(tot[1],10), valorisation:_num(tot[2]), supplement:_num(tot[3]) }
-                    : { nb_repas: employes.reduce((a,e)=>a+e.nb_repas,0), valorisation: employes.reduce((a,e)=>a+e.valorisation,0) };
+  // Total pdf.js : "TOTAL 25/05/2026 255,30 218 21 1,30€" → valorisation, couronnes, nb_repas, supplément
+  const tot = txt.match(/TOTAL\s+(?:\d{2}\/\d{2}\/\d{4}\s+)?(\d{1,4},\d{2})\s+(\d{1,4})\s+(\d{1,3})\s+(\d{1,3},\d{2})€/);
+  const total = tot ? { valorisation:_num(tot[1]), couronnes:parseInt(tot[2],10), nb_repas:parseInt(tot[3],10), supplement:_num(tot[4]) }
+                    : { nb_repas: employes.reduce((a,e)=>a+e.nb_repas,0), valorisation: employes.reduce((a,e)=>a+(e.valorisation||0),0) };
   return { date, employes, total };
 }
 
@@ -5912,14 +5909,20 @@ function parserSOS(txt){
 function parserVentesHoraire(txt){
   const dm = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2,4})/);
   const date = dm ? `20${dm[3].slice(-2)}-${dm[2]}-${dm[1]}` : null;
-  // Total : "... 14375,31 1492,27 TOTAL 825" ou "TOTAL 825 ..."
+  // Total pdf.js : "TOTAL 7 0 190 267 185 825 9,36 ... 14375,31 ..."
+  //   → les entiers après TOTAL sont les Nbre par colonne ; le TAC total = le plus grand (825)
+  //   → le HT total = le plus grand montant FR cohérent (14375,31)
   let tickets=null, ht=null;
-  const m2 = txt.match(/(\d{4,6},\d{2})\s+(\d{3,5},\d{2})\s+TOTAL\s+(\d+)/);
-  if(m2){ ht=_num(m2[1]); tickets=parseInt(m2[3],10); }
-  else {
-    const m3 = txt.match(/TOTAL\s+(\d+)\b/);
-    if(m3) tickets=parseInt(m3[1],10);
+  const mTot = txt.match(/TOTAL\s+((?:\d+\s+){4,8})/);
+  if(mTot){
+    const ints = mTot[1].trim().split(/\s+/).map(n=>parseInt(n,10)).filter(n=>!isNaN(n));
+    if(ints.length) tickets = Math.max(...ints);
   }
+  const montants = [...txt.matchAll(/(\d{4,6},\d{2})/g)].map(x=>_num(x[1]));
+  const candidatsHT = montants.filter(v=>v>3000 && v<100000).sort((a,b)=>b-a);
+  if(candidatsHT.length) ht = candidatsHT[0];
+  // Secours ancien format
+  if(tickets==null){ const m3 = txt.match(/TOTAL\s+(\d+)\b/); if(m3) tickets=parseInt(m3[1],10); }
   // Tranches simples : HH:MM ... (pour usage horaires futur) — on stocke heure + total approximatif
   const tranches=[];
   const re=/(\d{2}:\d{2})\s+(\d+)/g; let mm;
@@ -7580,6 +7583,86 @@ function resetImport() {
   document.getElementById('import-file-input').value = '';
 }
 
+// Traite les PDF SOS Drive / Ventes ¼h / Repas employés (hors Synthèse CA)
+async function traiterPDFSecondaire(type, fullText){
+  const loading = document.getElementById('import-loading');
+  const errEl = document.getElementById('import-err');
+  const finir = (ok, msg)=>{
+    loading.style.display='none';
+    document.getElementById('btn-extraire').disabled=false;
+    errEl.style.display='block';
+    errEl.style.background = ok?'rgba(62,207,142,.1)':'rgba(248,113,113,.1)';
+    errEl.style.borderColor = ok?'rgba(62,207,142,.3)':'rgba(248,113,113,.3)';
+    errEl.style.color = ok?'var(--green)':'var(--red)';
+    errEl.textContent = msg;
+  };
+  try {
+    if(type==='sos'){
+      const sos = parserSOS(fullText);
+      if(!sos.date){ finir(false,'✗ SOS Drive : date introuvable.'); return; }
+      const resto = restoReel();
+      // Temps de service midi (déjeuner) et soir (dîner) → dans la journée
+      const tr = {};(sos.tranches||[]).forEach(t=>tr[t.key]=t);
+      const upd = {
+        restaurant:resto, date:sos.date,
+        ts_drive_midi: tr.dejeuner?.total_sec ?? null,
+        ts_drive_soir: tr.diner?.total_sec ?? null,
+        drive_voitures: sos.totalJour?.voitures ?? null
+      };
+      if(SB){
+        // mettre à jour la journée (sans écraser le CA)
+        let clean = filtrerColonnesJournees(upd);
+        let {error} = await SB.from('journees').upsert(clean,{onConflict:'restaurant,date'});
+        if(error){ const m=(error.message||'').match(/'([^']+)' column/i); if(m&&m[1] in clean){delete clean[m[1]]; await SB.from('journees').upsert(clean,{onConflict:'restaurant,date'});} }
+        // table sos_drive (détail des tranches)
+        try {
+          await SB.from('sos_drive').delete().eq('restaurant',resto).eq('date',sos.date);
+          const rows = (sos.tranches||[]).map(t=>({restaurant:resto,date:sos.date,tranche:t.key,plage:t.plage,total_sec:t.total_sec,ca:t.ca,commandes:t.commandes,voitures:t.voitures}));
+          if(rows.length) await SB.from('sos_drive').insert(rows);
+        } catch(e){ console.warn('sos_drive', e); }
+        await loadAll();
+      }
+      finir(true, `✓ SOS Drive importé (${formatDate(sos.date)}) — temps de service total ${secToHMS(sos.totalJour?.total_sec)}, ${sos.totalJour?.voitures||'?'} voitures. Les temps de service midi/soir ont été ajoutés à la journée.`);
+      return;
+    }
+    if(type==='repas'){
+      const rep = parserRepas(fullText);
+      if(!rep.date){ finir(false,'✗ Repas employés : date introuvable.'); return; }
+      const resto = restoReel();
+      if(SB){
+        try {
+          await SB.from('repas_employes').delete().eq('restaurant',resto).eq('date',rep.date);
+          const rows = rep.employes.map(e=>({restaurant:resto,date:rep.date,nom:e.nom,code:e.code,nb_repas:e.nb_repas,valorisation:e.valorisation,supplement:e.supplement,couronnes:e.couronnes}));
+          if(rows.length) await SB.from('repas_employes').insert(rows);
+        } catch(e){ console.warn('repas_employes', e); finir(false,'✗ Repas : '+(e.message||e)); return; }
+        // total dans la journée
+        let clean = filtrerColonnesJournees({restaurant:resto,date:rep.date,repas_employes_nb:rep.total.nb_repas,repas_employes_montant:rep.total.valorisation});
+        await SB.from('journees').upsert(clean,{onConflict:'restaurant,date'});
+        await loadAll();
+      }
+      finir(true, `✓ Repas employés importés (${formatDate(rep.date)}) — ${rep.employes.length} salariés, ${rep.total.nb_repas} repas, ${fmt(rep.total.valorisation)} €.`);
+      return;
+    }
+    if(type==='ventes'){
+      const v = parserVentesHoraire(fullText);
+      if(!v.date){ finir(false,'✗ Ventes ¼h : date introuvable.'); return; }
+      const resto = restoReel();
+      if(SB){
+        try {
+          await SB.from('ventes_horaire').delete().eq('restaurant',resto).eq('date',v.date);
+          const rows = (v.tranches||[]).map(t=>({restaurant:resto,date:v.date,heure:t.heure,nb:t.nb}));
+          if(rows.length) await SB.from('ventes_horaire').insert(rows);
+        } catch(e){ console.warn('ventes_horaire', e); }
+        await loadAll();
+      }
+      finir(true, `✓ Ventes par quart d'heure importées (${formatDate(v.date)}) — ${v.tickets||'?'} tickets, ${fmt(v.ht)||'?'} € HT, ${(v.tranches||[]).length} créneaux. Utilisé pour les horaires.`);
+      return;
+    }
+  } catch(err){
+    finir(false, '✗ Erreur : '+(err.message||err));
+  }
+}
+
 async function extrairePDF() {
   if(!IMPORT_FILE) return;
 
@@ -7588,19 +7671,30 @@ async function extrairePDF() {
   document.getElementById('btn-extraire').disabled = true;
   document.getElementById('import-err').style.display = 'none';
 
-  // ── 1) MÉTHODE FIABLE : lecture locale par pdf.js + parserSynthesCA ──
-  // (testée sur le format réel ; gère l'ordre entrelacé des colonnes et les % par canal)
+  // ── 0) Lire le texte du PDF et détecter son TYPE (4 types acceptés) ──
+  let fullText = '';
   try {
     const arrayBuffer = await IMPORT_FILE.arrayBuffer();
     const pdfjsLib = window['pdfjs-dist/build/pdf'];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
-    let fullText = '';
     for(let p=1; p<=pdf.numPages; p++){
       const page = await pdf.getPage(p);
       const tc = await page.getTextContent();
       fullText += tc.items.map(t=>t.str).join(' ') + ' ';
     }
+  } catch(e){ console.warn('lecture pdf.js échouée, fallback IA', e); }
+
+  const typePDF = fullText ? detecterTypePDF(fullText) : null;
+
+  // ── Router selon le type (SOS / Ventes / Repas → enregistrement direct) ──
+  if(typePDF==='sos' || typePDF==='ventes' || typePDF==='repas'){
+    await traiterPDFSecondaire(typePDF, fullText);
+    return;
+  }
+
+  // ── 1) MÉTHODE FIABLE : Synthèse CA via parserSynthesCA ──
+  try {
     const r = parserSynthesCA(fullText);
     if(r && r.date && (r.ca_ht!=null || r.tickets_nb!=null)){
       // Mapper vers les champs attendus par le formulaire de saisie
