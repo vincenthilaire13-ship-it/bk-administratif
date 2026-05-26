@@ -4570,8 +4570,19 @@ async function saveSaisie(e) {
 
 async function upsert(row, okId, errId) {
   if(SB) {
-    const {error} = await SB.from('journees').upsert(row,{onConflict:'restaurant,date'});
-    if(error){showAlert(errId);console.error(error);return;}
+    // Auto-adaptatif : retire les colonnes absentes en base (signalées par PostgREST) et réessaie
+    let r = { ...row }, err = null, retirees = [];
+    for(let essai=0; essai<25; essai++){
+      const res = await SB.from('journees').upsert(r,{onConflict:'restaurant,date'});
+      err = res.error;
+      if(!err) break;
+      const m = (err.message||'').match(/'([^']+)' column/i) || (err.message||'').match(/column "([^"]+)"/i);
+      const col = m && m[1];
+      if(col && col in r){ delete r[col]; retirees.push(col); continue; }
+      break;
+    }
+    if(err){ showAlert(errId); console.error(err); return; }
+    if(retirees.length) console.warn('upsert : colonnes manquantes en base, ignorées →', retirees);
   } else {
     const idx = DATA.findIndex(d=>d.date===row.date);
     if(idx>=0) DATA[idx]={...DATA[idx],...row};
@@ -5693,50 +5704,32 @@ async function enregistrerJourneeMgr() {
         commentaire: equipe.commentaire
       };
       const rowJournee = { restaurant:resto, date, ...(MGR_JOUR.synthese||{}), ...equipeJournee };
-      // retirer un éventuel champ 'date' dupliqué de la synthèse déjà géré
-      let { error:eJ } = await SB.from('journees').upsert(rowJournee,{onConflict:'restaurant,date'});
-      if(eJ){
-        console.warn('journees upsert complet échoué, retry en retirant les colonnes optionnelles', eJ);
-        // On NE perd PAS de données : on repart du row complet et on retire seulement
-        // les colonnes susceptibles de ne pas exister encore dans la base.
-        const fallback = { ...rowJournee };
-        const colonnesOptionnelles = ['drive_ht','kiosk_ht','livraison_ht','livraison_nb','comptoir_ht','cc_ht','annulations_pct','commandes_ouvertes_pct','sauces_pct'];
-        colonnesOptionnelles.forEach(c=>{ delete fallback[c]; });
-        const { error:eJ2 } = await SB.from('journees').upsert(fallback,{onConflict:'restaurant,date'});
-        if(eJ2){
-          // Dernier recours : ne garder que les colonnes essentielles très sûres
-          console.warn('journees retry partiel échoué, retry minimal', eJ2);
-          const minimal = {
-            restaurant:resto, date,
-            ca_ht: MGR_JOUR.synthese?.ca_ht ?? null,
-            ca_ttc: MGR_JOUR.synthese?.ca_ttc ?? null,
-            tickets_nb: MGR_JOUR.synthese?.tickets_nb ?? null,
-            corrections_nb: MGR_JOUR.synthese?.corrections_nb ?? null,
-            corrections_montant: MGR_JOUR.synthese?.corrections_montant ?? null,
-            corrections_pct: MGR_JOUR.synthese?.corrections_pct ?? null,
-            remises_nb: MGR_JOUR.synthese?.remises_nb ?? null,
-            remises_montant: MGR_JOUR.synthese?.remises_montant ?? null,
-            remises_pct: MGR_JOUR.synthese?.remises_pct ?? null,
-            sauces_nb: MGR_JOUR.synthese?.sauces_nb ?? null,
-            sauces_montant: MGR_JOUR.synthese?.sauces_montant ?? null,
-            annulations_nb: MGR_JOUR.synthese?.annulations_nb ?? null,
-            annulations_montant: MGR_JOUR.synthese?.annulations_montant ?? null,
-            commandes_ouvertes_nb: MGR_JOUR.synthese?.commandes_ouvertes_nb ?? null,
-            commandes_ouvertes_montant: MGR_JOUR.synthese?.commandes_ouvertes_montant ?? null,
-            repas_employes_nb: MGR_JOUR.synthese?.repas_employes_nb ?? null,
-            repas_employes_montant: MGR_JOUR.synthese?.repas_employes_montant ?? null,
-            repas_employes_pct: MGR_JOUR.synthese?.repas_employes_pct ?? null,
-            drive_voitures: MGR_JOUR.synthese?.drive_voitures ?? null,
-            manager_ouverture: equipe.manager_ouverture,
-            manager_fermeture: equipe.manager_fermeture,
-            directeur_midi: equipe.directeur_midi,
-            directeur_soir: equipe.directeur_soir,
-            commentaire: equipe.commentaire
-          };
-          const { error:eJ3 } = await SB.from('journees').upsert(minimal,{onConflict:'restaurant,date'});
-          if(eJ3){ erreurs.push('Journée : '+eJ3.message+' — pensez à exécuter le script SQL (ALTER TABLE) dans Configuration.'); console.error('journees minimal échoué', eJ3); }
-          else erreurs.push('⚠️ Journée enregistrée en mode réduit : exécutez le script SQL (ALTER TABLE) dans Configuration pour sauvegarder les CA HT et les % manquants.');
+      // Enregistrement auto-adaptatif : si une colonne n'existe pas encore en base,
+      // PostgREST renvoie « Could not find the 'X' column ». On retire CETTE colonne
+      // précise et on réessaie, en boucle. Aucune donnée connue de la base n'est perdue.
+      let row = { ...rowJournee };
+      let colsRetirees = [];
+      let eJ = null;
+      for(let essai=0; essai<25; essai++){
+        const res = await SB.from('journees').upsert(row,{onConflict:'restaurant,date'});
+        eJ = res.error;
+        if(!eJ) break;
+        // Extraire le nom de la colonne fautive du message d'erreur
+        const m = (eJ.message||'').match(/'([^']+)' column/i) || (eJ.message||'').match(/column "([^"]+)"/i);
+        const col = m && m[1];
+        if(col && col in row){
+          delete row[col];
+          colsRetirees.push(col);
+          continue; // on réessaie sans cette colonne
         }
+        break; // erreur non liée à une colonne → on arrête
+      }
+      if(eJ){
+        erreurs.push('Journée : '+eJ.message);
+        console.error('journees upsert échoué', eJ);
+      } else if(colsRetirees.length){
+        erreurs.push('⚠️ Journée enregistrée, mais '+colsRetirees.length+' colonne(s) manquent en base ('+colsRetirees.join(', ')+'). Allez dans Configuration → Vérifier les tables et exécutez le SQL proposé, puis réimportez pour remplir ces cases.');
+        console.warn('colonnes retirées à l\'enregistrement', colsRetirees);
       }
     } else {
       const idx=DATA.findIndex(d=>d.date===date); const row={restaurant:resto,date,...(MGR_JOUR.synthese||{})}; if(idx>=0) DATA[idx]={...DATA[idx],...row}; else DATA.push(row);
