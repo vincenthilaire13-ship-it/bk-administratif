@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>BK Saint Clément — Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -271,6 +274,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     </div>
 
     <div class="login-err" id="login-err"></div>
+    <div id="login-sync-status" style="font-size:10px;color:var(--muted);text-align:center;margin-top:10px">⏳ Connexion…</div>
   </div>
 </div>
 
@@ -4432,7 +4436,16 @@ const DEFAULT_CODES = {
   ]
 };
 
+// Codes chargés depuis Supabase (priorité absolue sur le localStorage)
+let CODES_LIVE = null;
+
 function getCodes() {
+  // 1) Priorité aux codes Supabase chargés en mémoire (les plus à jour, partagés)
+  if(CODES_LIVE){
+    const base = JSON.parse(JSON.stringify(DEFAULT_CODES));
+    return Object.assign(base, CODES_LIVE);
+  }
+  // 2) Sinon le cache local
   const s = localStorage.getItem('bk_codes');
   const base = JSON.parse(JSON.stringify(DEFAULT_CODES));
   if(!s) return base;
@@ -4442,6 +4455,7 @@ function getCodes() {
 // ── Synchronisation des codes entre tous les appareils via Supabase ──
 // Écrit les codes en local (cache rapide) ET dans Supabase (partagé)
 async function persistCodes(codes){
+  CODES_LIVE = JSON.parse(JSON.stringify(codes));
   localStorage.setItem('bk_codes', JSON.stringify(codes));
   try {
     if(SB){
@@ -4458,16 +4472,23 @@ async function persistCodes(codes){
 
 // Charge les codes partagés depuis Supabase et écrase le cache local si trouvés
 async function chargerCodesSupabase(){
+  const st=document.getElementById('login-sync-status');
   try {
-    if(!SB) return false;
+    if(!SB){ if(st){st.innerHTML='⚠️ Non connecté à la base'; st.style.color='var(--yellow)';} return false; }
     const { data, error } = await SB.from('app_config').select('valeur').eq('cle','codes').maybeSingle();
-    if(error){ console.warn('chargerCodesSupabase', error); return false; }
+    if(error){ console.warn('chargerCodesSupabase', error); if(st){st.innerHTML='⚠️ Table app_config introuvable'; st.style.color='var(--red)';} return false; }
     if(data && data.valeur){
+      CODES_LIVE = data.valeur;
       localStorage.setItem('bk_codes', JSON.stringify(data.valeur));
       // Rafraîchir l'écran d'accès s'il est ouvert + les sélecteurs de login
       if(typeof renderAcces==='function' && document.getElementById('managers-list')) try{renderAcces();}catch(e){}
+      const st=document.getElementById('login-sync-status');
+      if(st){ const nbM=(data.valeur.managers||[]).length, nbL=(data.valeur.leaders||[]).length; st.innerHTML=`✓ Synchronisé (${nbM} managers, ${nbL} leaders)`; st.style.color='var(--green)'; }
       return true;
     }
+    // Pas encore de codes dans Supabase
+    const st=document.getElementById('login-sync-status');
+    if(st){ st.innerHTML='⚠️ Aucun code partagé trouvé — enregistrez-les depuis un poste admin'; st.style.color='var(--yellow)'; }
   } catch(e){ console.warn('chargerCodesSupabase', e); }
   return false;
 }
