@@ -590,14 +590,17 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
                 <div class="form-group"><label class="form-label">Erreur caisse (€)</label><input type="number" step="0.01" class="form-input" id="s-err-caisse"></div>
               </div>
 
-              <div class="sub-title">Encaissements</div>
-              <div class="form-row-4" style="margin-bottom:16px">
+              <div class="sub-title">Encaissements (Compté / Déposé)</div>
+              <div id="s-ecarts-alert" style="display:none;margin-bottom:12px"></div>
+              <div class="form-row-4" style="margin-bottom:10px">
                 <div class="form-group"><label class="form-label">CB (€)</label><input type="number" step="0.01" class="form-input" id="s-cb"></div>
                 <div class="form-group"><label class="form-label">Espèces (€)</label><input type="number" step="0.01" class="form-input" id="s-especes"></div>
+                <div class="form-group"><label class="form-label">ANCV (€)</label><input type="number" step="0.01" class="form-input" id="s-ancv"></div>
+                <div class="form-group"><label class="form-label">C&C CB (€)</label><input type="number" step="0.01" class="form-input" id="s-cccb"></div>
+              </div>
+              <div class="form-row-4" style="margin-bottom:16px">
                 <div class="form-group"><label class="form-label">Uber Eats (€)</label><input type="number" step="0.01" class="form-input" id="s-uber"></div>
                 <div class="form-group"><label class="form-label">Deliveroo (€)</label><input type="number" step="0.01" class="form-input" id="s-deliveroo"></div>
-              </div>
-              <div class="form-row" style="margin-bottom:16px">
                 <div class="form-group"><label class="form-label">BK Livraison (€)</label><input type="number" step="0.01" class="form-input" id="s-bkliv"></div>
                 <div class="form-group"><label class="form-label">TRD (€)</label><input type="number" step="0.01" class="form-input" id="s-trd"></div>
               </div>
@@ -3269,7 +3272,9 @@ alter table journees add column if not exists comptoir_tickets int;
 alter table journees add column if not exists comptoir_ticket_moyen numeric;
 alter table journees add column if not exists cc_pct numeric;
 alter table journees add column if not exists cc_tickets int;
-alter table journees add column if not exists cc_ticket_moyen numeric;`;
+alter table journees add column if not exists cc_ticket_moyen numeric;
+alter table journees add column if not exists ancv numeric;
+alter table journees add column if not exists click_collect_cb numeric;`;
 
 async function verifierTables(){
   const el = document.getElementById('tables-check-result');
@@ -4591,7 +4596,7 @@ async function saveSaisie(e) {
     repas_employes_nb:pi('s-repas-nb'), repas_employes_montant:pf('s-repas-mnt'), repas_employes_pct:pf('s-repas-pct'),
     mo_pct:pf('s-mo-pct'), salaires:pf('s-salaires'),
     erreur_caisse:pf('s-err-caisse'),
-    cb:pf('s-cb'), especes:pf('s-especes'),
+    cb:pf('s-cb'), especes:pf('s-especes'), ancv:pf('s-ancv'), click_collect_cb:pf('s-cccb'),
     uber_eats:pf('s-uber'), deliveroo:pf('s-deliveroo'),
     bk_livraison:pf('s-bkliv'), trd:pf('s-trd'),
     ts_bornes_midi:pf('s-ts-bornes-midi'), ts_drive_midi:pi('s-ts-drive-midi'),
@@ -5532,26 +5537,48 @@ function parserSynthesCA(txt) {
     commandes_ouvertes_nb=parseInt(acr[4]); commandes_ouvertes_montant=num(acr[5]); commandes_ouvertes_pct=num(acr[7]);
   }
 
-  // ── ENCAISSEMENTS (théorique Prélevé Compté/Déposé) ──
-  // pdf.js : "0,00 0,00 10 090,41 CB 10 090,41" — Compté/Déposé juste avant le libellé.
-  const getEnc = (label) => {
+  // ── ENCAISSEMENTS (théorique | prélevé | Compté/Déposé | Écart comptage) ──
+  // Compté/Déposé = le plus grand des 2 montants encadrant le libellé ; écart = leur différence.
+  const lireEnc = (label) => {
     const esc = label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    let m = T.match(new RegExp('0,00\\s+0,00\\s+'+MO+'\\s+'+esc+'\\b'));
-    if(m) return num(m[1]);
+    let m = T.match(new RegExp(MO+'\\s+'+esc+'\\s+'+MO));
+    if(m){ const a=num(m[1]), b=num(m[2]); return { montant:Math.max(a,b), ecart:+(Math.max(a,b)-Math.min(a,b)).toFixed(2) }; }
     m = T.match(new RegExp(esc+'\\s+'+MO));
-    return m ? num(m[1]) : null;
+    return m ? { montant:num(m[1]), ecart:null } : { montant:null, ecart:null };
   };
-  const cb           = getEnc('CB');
-  const especes      = getEnc('ESPECES');
-  const uber_eats    = getEnc('UBER EATS');
-  const deliveroo    = getEnc('DELIVEROO');
-  const bk_livraison = getEnc('LIVRAISON BK');
-  const trd          = getEnc('TRD');
+  const encCB    = lireEnc('CB');
+  const encESP   = lireEnc('ESPECES');
+  const encANCV  = lireEnc('ANCV CONNECT');
+  const encCCCB  = lireEnc('CLICK COLLECT CB');
+  const encDELIV = lireEnc('DELIVEROO');
+  const encLIVBK = lireEnc('LIVRAISON BK');
+  const encTRD   = lireEnc('TRD');
+  const encUBER  = lireEnc('UBER EATS');
 
-  // ── ÉCART / ERREUR CAISSE ──
+  const cb=encCB.montant, especes=encESP.montant, ancv=encANCV.montant,
+        click_collect_cb=encCCCB.montant, deliveroo=encDELIV.montant,
+        bk_livraison=encLIVBK.montant, trd=encTRD.montant, uber_eats=encUBER.montant;
+
+  // Écarts de comptage par moyen (pour repérer une caisse mal clôturée)
+  const ecarts_caisse = {
+    cb:encCB.ecart, especes:encESP.ecart, ancv:encANCV.ecart, click_collect_cb:encCCCB.ecart,
+    deliveroo:encDELIV.ecart, bk_livraison:encLIVBK.ecart, trd:encTRD.ecart, uber_eats:encUBER.ecart
+  };
+
+  // ── ÉCART TOTAL CAISSE (ligne TOTAL CA ENCAISSE) ──
   let erreur_caisse = null;
-  const errM = T.match(new RegExp('TOTAL CA ENCAISSE\\s+'+MO+'\\s+'+MO+'\\s+([\\-\\d,]+)'));
-  if(errM) erreur_caisse = num(errM[3]);
+  let mE = T.match(/TOTAL CA ENCAISSE\s+(-?\d[\d ]*,\d{2})/);
+  if(mE) erreur_caisse = num(mE[1]);
+  else { mE = T.match(new RegExp(MO+'\\s+'+MO+'\\s+TOTAL CA ENCAISSE')); if(mE) erreur_caisse = null; }
+
+  // ── MODE DE CONSOMMATION (Sur Place / À Emporter) ──
+  // pdf.js : "...AE (...) % 535 4 353,91€ 10 021,40€ 11 076,23€ 4 791,35€ 30,29% 69,71%"
+  //   535=SP TAC, 4353,91=AE HT, 10021,40=SP HT, 11076,23=SP TTC, 4791,35=AE TTC, 30,29=AE %, 69,71=SP %
+  let sp_clients=null, sp_ht=null, ae_ht=null, sp_pct=null, ae_pct=null;
+  const mc = T.match(/%\s+(\d+)\s+(\d[\d ]*,\d{2})€\s+(\d[\d ]*,\d{2})€\s+(\d[\d ]*,\d{2})€\s+(\d[\d ]*,\d{2})€\s+(\d+,\d+)%\s+(\d+,\d+)%/);
+  if(mc){
+    sp_clients=parseInt(mc[1]); ae_ht=num(mc[2]); sp_ht=num(mc[3]); ae_pct=num(mc[6]); sp_pct=num(mc[7]);
+  }
 
   return {
     date, ca_ht, ca_ttc, tickets_nb,
@@ -5560,13 +5587,15 @@ function parserSynthesCA(txt) {
     livraison_ht, livraison_ttc, livraison_nb, livraison_pct, livraison_ticket_moyen,
     comptoir_ht, comptoir_ttc, comptoir_pct, comptoir_tickets, comptoir_ticket_moyen,
     cc_ht, cc_ttc, cc_pct, cc_tickets, cc_ticket_moyen,
+    sp_clients, sp_ht, sp_pct, ae_ht, ae_pct,
     corrections_nb, corrections_montant, corrections_pct,
     remises_nb, remises_montant, remises_pct,
     sauces_nb, sauces_montant, sauces_pct,
     annulations_nb, annulations_montant, annulations_pct,
     commandes_ouvertes_nb, commandes_ouvertes_montant, commandes_ouvertes_pct,
     repas_employes_nb, repas_employes_montant, repas_employes_pct,
-    erreur_caisse, cb, especes, uber_eats, deliveroo, bk_livraison, trd
+    erreur_caisse, ecarts_caisse,
+    cb, especes, ancv, click_collect_cb, deliveroo, bk_livraison, trd, uber_eats
   };
 }
 
@@ -7402,8 +7431,9 @@ async function extrairePDF() {
         annulations_nb: r.annulations_nb, annulations_montant: r.annulations_montant, annulations_pct: r.annulations_pct,
         commandes_ouvertes_nb: r.commandes_ouvertes_nb, commandes_ouvertes_montant: r.commandes_ouvertes_montant, commandes_ouvertes_pct: r.commandes_ouvertes_pct,
         repas_employes_nb: r.repas_employes_nb, repas_employes_montant: r.repas_employes_montant, repas_employes_pct: r.repas_employes_pct,
-        erreur_caisse: r.erreur_caisse,
-        cb: r.cb, especes: r.especes, uber_eats: r.uber_eats, deliveroo: r.deliveroo, bk_livraison: r.bk_livraison, trd: r.trd
+        erreur_caisse: r.erreur_caisse, ecarts_caisse: r.ecarts_caisse,
+        cb: r.cb, especes: r.especes, ancv: r.ancv, click_collect_cb: r.click_collect_cb,
+        uber_eats: r.uber_eats, deliveroo: r.deliveroo, bk_livraison: r.bk_livraison, trd: r.trd
       });
       document.getElementById('import-loading').style.display = 'none';
       document.getElementById('import-preview').style.display = 'block';
@@ -7599,10 +7629,35 @@ function fillImportFields(d) {
   set('s-err-caisse',    d.erreur_caisse);
   set('s-cb',            d.cb);
   set('s-especes',       d.especes);
+  set('s-ancv',          d.ancv);
+  set('s-cccb',          d.click_collect_cb);
   set('s-uber',          d.uber_eats);
   set('s-deliveroo',     d.deliveroo);
   set('s-bkliv',         d.bk_livraison);
   set('s-trd',           d.trd);
+
+  // ── Contrôle visuel des écarts de comptage ──
+  // Vert : 0 à ~2 € (normal) · Orange : 2–50 € · Rouge : >50 € (caisse probablement non clôturée)
+  const ecAlert = document.getElementById('s-ecarts-alert');
+  if(ecAlert){
+    const ec = d.ecarts_caisse || {};
+    const noms = { cb:'CB', especes:'Espèces', ancv:'ANCV', click_collect_cb:'C&C CB', deliveroo:'Deliveroo', bk_livraison:'BK Livraison', trd:'TRD', uber_eats:'Uber Eats' };
+    const lignes = Object.keys(noms).filter(k=>ec[k]!=null && Math.abs(ec[k])>0.001).map(k=>{
+      const v = Math.abs(ec[k]);
+      const col = v<=2 ? 'var(--green)' : v<=50 ? 'var(--yellow)' : 'var(--red)';
+      const ico = v<=2 ? '✓' : v<=50 ? '⚠️' : '⛔';
+      return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;background:var(--bg3);border:1px solid ${col};color:${col};font-size:11px;margin:2px">${ico} ${noms[k]} : ${ec[k]>0?'+':''}${ec[k].toFixed(2)} €</span>`;
+    });
+    const totAbs = Math.abs(d.erreur_caisse||0);
+    const totCol = totAbs<=2 ? 'var(--green)' : totAbs<=50 ? 'var(--yellow)' : 'var(--red)';
+    const grosEcart = (d.erreur_caisse!=null && totAbs>50) || Object.values(ec).some(v=>v!=null && Math.abs(v)>50);
+    ecAlert.innerHTML = `<div style="padding:10px 12px;border-radius:8px;background:${grosEcart?'rgba(248,113,113,.1)':'rgba(62,207,142,.08)'};border:1px solid ${grosEcart?'rgba(248,113,113,.3)':'rgba(62,207,142,.25)'}">
+      <div style="font-size:11px;font-weight:600;margin-bottom:6px;color:var(--text)">Contrôle des écarts de comptage</div>
+      ${lignes.length ? lignes.join(' ') : '<span style="font-size:11px;color:var(--green)">✓ Aucun écart sur les moyens de paiement</span>'}
+      <div style="margin-top:8px;font-size:11px;color:${totCol}">Écart total caisse : <strong>${d.erreur_caisse!=null?(d.erreur_caisse>0?'+':'')+Number(d.erreur_caisse).toFixed(2)+' €':'—'}</strong>${grosEcart?' — ⛔ écart important : vérifier que la caisse a bien été clôturée':''}</div>
+    </div>`;
+    ecAlert.style.display = 'block';
+  }
 
   // Ticket moyen HT calculé (priorité au panier moyen HT fourni)
   const tmEl = document.getElementById('s-tm');
