@@ -4485,6 +4485,8 @@ function showLoginStep(step) {
 function selectResto(id, label) {
   LOGIN_RESTO = id;
   document.getElementById('login-step-label').textContent = label;
+  // Rafraîchir les codes partagés depuis Supabase dès cette étape (avant le choix du nom)
+  if(SB && typeof chargerCodesSupabase==='function'){ try{ chargerCodesSupabase(); }catch(e){} }
   if(id === 'ALL') showLoginStep('step-role-admin');
   else             showLoginStep('step-role');
 }
@@ -7163,6 +7165,9 @@ async function confirmCsvImport() {
 }
 
 // INIT
+// 1) Connexion Supabase + chargement des codes partagés AVANT le login
+loadConfig();
+// 2) Vérifier s'il y a une session active
 checkSession();
 
 </script>
