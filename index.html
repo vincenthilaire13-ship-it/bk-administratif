@@ -6419,7 +6419,8 @@ async function anInit(){
 async function anRefresh(){
   const from = document.getElementById('an-date-from').value;
   const to   = document.getElementById('an-date-to').value;
-  const resto = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') ? ACTIVE_RESTO : (CURRENT_USER?.resto||null);
+  let resto = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') ? ACTIVE_RESTO : (CURRENT_USER?.resto||null);
+  if(resto==='ALL' || resto==='Administration') resto = null; // 'ALL' = voir tous les restos, pas de filtre
   document.getElementById('an-content').innerHTML = '<div class="empty"><div class="empty-icon" style="animation:pulse 1.5s infinite">📊</div><div class="empty-title">Chargement des données…</div></div>';
 
   if(!SB){
@@ -6773,7 +6774,7 @@ function anRenderAnnulations(){
   let rows = [...(AN_DATA.annulationsTout || AN_DATA.annulations || [])];
   try {
     const local = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
-    const resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null);
+    let resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null); if(resto==='ALL'||resto==='Administration')resto=null;
     const seen=new Set(rows.map(r=>r.id));
     local.forEach(a=>{
       const dISO = a.date && a.date.includes('/') ? a.date.split('/').reverse().join('-') : a.date;
@@ -6979,7 +6980,7 @@ function anRenderParPersonne(type){
   const anns = (()=>{ let r=[...(AN_DATA.annulations||[])]; try{
     const local=JSON.parse(localStorage.getItem('bk_annulations')||'[]');
     const from=document.getElementById('an-date-from').value,to=document.getElementById('an-date-to').value;
-    const resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null);
+    let resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null); if(resto==='ALL'||resto==='Administration')resto=null;
     local.forEach(a=>{const d=a.date&&a.date.includes('/')?a.date.split('/').reverse().join('-'):a.date; if(from&&d<from)return; if(to&&d>to)return; if(resto&&a.restaurant!==resto)return; r.push({date:d,montant:a.montant,manager:a.manager});});
   }catch(e){} return r; })();
 
