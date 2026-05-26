@@ -3643,6 +3643,8 @@ async function loadAll() {
       });
     }
   }catch(e){ console.warn('reload planning après connexion SB', e); }
+  // Rafraîchir le suivi des dépôts s'il est affiché
+  try { if(document.getElementById('imports-content') && typeof renderImports==='function') renderImports(); } catch(e){}
 }
 
 // ══ DASHBOARD ══
