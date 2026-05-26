@@ -4088,10 +4088,23 @@ function renderJournee(d) {
     </div>
     <div class="table-wrap"><table>
       <thead><tr><th>Indicateur</th><th class="num">Valeur 2026</th><th class="num">N-1 / Réf.</th><th class="num">Seuil</th><th>Statut</th></tr></thead>
-      <tbody>${rows.map(r=>r[0].startsWith('─')?
-        `<tr><td colspan="5" style="padding:6px 14px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);background:rgba(255,255,255,.02)">${r[0].replace(/─/g,'').trim()}</td></tr>`:
-        `<tr><td>${r[0]}</td><td class="num">${r[1]}</td><td class="num" style="color:var(--muted)">${r[2]}</td><td class="num" style="color:var(--muted)">${r[3]}</td><td>${r[4]}</td></tr>`
-      ).join('')}</tbody>
+      <tbody>${(()=>{
+        // 1) Retirer uniquement les lignes réellement vides (pas de donnée du tout)
+        //    On garde les vrais zéros porteurs de sens (annulations 0, écart caisse 0…)
+        const lignesGardees = ['Nb annulations','Annulations montant','Erreur caisse','Caisse équilibrée'];
+        const estVide = r => { const v=String(r[1]).trim(); return (v===''||v==='—') && !lignesGardees.includes(r[0]); };
+        const gardees = rows.filter(r => r[0].startsWith('─') || !estVide(r));
+        // 2) Retirer les en-têtes de section qui n'ont plus aucune ligne de données ensuite
+        const finales = gardees.filter((r,i)=>{
+          if(!r[0].startsWith('─')) return true;
+          const suiv = gardees[i+1];
+          return suiv && !suiv[0].startsWith('─');
+        });
+        return finales.map(r=>r[0].startsWith('─')?
+          `<tr><td colspan="5" style="padding:6px 14px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);background:rgba(255,255,255,.02)">${r[0].replace(/─/g,'').trim()}</td></tr>`:
+          `<tr><td>${r[0]}</td><td class="num">${r[1]}</td><td class="num" style="color:var(--muted)">${r[2]}</td><td class="num" style="color:var(--muted)">${r[3]}</td><td>${r[4]}</td></tr>`
+        ).join('');
+      })()}</tbody>
     </table></div>
   </div>`;
 }
