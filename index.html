@@ -3317,7 +3317,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T07:17', label: 'v27/05-07h17', affichage: 'mardi 27 mai 2026 à 07:17' };
+const APP_VERSION = { datetime: '2026-05-27T07:25', label: 'v27/05-07h25', affichage: 'mercredi 27 mai 2026 à 07:25' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -7276,14 +7276,16 @@ function anRenderAnnulations(){
     .map(j=>{
       const k=(j.restaurant||'')+'|'+j.date;
       const attendu = j.annulations_nb||0;
+      const montantPDF = Math.abs(j.annulations_montant||0);
       const photographiees = (parJour[k]?.enregistrees)||0;
+      const montantDecl = (parJour[k]?.montant)||0;
       const manque = Math.max(0, attendu - photographiees);
       let statut, col, ico;
       if(attendu===0){ statut='Aucune annulation'; col='var(--green)'; ico='✓'; }
       else if(photographiees>=attendu){ statut='Complet ('+photographiees+'/'+attendu+')'; col='var(--green)'; ico='✓'; }
       else if(photographiees===0){ statut='Aucune photo ('+photographiees+'/'+attendu+')'; col='var(--red)'; ico='⛔'; }
       else { statut='Incomplet ('+photographiees+'/'+attendu+')'; col='var(--yellow)'; ico='⚠️'; }
-      return {date:j.date, restaurant:j.restaurant, attendu, photographiees, manque, statut, col, ico};
+      return {date:j.date, restaurant:j.restaurant, attendu, photographiees, manque, statut, col, ico, montantPDF, montantDecl};
     })
     .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
@@ -7307,14 +7309,16 @@ function anRenderAnnulations(){
       <td class="num">${s.attendu}</td>
       <td class="num">${s.photographiees}</td>
       <td class="num" style="font-weight:600;color:${s.manque>0?'var(--red)':'var(--green)'}">${s.manque>0?s.manque:'0'}</td>
+      <td class="num" style="color:var(--muted2)">${fmt(s.montantPDF)} €</td>
+      <td class="num" style="color:var(--muted2)">${fmt(s.montantDecl)} €</td>
       <td><span style="color:${s.col};font-weight:600">${s.ico} ${s.statut}</span></td>
     </tr>`).join('');
   const suiviTbl = suivi.length ? `
   <div class="table-card" style="margin-top:16px">
-    <div class="table-header"><span class="table-title">📸 Rapprochement photos — annulations (depuis le 17/05/2026)</span><span style="font-size:10px;color:var(--muted)">${totPhoto}/${totAttendu} photographiées</span></div>
-    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Compare le nombre d'annulations de la Synthèse CA (attendu) avec celles enregistrées/photographiées par les managers. ⚠️ ou ⛔ = des photos manquent.</div>
-    <div class="table-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Attendu (CA)</th><th class="num">Photographiées</th><th class="num">Manque</th><th>Statut</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
-  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Le rapprochement photos démarre le 17/05/2026. Aucune journée concernée pour l'instant (ou Synthèse CA non importée).</div></div>`;
+    <div class="table-header"><span class="table-title">📸 Rapprochement — annulations (depuis le 17/05/2026)</span><span style="font-size:10px;color:var(--muted)">${totPhoto}/${totAttendu} déclarées</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Compare la Synthèse CA (attendu + montant PDF) avec les annulations déclarées par les managers (déclarées + montant déclaré). ⚠️ ou ⛔ = des déclarations manquent.</div>
+    <div class="table-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Attendu (CA)</th><th class="num">Déclarées</th><th class="num">Manque</th><th class="num">Montant PDF</th><th class="num">Montant déclaré</th><th>Statut</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
+  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Le rapprochement démarre le 17/05/2026. Aucune journée concernée pour l'instant (ou Synthèse CA non importée).</div></div>`;
 
   // Par manager / équipier (sur tout l'historique)
   const byMgr={}; rows.forEach(r=>{const m=r.manager||'(non renseigné)'; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0);});
