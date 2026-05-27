@@ -3248,7 +3248,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T07:35', label: 'v27/05-07h35', affichage: 'mercredi 27 mai 2026 à 07:35' };
+const APP_VERSION = { datetime: '2026-05-27T07:45', label: 'v27/05-07h45', affichage: 'mercredi 27 mai 2026 à 07:45' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -4056,6 +4056,12 @@ function buildJourneeSelect() {
   [...DATA].reverse().forEach(d=>{
     sel.innerHTML += `<option value="${d.date}">${formatDate(d.date)} ${jourSemaine(d.date)} — ${fmt(caHT(d))}€ HT</option>`;
   });
+  // Afficher directement la dernière journée enregistrée (sans sélection manuelle)
+  if(DATA.length){
+    const derniere = DATA[DATA.length-1];
+    sel.value = derniere.date;
+    renderJournee(derniere);
+  }
 }
 
 function loadJournee(mode) {
@@ -5033,37 +5039,12 @@ function selectRole(role) {
   document.getElementById('login-step-label').textContent =
     ROLE_LABELS[role] + (LOGIN_RESTO && LOGIN_RESTO!=='ALL' ? ' · ' + (RESTAURANTS[LOGIN_RESTO]?.nom||'') : '');
 
-  // Construire la liste des noms (managers/directeurs) à partir des codes connus
-  const remplirListe = () => {
-    const wrap = document.getElementById('manager-select-wrap');
-    const sel  = document.getElementById('login-mgr-name');
-    const lbl  = wrap ? wrap.querySelector('.login-label') : null;
-    if(role === 'manager') {
-      wrap.style.display = 'block';
-      if(lbl) lbl.textContent = 'Votre nom (manager)';
-      const codes = getCodes();
-      const mgrs = codes.managers.filter(m=> !m.resto || m.resto===LOGIN_RESTO);
-      sel.innerHTML = mgrs.length
-        ? '<option value="">— Sélectionnez votre nom —</option>' + mgrs.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('')
-        : '<option value="">— Aucun manager pour ce resto —</option>';
-    } else if(role === 'directeur') {
-      wrap.style.display = 'block';
-      if(lbl) lbl.textContent = 'Votre nom (directeur)';
-      const codes = getCodes();
-      const dirs = (codes.directeurs||[]).filter(d=> !d.resto || d.resto===LOGIN_RESTO);
-      sel.innerHTML = dirs.length
-        ? '<option value="">— Sélectionnez votre nom —</option>' + dirs.map(d=>`<option value="${d.nom}">${d.nom}</option>`).join('')
-        : '<option value="">— Aucun directeur pour ce resto —</option>';
-    } else {
-      wrap.style.display = 'none';
-    }
-  };
+  // Plus de sélection de nom : on entre directement le code PIN, le nom est retrouvé automatiquement
+  const wrap = document.getElementById('manager-select-wrap');
+  if(wrap) wrap.style.display = 'none';
 
-  remplirListe(); // affichage immédiat avec ce qu'on a
-  // Puis recharger depuis Supabase et re-remplir (au cas où un autre appareil a modifié les codes)
-  if(SB && typeof chargerCodesSupabase==='function'){
-    chargerCodesSupabase().then(ok=>{ if(ok) remplirListe(); });
-  }
+  // Recharger les codes depuis Supabase en arrière-plan (au cas où un autre appareil a modifié)
+  if(SB && typeof chargerCodesSupabase==='function'){ chargerCodesSupabase(); }
 
   // Reset PIN
   ['pin-1','pin-2','pin-3','pin-4'].forEach(id=>{
@@ -5131,12 +5112,11 @@ async function doLogin() {
     const codes2 = getCodes();
     const dirs = codes2.directeurs||[];
     if(dirs.length){
-      // Nouveau système : liste de directeurs individuels (nom + code + resto)
-      const nom = document.getElementById('login-mgr-name')?.value;
-      if(!nom) { errEl.textContent='Sélectionnez votre nom.'; return; }
-      const dir = dirs.find(d=>d.nom===nom && d.code===pin);
+      // On retrouve le directeur par son code PIN (parmi ceux du resto choisi)
+      const candidats = dirs.filter(d=> !LOGIN_RESTO || LOGIN_RESTO==='ALL' || !d.resto || d.resto===LOGIN_RESTO);
+      const dir = candidats.find(d=>d.code===pin) || dirs.find(d=>d.code===pin);
       if(dir){
-        if(dir.resto && LOGIN_RESTO && dir.resto!==LOGIN_RESTO){
+        if(dir.resto && LOGIN_RESTO && LOGIN_RESTO!=='ALL' && dir.resto!==LOGIN_RESTO){
           errEl.textContent='Ce directeur n\'est pas rattaché à ce restaurant.';
           ['pin-1','pin-2','pin-3','pin-4'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
           document.getElementById('pin-1')?.focus(); return;
@@ -5150,14 +5130,12 @@ async function doLogin() {
   }
 
   else if(role === 'manager') {
-    const nom = document.getElementById('login-mgr-name')?.value;
-    if(!nom) { errEl.textContent='Sélectionnez votre nom.'; return; }
-    const mgr = codes.managers.find(m=>m.nom===nom && m.code===pin);
+    // On retrouve le manager par son code PIN (parmi ceux du resto choisi)
+    const candidats = codes.managers.filter(m=> !LOGIN_RESTO || LOGIN_RESTO==='ALL' || !m.resto || m.resto===LOGIN_RESTO);
+    const mgr = candidats.find(m=>m.code===pin) || codes.managers.find(m=>m.code===pin);
     if(mgr){
-      // Le manager est rattaché à son resto (sa fiche prime ; sinon le resto choisi)
       const restoMgr = mgr.resto || LOGIN_RESTO;
-      // Sécurité : si la fiche manager a un resto différent de celui choisi, refuser
-      if(mgr.resto && LOGIN_RESTO && mgr.resto!==LOGIN_RESTO){
+      if(mgr.resto && LOGIN_RESTO && LOGIN_RESTO!=='ALL' && mgr.resto!==LOGIN_RESTO){
         errEl.textContent='Ce manager n\'est pas rattaché à ce restaurant.';
         ['pin-1','pin-2','pin-3','pin-4'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
         document.getElementById('pin-1')?.focus();
