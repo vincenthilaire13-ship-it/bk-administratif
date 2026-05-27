@@ -3439,7 +3439,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T19:25', label: 'v27/05-19h25', affichage: 'mercredi 27 mai 2026 à 19:25' };
+const APP_VERSION = { datetime: '2026-05-27T19:40', label: 'v27/05-19h40', affichage: 'mercredi 27 mai 2026 à 19:40' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -11279,7 +11279,29 @@ async function hrDropFiles(fileList){
         const ab=await file.arrayBuffer();
         const res=await hrParsePDF(ab);
         if(res.type==='synthese'){ hrLog(`<div style="color:var(--orange,#fbbf24);font-size:12px;margin-bottom:6px">⚠ ${file.name} : c'est une synthèse CA, pas un rapport horaire. Ignoré.</div>`); continue; }
-        if(res.nbTranches===0){ hrLog(`<div style="color:#f87171;font-size:12px;margin-bottom:6px">✗ ${file.name} : aucune tranche lue.</div>`); continue; }
+        if(res.nbTranches===0){
+          // Affichage enrichi avec diagnostic pour qu'on puisse identifier le problème
+          let diagHTML = '';
+          if(res.diag){
+            const d = res.diag;
+            const echantillonStr = d.echantillonMontants.map(m=>`${m.val} (x=${m.x}, ${m.xPct}%)`).join(', ');
+            const heuresStr = d.premieresHeures.map(h=>`${h.h} (x=${h.x})`).join(', ');
+            diagHTML = `<details style="margin-top:6px;background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);border-radius:6px;padding:6px 10px;font-size:11px;color:var(--mu);font-family:'DM Mono',monospace">
+              <summary style="cursor:pointer;color:#f87171">📋 Diagnostic — clique pour voir / copier</summary>
+              <div style="margin-top:8px;line-height:1.6">
+                • Largeur PDF : ${d.largeurPDF}<br>
+                • Items total : ${d.nbItemsTotal}<br>
+                • Heures (HH:MM) détectées : ${d.nbHeuresDetectees}<br>
+                • Premières heures : ${heuresStr||'<em>aucune</em>'}<br>
+                • Montants (n.nn) détectés : ${d.nbMontantsDetectes}<br>
+                • Échantillon montants : ${echantillonStr||'<em>aucun</em>'}<br>
+                • Aperçu texte : <span style="word-break:break-all">${(d.apercuTexte||'').slice(0,400)}</span>
+              </div>
+            </details>`;
+          }
+          hrLog(`<div style="color:#f87171;font-size:12px;margin-bottom:6px">✗ ${file.name} : aucune tranche lue.${diagHTML}</div>`);
+          continue;
+        }
         // Ranger ce jour dans HR_ALL du resto détecté
         const key=res.resto||'INCONNU';
         if(!HR_ALL[key]) HR_ALL[key]={};
@@ -11585,6 +11607,10 @@ async function hrParsePDF(arrayBuffer){
 
   // Largeur de référence : la largeur réelle du PDF (sinon 1080 par défaut)
   const W = maxX > 0 ? maxX : 1080;
+  // Helper : un "montant" peut utiliser le point OU la virgule comme séparateur décimal
+  // (les PDF BK français peuvent utiliser "24,89" au lieu de "24.89")
+  const isMontant = s => /^\d+[.,]\d{2}$/.test(s);
+  const toNum = s => parseFloat(s.replace(',', '.'));
   // Heures : HH:MM avec HH plausible (5h à 30h pour gérer après minuit), en colonne gauche
   const heures = items.filter(it=>{
     const m = it.str.match(/^(\d{1,2}):(\d{2})$/);
@@ -11594,14 +11620,14 @@ async function hrParsePDF(arrayBuffer){
     return it.x < 0.20*W; // colonne gauche : élargie à 20% au lieu de 140px en dur
   });
   // Tentative principale : fenêtre 86%-94% (colonne "Total HT")
-  let montants = items.filter(it=>/^\d+\.\d{2}$/.test(it.str) && it.x>0.86*W && it.x<0.94*W);
+  let montants = items.filter(it=>isMontant(it.str) && it.x>0.86*W && it.x<0.94*W);
   const ca = {};
   const remplir = (montantsList) => {
     const out = {};
     heures.forEach(h=>{
       const cand = montantsList
         .filter(m=>m.page===h.page && Math.abs(m.y-h.y)<18)
-        .map(m=>({d:Math.abs(m.y-h.y), v:parseFloat(m.str)}))
+        .map(m=>({d:Math.abs(m.y-h.y), v:toNum(m.str)}))
         .sort((a,b)=>a.d-b.d);
       if(cand.length) out[h.str] = cand[0].v;
     });
@@ -11610,7 +11636,7 @@ async function hrParsePDF(arrayBuffer){
   Object.assign(ca, remplir(montants));
   // REPLI 1 : si trop peu de tranches récupérées, élargir la fenêtre à 80%-96%
   if(Object.keys(ca).length < heures.length * 0.5){
-    montants = items.filter(it=>/^\d+\.\d{2}$/.test(it.str) && it.x>0.80*W && it.x<0.96*W);
+    montants = items.filter(it=>isMontant(it.str) && it.x>0.80*W && it.x<0.96*W);
     const ca2 = remplir(montants);
     if(Object.keys(ca2).length > Object.keys(ca).length){
       for(const k in ca) delete ca[k];
@@ -11619,16 +11645,36 @@ async function hrParsePDF(arrayBuffer){
   }
   // REPLI 2 : si toujours rien, prendre le MONTANT LE PLUS À DROITE sur la ligne de l'heure
   if(Object.keys(ca).length === 0){
-    const tousMontants = items.filter(it=>/^\d+\.\d{2}$/.test(it.str));
+    const tousMontants = items.filter(it=>isMontant(it.str));
     heures.forEach(h=>{
       const ligne = tousMontants
         .filter(m=>m.page===h.page && Math.abs(m.y-h.y)<18)
         .sort((a,b)=>b.x-a.x); // tri x décroissant : prendre celui le plus à droite
-      if(ligne.length) ca[h.str] = parseFloat(ligne[0].str);
+      if(ligne.length) ca[h.str] = toNum(ligne[0].str);
     });
   }
   const total = Object.values(ca).reduce((a,b)=>a+b,0);
-  return {resto, type, date, ca, total, nbTranches:Object.keys(ca).length};
+  // ── DIAGNOSTIC en cas d'échec : on remonte ce que le parseur a vraiment vu ──
+  // pour pouvoir identifier le pattern manquant et adapter le parseur si besoin.
+  let diag = null;
+  if(Object.keys(ca).length === 0){
+    const tousMontants = items.filter(it=>isMontant(it.str));
+    // Échantillon : 8 premiers montants avec leurs positions, et les heures détectées
+    const echantillon = tousMontants.slice(0, 12).map(m=>({
+      val:m.str, x:Math.round(m.x), y:Math.round(m.y), xPct:Math.round(m.x/W*1000)/10, page:m.page
+    }));
+    diag = {
+      largeurPDF: Math.round(W),
+      nbItemsTotal: items.length,
+      nbHeuresDetectees: heures.length,
+      premieresHeures: heures.slice(0, 5).map(h=>({h:h.str, x:Math.round(h.x), y:Math.round(h.y), page:h.page})),
+      nbMontantsDetectes: tousMontants.length,
+      echantillonMontants: echantillon,
+      // Texte concaténé des 500 premiers caractères pour voir ce qui est dedans
+      apercuTexte: allText.substring(0, 500).replace(/\s+/g,' ').trim()
+    };
+  }
+  return {resto, type, date, ca, total, nbTranches:Object.keys(ca).length, diag};
 }
 
 window.hrParsePDF=hrParsePDF;
