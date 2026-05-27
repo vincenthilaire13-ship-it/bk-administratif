@@ -344,7 +344,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     </div>
     <div style="display:flex;align-items:center;gap:12px">
       <div class="topbar-title" id="page-title">Dashboard</div>
-      <span id="app-version-badge" title="Version de l'application" style="font-size:9.5px;color:var(--accent);background:rgba(245,166,35,.14);border:1px solid rgba(245,166,35,.35);border-radius:6px;padding:3px 8px;white-space:nowrap;font-weight:600"></span>
+      <span id="app-version-badge" title="Version de l'application" style="font-size:9.5px;color:var(--green);background:rgba(62,207,142,.14);border:1px solid rgba(62,207,142,.35);border-radius:6px;padding:3px 8px;white-space:nowrap;font-weight:600"></span>
       <!-- Sélecteur resto : visible admin/superviseur uniquement -->
       <div id="resto-switcher" style="display:none;align-items:center;gap:6px">
         <button id="sw-BK500" class="btn" style="font-size:11px;padding:4px 10px" onclick="switchResto('BK500')">🏟️ BK 500</button>
@@ -3317,7 +3317,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T08:25', label: 'v27/05-08h25' };
+const APP_VERSION = { datetime: '2026-05-27T07:17', label: 'v27/05-07h17', affichage: 'mardi 27 mai 2026 à 07:17' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -5260,10 +5260,13 @@ function setSession(user) {
   try {
     const vb = document.getElementById('app-version-badge');
     if(vb){
-      const d = new Date(APP_VERSION.datetime);
-      const dStr = d.toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});
-      const hStr = d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-      vb.textContent = '⚡ Mis à jour le '+dStr+' à '+hStr;
+      // On affiche directement le texte écrit dans APP_VERSION (aucune reconversion de fuseau)
+      let txt = APP_VERSION.affichage;
+      if(!txt){ // repli si "affichage" absent
+        const d = new Date(APP_VERSION.datetime);
+        txt = d.toLocaleDateString('fr-FR',{weekday:'long',day:'2-digit',month:'long',year:'numeric'}) + ' à ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+      }
+      vb.textContent = '✓ À jour — '+txt;
       vb.title = 'Version '+APP_VERSION.label;
     }
   } catch(e){}
