@@ -1045,7 +1045,10 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
             <div style="font-size:18px;font-weight:700">👥 Équipiers</div>
             <div style="font-size:11px;color:var(--muted)">Liste construite automatiquement à partir des fichiers « Bons repas » déposés. Aucune saisie manuelle.</div>
           </div>
-          <button class="btn" onclick="chargerEquipiers()">↺ Actualiser</button>
+          <div style="display:flex;gap:6px">
+            <button class="btn" onclick="forcerReconstructionEquipiers(this)">🔄 Reconstruire la liste</button>
+            <button class="btn" onclick="chargerEquipiers()">↺ Actualiser</button>
+          </div>
         </div>
         <div id="equipiers-content">
           <div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Chargement…</div></div>
@@ -3248,7 +3251,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T07:45', label: 'v27/05-07h45', affichage: 'mercredi 27 mai 2026 à 07:45' };
+const APP_VERSION = { datetime: '2026-05-27T07:55', label: 'v27/05-07h55', affichage: 'mercredi 27 mai 2026 à 07:55' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6412,8 +6415,58 @@ async function enregistrerEquipiers(resto, liste, dateVu){
     return { restaurant:r, code:cle, nom:nom, vu_le:(dateVu||new Date().toISOString().slice(0,10)) };
   });
   if(!rows.length) return;
-  try { await SB.from('equipiers').upsert(rows, {onConflict:'restaurant,code'}); }
-  catch(e){ /* ignore */ }
+  try {
+    const { error } = await SB.from('equipiers').upsert(rows, {onConflict:'restaurant,code'});
+    if(error){
+      console.warn('equipiers upsert (onConflict) échoué, on réessaie en insert simple', error);
+      // Repli : insérer un par un en ignorant les doublons
+      for(const row of rows){
+        try { await SB.from('equipiers').insert(row); } catch(e2){ /* doublon probable, on ignore */ }
+      }
+    }
+  } catch(e){ console.warn('enregistrerEquipiers', e); }
+}
+
+// Bouton "Reconstruire la liste" — force la reconstruction depuis les données existantes
+async function forcerReconstructionEquipiers(btn){
+  if(btn){ btn.disabled=true; btn.textContent='🔄 Reconstruction…'; }
+  try { await reconstruireEquipiers(); } catch(e){ console.warn(e); }
+  if(btn){ btn.disabled=false; btn.textContent='🔄 Reconstruire la liste'; }
+  chargerEquipiers();
+}
+
+// Reconstruit la liste des équipiers à partir des données déjà en base
+// (bons repas, annulations, erreurs de caisse). Utile si la table était vide.
+async function reconstruireEquipiers(){
+  if(!SB) return;
+  const aEnregistrer = []; // {resto, nom, code, date}
+  // 1) Bons repas (équipiers bénéficiaires)
+  try {
+    const { data } = await SB.from('repas_employes').select('restaurant,date,nom,code');
+    (data||[]).forEach(r=>{ if(r.nom) aEnregistrer.push({resto:r.restaurant, nom:r.nom, code:r.code, date:r.date}); });
+  } catch(e){}
+  // 2) Annulations (manager + équipier)
+  try {
+    const { data } = await SB.from('annulations').select('restaurant,date,manager,equipier');
+    (data||[]).forEach(r=>{
+      if(r.manager)  aEnregistrer.push({resto:r.restaurant, nom:r.manager, code:null, date:r.date});
+      if(r.equipier) aEnregistrer.push({resto:r.restaurant, nom:r.equipier, code:null, date:r.date});
+    });
+  } catch(e){}
+  // 3) Erreurs de caisse (manager + équipier)
+  try {
+    const { data } = await SB.from('erreurs_caisse').select('restaurant,date,manager,equipier');
+    (data||[]).forEach(r=>{
+      if(r.manager)  aEnregistrer.push({resto:r.restaurant, nom:r.manager, code:null, date:r.date});
+      if(r.equipier) aEnregistrer.push({resto:r.restaurant, nom:r.equipier, code:null, date:r.date});
+    });
+  } catch(e){}
+  // Regrouper par resto et enregistrer
+  const parResto = {};
+  aEnregistrer.forEach(x=>{ const r=(x.resto&&x.resto!=='ALL'&&x.resto!=='Administration')?x.resto:'BK526'; (parResto[r]=parResto[r]||[]).push({nom:x.nom, code:x.code}); });
+  for(const r of Object.keys(parResto)){
+    await enregistrerEquipiers(r, parResto[r]);
+  }
 }
 
 async function chargerEquipiers(){
@@ -6428,9 +6481,18 @@ async function chargerEquipiers(){
       ? CURRENT_USER.resto
       : (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? ACTIVE_RESTO : null);
     if(resto) q = q.eq('restaurant', resto);
-    const { data, error } = await q;
-    if(error){ el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Table équipiers introuvable</div><div class="empty-sub">Créez-la via Configuration → Vérifier les tables.</div></div>'; return; }
-    if(!data || !data.length){ el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Aucun équipier pour le moment</div><div class="empty-sub">La liste se remplira automatiquement dès le premier dépôt de « Bons repas ».</div></div>'; return; }
+    let { data, error } = await q;
+    if(error){ el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Table équipiers introuvable</div><div class="empty-sub">Créez-la via Configuration → Copier le SQL, puis Run dans Supabase.</div></div>'; return; }
+
+    // Repli : si la table équipiers est vide, reconstruire la liste depuis les données existantes
+    // (bons repas + annulations + erreurs de caisse déjà en base) et les ré-enregistrer.
+    if(!data || !data.length){
+      try { await reconstruireEquipiers(); } catch(e){ console.warn('reconstruction équipiers', e); }
+      const r2 = await SB.from('equipiers').select('*');
+      if(r2.data && r2.data.length){ data = r2.data; }
+    }
+
+    if(!data || !data.length){ el.innerHTML='<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">Aucun équipier pour le moment</div><div class="empty-sub">La liste se remplit automatiquement dès le premier dépôt de « Bons repas » (et avec les annulations / erreurs de caisse).</div></div>'; return; }
 
     // Grouper par resto, trier par nom
     const parResto={};
