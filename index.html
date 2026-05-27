@@ -314,7 +314,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-full-only" style="display:none" onclick="nav('journee')"><span>📅</span><span>Journée</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('historique')"><span>📈</span><span>Historique</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('comparaison')"><span>🔄</span><span>Comparaison N-1</span></div>
-    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('imports')"><span>🗂️</span><span>Imports (contrôle)</span></div>
     <div class="nav-section role-superadmin-only" style="display:none">Saisie</div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('saisie')"><span>📥</span><span>Importer PDF</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('import-masse')"><span>⚡</span><span>Import massif</span></div>
@@ -474,23 +473,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     </section>
 
     <!-- IMPORTS — CONTRÔLE DES 4 PDF PAR JOUR -->
-    <section class="section" id="sec-imports">
-      <div class="topbar" style="position:static;padding:0 0 14px;border:none;background:none;gap:12px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:8px">
-          <label style="font-size:11px;color:var(--muted2)">Du</label>
-          <input type="date" class="form-input" id="imp-date-from" style="width:auto;padding:6px 10px">
-          <label style="font-size:11px;color:var(--muted2)">au</label>
-          <input type="date" class="form-input" id="imp-date-to" style="width:auto;padding:6px 10px">
-        </div>
-        <button class="btn" onclick="impSetPeriode(7)">7 j</button>
-        <button class="btn" onclick="impSetPeriode(30)">30 j</button>
-        <button class="btn" onclick="impSetPeriode(90)">90 j</button>
-        <button class="btn btn-accent" onclick="renderImports()">↺ Actualiser</button>
-      </div>
-      <div id="imports-content">
-        <div class="empty"><div class="empty-icon">🗂️</div><div class="empty-title">Contrôle des imports</div><div class="empty-sub">Chargement…</div></div>
-      </div>
-    </section>
+    <!-- (Section "Imports — contrôle" déplacée sous Import massif dans la section Saisie) -->
 
     <!-- SAISIE / IMPORT PDF -->
     <section class="section" id="sec-saisie">
@@ -981,6 +964,25 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
             💾 Enregistrer ces journées
           </button>
         </div>
+
+        <!-- CONTRÔLE DES IMPORTS (déplacé ici, sous l'import massif) -->
+        <div class="mgr-card" style="margin-top:18px">
+          <div class="mgr-title">🗂️ Contrôle des dépôts PDF</div>
+          <div class="mgr-sub">Vérifie, par restaurant et par jour, quels documents ont bien été déposés (Synthèse CA · SOS Drive · Ventes ¼h · Bons repas).</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0">
+            <label style="font-size:11px;color:var(--muted2)">Du</label>
+            <input type="date" class="form-input" id="imp-date-from" style="width:auto;padding:6px 10px">
+            <label style="font-size:11px;color:var(--muted2)">au</label>
+            <input type="date" class="form-input" id="imp-date-to" style="width:auto;padding:6px 10px">
+            <button class="btn" onclick="impSetPeriode(7)">7 j</button>
+            <button class="btn" onclick="impSetPeriode(30)">30 j</button>
+            <button class="btn" onclick="impSetPeriode(90)">90 j</button>
+            <button class="btn btn-accent" onclick="renderImports()">↺ Actualiser</button>
+          </div>
+          <div id="imports-content">
+            <div class="empty"><div class="empty-icon">🗂️</div><div class="empty-title">Contrôle des imports</div><div class="empty-sub">Cliquez sur Actualiser pour vérifier.</div></div>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -999,10 +1001,9 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       </div>
       <div class="an-filter">
         <div class="an-presets" id="an-presets">
-          <button class="an-preset" data-p="7" onclick="anSetPreset('7',this)">7 jours</button>
-          <button class="an-preset" data-p="30" onclick="anSetPreset('30',this)">30 jours</button>
-          <button class="an-preset" data-p="mois" onclick="anSetPreset('mois',this)">Ce mois</button>
-          <button class="an-preset active" data-p="tout" onclick="anSetPreset('tout',this)">Tout</button>
+          <button class="an-preset" data-p="jour" onclick="anSetPreset('jour',this)">Un jour</button>
+          <button class="an-preset" data-p="semaine" onclick="anSetPreset('semaine',this)">Une semaine</button>
+          <button class="an-preset active" data-p="mois" onclick="anSetPreset('mois',this)">Un mois</button>
           <button class="an-preset" data-p="custom" onclick="anSetPreset('custom',this)">Personnalisé</button>
         </div>
         <div class="an-dates" id="an-dates">
@@ -3205,6 +3206,7 @@ function nav(id) {
   if(id==='managers') renderManagers();
   if(id==='analyses') anInit();
   if(id==='imports') renderImports();
+  if(id==='import-masse'){ try{ if(!document.getElementById('imp-date-from').value) impSetPeriode(30); else renderImports(); }catch(e){} }
   if(id==='equipiers') chargerEquipiers();
   if(id==='manager'){
     showMgrSection('home');
@@ -6467,7 +6469,7 @@ function checkSession(){
 let AN_TAB = 'sos';
 let AN_DATA = { sos:[], repas:[], annulations:[] };
 let _anLoaded = false;
-let AN_PRESET = 'tout';   // période par défaut : tout l'historique
+let AN_PRESET = 'mois';   // période par défaut : un mois (30 derniers jours)
 let AN_RESTO  = '';        // '' = tous les restos
 
 function anSetPreset(p, btn){
@@ -6479,10 +6481,9 @@ function anSetPreset(p, btn){
   // calculer from/to selon le preset
   const to = new Date();
   let from = null;
-  if(p==='7'){ from=new Date(); from.setDate(from.getDate()-6); }
-  else if(p==='30'){ from=new Date(); from.setDate(from.getDate()-29); }
-  else if(p==='mois'){ from=new Date(to.getFullYear(), to.getMonth(), 1); }
-  else if(p==='tout'){ from=null; }
+  if(p==='jour'){ from=new Date(); }                                  // aujourd'hui seulement
+  else if(p==='semaine'){ from=new Date(); from.setDate(from.getDate()-6); }   // 7 derniers jours
+  else if(p==='mois'){ from=new Date(); from.setDate(from.getDate()-29); }     // 30 derniers jours
   const pad=n=>String(n).padStart(2,'0');
   const iso=d=>d?d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()):'';
   document.getElementById('an-date-from').value = from?iso(from):'';
@@ -6509,8 +6510,9 @@ function anSwitch(tab){
 }
 
 async function anInit(){
-  // période par défaut : Tout
-  anRefresh();
+  // Applique la période par défaut (un mois) en activant le bon bouton
+  const btn = document.querySelector('#an-presets .an-preset[data-p="mois"]');
+  if(btn) anSetPreset('mois', btn); else anRefresh();
 }
 
 async function anRefresh(){
