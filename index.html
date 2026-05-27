@@ -1246,9 +1246,9 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
 </div>
 
 <div id="hrx-sec-ca" class="hr-sec">
-  <div class="hr-stitle">CA prévisionnel</div>
-  <div class="hr-ssub">CA HT réel par tranche de 15 min (lecture seule).</div>
-  <div class="hr-ca-ctrl">
+  <!-- Anciens contrôles cachés : Vue/Source/Jour/Semaine + grille géante
+       (la logique de génération du planning passe désormais par les boutons jour) -->
+  <div class="hr-ca-ctrl" style="display:none">
     <div class="hr-cc"><label>Vue</label>
       <select id="hrx-vue-sel" onchange="hrSetVue(this.value)">
         <option value="jour">Jour</option>
@@ -1274,13 +1274,12 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
       <select id="hrx-sem-sel" onchange="hrGenFromWeek(this.value)"></select>
     </div>
   </div>
-  <div class="hr-ssub" style="margin-top:-6px;font-size:11px">Le CA au quart d'heure est chargé automatiquement (lecture seule). Le planning se met à jour tout seul à chaque changement.</div>
-  <div class="hr-ca-grid" id="hrx-ca-grid"></div>
+  <div class="hr-ca-grid" id="hrx-ca-grid" style="display:none"></div>
 
-  <!-- ─── CONSULTATION RAPIDE D'UN JOUR ─── -->
-  <div style="margin-top:1.8rem;padding-top:1.2rem;border-top:1px solid var(--bd)">
-    <div class="hr-stitle" style="font-size:14px;margin-bottom:.3rem">🔎 Consulter un jour précis</div>
-    <div class="hr-ssub" style="margin-bottom:.8rem">Sélectionnez n'importe quel jour de l'année. ✓ = PDF déposé · ⚠ = partiel · ✗ = manquant · — = à venir.</div>
+  <!-- ─── CONSULTATION D'UN JOUR PRÉCIS ─── -->
+  <div>
+    <div class="hr-stitle">🔎 Consulter un jour précis</div>
+    <div class="hr-ssub" style="margin-bottom:.8rem">Sélectionnez n'importe quel jour de l'année pour visualiser les ventes ¼h en timeline horaire. ✓ = PDF déposé · ⚠ = partiel · ✗ = manquant · — = à venir.</div>
     <div class="hr-ca-ctrl">
       <div class="hr-cc" style="min-width:380px">
         <label>Jour</label>
@@ -9424,6 +9423,70 @@ function renderTimeline(){
   const ruler=document.getElementById('hrx-ruler');ruler.innerHTML='';
   // CA prévu par heure = somme des 4 tranches de 15 min de cette heure (du jour affiché)
   const caJour = CA_DAYS[curDay] || {};
+
+  // ── Bandeau "Source du CA" au-dessus de la timeline du planning ────────────
+  // Indique CLAIREMENT d'où viennent les données du jour actuellement affiché :
+  //   - CA réel (PDF déposé pour ce jour exact)
+  //   - CA prévisionnel basé sur le N-1 (date 2025 utilisée comme référence)
+  //   - Aucune donnée
+  try {
+    const oldBan = document.getElementById('hrx-source-ban');
+    if(oldBan) oldBan.remove();
+    const iso2026 = (typeof DAY_DATES!=='undefined' && DAY_DATES[curDay]) ? DAY_DATES[curDay] : '';
+    const srcDate = (typeof DAY_SOURCES!=='undefined' && DAY_SOURCES[curDay]) ? DAY_SOURCES[curDay] : '';
+    const totCA = Object.values(caJour).reduce((a,b)=>a+b,0);
+    const fmtJour = d => {
+      if(!d) return '';
+      const J=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
+      const M=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+      const dt=hrParse(d);
+      return J[dt.getDay()]+' '+parseInt(d.slice(8,10))+' '+M[parseInt(d.slice(5,7))-1]+' '+d.slice(0,4);
+    };
+    let bandeau = '';
+    if(iso2026 && totCA > 0.5){
+      // Y a-t-il un PDF réel pour ce jour ?
+      const reelDispo = HR_DATA[iso2026] && Object.keys(HR_DATA[iso2026]).length;
+      if(reelDispo && !srcDate){
+        // CAS A : on utilise du CA réel 2026 (PDF déposé pour CE jour)
+        const totReel = Object.values(HR_DATA[iso2026]).reduce((a,b)=>a+b,0);
+        const heuresOK = Object.keys(HR_DATA[iso2026]).filter(h=>HR_DATA[iso2026][h]>0.5).sort();
+        bandeau = `<div id="hrx-source-ban" style="background:linear-gradient(rgba(62,207,142,.10),rgba(62,207,142,.10)),var(--s1);border:1px solid rgba(62,207,142,.35);border-radius:10px;padding:9px 14px;margin-bottom:10px;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="background:#3ecf8e;color:#000;font-weight:700;padding:2px 8px;border-radius:5px;font-size:10px;letter-spacing:.5px">CA RÉEL</span>
+          <span style="color:var(--tx)">PDF des ventes ¼h déposé pour le <strong>${fmtJour(iso2026)}</strong></span>
+          <span style="color:var(--mu);font-family:'DM Mono',monospace;font-size:11px">→ ${Math.round(totReel).toLocaleString('fr')} € HT · ${heuresOK.length} créneaux (${heuresOK[0]} → ${heuresOK[heuresOK.length-1]})</span>
+          <button class="hr-btn" style="margin-left:auto;font-size:11px;padding:4px 10px" onclick="hrShow('ca');setTimeout(()=>{const s=document.getElementById('hrx-consult-day-sel');if(s){s.value='${iso2026}';hrShowConsultDay('${iso2026}');}},80)">🔎 Voir le détail ¼h</button>
+        </div>`;
+      } else if(srcDate){
+        // CAS B : prévisionnel basé sur N-1
+        bandeau = `<div id="hrx-source-ban" style="background:linear-gradient(rgba(232,160,32,.10),rgba(232,160,32,.10)),var(--s1);border:1px solid rgba(232,160,32,.35);border-radius:10px;padding:9px 14px;margin-bottom:10px;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="background:#e8a020;color:#000;font-weight:700;padding:2px 8px;border-radius:5px;font-size:10px;letter-spacing:.5px">PRÉVISIONNEL</span>
+          <span style="color:var(--tx)">Aucun PDF pour le <strong>${fmtJour(iso2026)}</strong> — basé sur <strong>${fmtJour(srcDate)}</strong></span>
+          <span style="color:var(--mu);font-family:'DM Mono',monospace;font-size:11px">→ ${Math.round(totCA).toLocaleString('fr')} € HT estimés</span>
+          <button class="hr-btn" style="margin-left:auto;font-size:11px;padding:4px 10px" onclick="hrShow('ca');setTimeout(()=>{const s=document.getElementById('hrx-consult-day-sel');if(s){s.value='${srcDate}';hrShowConsultDay('${srcDate}');}},80)">🔎 Voir le détail de la référence</button>
+        </div>`;
+      } else if(reelDispo){
+        // CAS C : on est sur un jour 2026 réel mais DAY_SOURCES non vide (cas hybride rare)
+        const totReel = Object.values(HR_DATA[iso2026]).reduce((a,b)=>a+b,0);
+        bandeau = `<div id="hrx-source-ban" style="background:linear-gradient(rgba(62,207,142,.10),rgba(62,207,142,.10)),var(--s1);border:1px solid rgba(62,207,142,.35);border-radius:10px;padding:9px 14px;margin-bottom:10px;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="background:#3ecf8e;color:#000;font-weight:700;padding:2px 8px;border-radius:5px;font-size:10px;letter-spacing:.5px">CA RÉEL</span>
+          <span style="color:var(--tx)">PDF déposé pour le <strong>${fmtJour(iso2026)}</strong></span>
+          <span style="color:var(--mu);font-family:'DM Mono',monospace;font-size:11px">→ ${Math.round(totReel).toLocaleString('fr')} € HT</span>
+          <button class="hr-btn" style="margin-left:auto;font-size:11px;padding:4px 10px" onclick="hrShow('ca');setTimeout(()=>{const s=document.getElementById('hrx-consult-day-sel');if(s){s.value='${iso2026}';hrShowConsultDay('${iso2026}');}},80)">🔎 Voir le détail ¼h</button>
+        </div>`;
+      }
+    } else if(iso2026){
+      // Aucune donnée
+      bandeau = `<div id="hrx-source-ban" style="background:linear-gradient(rgba(231,76,60,.10),rgba(231,76,60,.10)),var(--s1);border:1px solid rgba(231,76,60,.35);border-radius:10px;padding:9px 14px;margin-bottom:10px;font-size:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="background:#e74c3c;color:#fff;font-weight:700;padding:2px 8px;border-radius:5px;font-size:10px;letter-spacing:.5px">AUCUNE DONNÉE</span>
+        <span style="color:var(--tx)">Pas de CA disponible pour le <strong>${fmtJour(iso2026)}</strong> — ni réel, ni N-1</span>
+      </div>`;
+    }
+    if(bandeau){
+      const tlWrap = document.querySelector('#hrx-sec-planning .hr-scx');
+      if(tlWrap){ tlWrap.insertAdjacentHTML('beforebegin', bandeau); }
+    }
+  } catch(e){ console.warn('bandeau source CA', e); }
+
   function caHeure(h){
     let s=0;
     ['00','15','30','45'].forEach(mm=>{
@@ -10337,18 +10400,23 @@ function hrFillConsultSelect(){
 window.hrFillConsultSelect = hrFillConsultSelect;
 
 // Affiche le détail ¼h d'un jour donné dans la zone hrx-consult-content
+// Format = timeline horaire compacte (similaire au planning) avec :
+// - graine d'heures en haut (00h, 01h…)
+// - une "barre" CA par heure (somme des 4 ¼h) avec intensité de couleur
+// - le détail texte au survol de chaque heure
 function hrShowConsultDay(iso){
   const el = document.getElementById('hrx-consult-content');
   if(!el) return;
   if(!iso){ el.innerHTML=''; return; }
   const ca = HR_DATA[iso] || {};
-  const heures = Object.keys(ca).sort();
+  const heuresPresentes = Object.keys(ca).sort();
   const joursLong=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const moisL=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   const dt=hrParse(iso);
   const dateTxt = joursLong[dt.getDay()]+' '+parseInt(iso.slice(8,10))+' '+moisL[parseInt(iso.slice(5,7))-1]+' '+iso.slice(0,4);
 
-  if(!heures.length){
+  // Cas : aucune donnée déposée pour ce jour
+  if(!heuresPresentes.length){
     const aujourdHui = new Date().toISOString().slice(0,10);
     const msg = iso > aujourdHui
       ? 'Ce jour est à venir : aucun PDF n\'a encore été déposé.'
@@ -10357,35 +10425,96 @@ function hrShowConsultDay(iso){
     return;
   }
 
-  const total = heures.reduce((a,h)=>a+(ca[h]||0),0);
-  const maxVal = Math.max(...heures.map(h=>ca[h]||0));
-  // Tableau : 4 colonnes (HH:MM | barre proportionnelle | montant) sur plusieurs lignes
-  const cellules = heures.map(h=>{
-    const v = ca[h]||0;
-    const pct = maxVal>0 ? Math.round(v/maxVal*100) : 0;
-    const couleur = v<10 ? '#3a3a44' : (v<100 ? '#3ecf8e' : (v<300 ? '#e8a020' : '#f5a623'));
-    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--bd);font-family:'DM Mono',monospace;font-size:11px">
-      <span style="min-width:48px;color:var(--mu)">${h}</span>
-      <div style="flex:1;background:var(--s2);height:14px;border-radius:3px;overflow:hidden">
-        <div style="width:${pct}%;height:100%;background:${couleur};transition:width .2s"></div>
-      </div>
-      <span style="min-width:70px;text-align:right;color:var(--tx);font-weight:${v>0?'600':'400'}">${v.toFixed(2).replace('.',',')} €</span>
+  // Construction d'une grille d'heures de 06h à 03h (j+1) (gamme couvrant tous les BK)
+  // Pour chaque heure, calcule la somme des 4 ¼h et le détail par tranche
+  const HEURES = [];
+  for(let h=6; h<=23; h++) HEURES.push(h);
+  HEURES.push(24, 25, 26, 27); // 00h, 01h, 02h, 03h après minuit
+
+  const caHeure = (h) => {
+    const h24 = h>=24 ? h-24 : h;
+    let s=0; const detail = [];
+    ['00','15','30','45'].forEach(mm=>{
+      const key = String(h24).padStart(2,'0')+':'+mm;
+      const v = ca[key]||0;
+      if(v>0.5) detail.push({heure:key, montant:v});
+      s += v;
+    });
+    return { total:s, detail };
+  };
+
+  // Bornes pour l'échelle de couleur (max d'une heure du jour)
+  const totauxHeures = HEURES.map(h => caHeure(h).total);
+  const maxHeure = Math.max(...totauxHeures, 1);
+  const totalJour = totauxHeures.reduce((a,b)=>a+b, 0);
+
+  // Repérer l'amplitude de service (1ère heure avec CA > 0 → dernière heure avec CA > 0)
+  const heuresAvecCA = HEURES.filter(h => caHeure(h).total > 0.5);
+  const premiere = heuresAvecCA[0];
+  const derniere = heuresAvecCA[heuresAvecCA.length-1];
+
+  // Construction du HTML : timeline horizontale type "planning"
+  const ruler = HEURES.map(h=>{
+    const r = caHeure(h);
+    const ca15Detail = r.detail.map(d=>`${d.heure} : ${d.montant.toFixed(2).replace('.',',')} €`).join('\n');
+    const hAff = h>=24 ? String(h-24).padStart(2,'0')+'h' : String(h).padStart(2,'0')+'h';
+    const intensite = r.total / maxHeure; // 0..1
+    let bg = 'var(--s2)', borderTop = 'transparent';
+    if(r.total > 0.5){
+      const opacity = 0.15 + intensite*0.7;
+      bg = `rgba(232,160,32,${opacity.toFixed(2)})`;
+      borderTop = '#e8a020';
+    }
+    const ds = h===premiere ? 'border-left:2px solid #3ecf8e;' : '';
+    const de = h===derniere ? 'border-right:2px solid #3ecf8e;' : '';
+    return `<div title="${dateTxt}\n${hAff}\nCA total : ${Math.round(r.total).toLocaleString('fr')} €\n\n${ca15Detail||'Aucune vente'}"
+                 style="flex:1;min-width:42px;background:${bg};border-top:3px solid ${borderTop};${ds}${de}padding:6px 2px 8px;text-align:center;border-right:1px solid var(--bd);cursor:help;transition:filter .15s"
+                 onmouseover="this.style.filter='brightness(1.3)'" onmouseout="this.style.filter=''">
+      <div style="font-size:10px;color:var(--mu);font-family:'DM Mono',monospace;letter-spacing:.3px">${hAff}</div>
+      <div style="font-size:11px;font-weight:600;color:${r.total>0.5?'var(--tx)':'var(--mu)'};margin-top:4px;font-family:'DM Mono',monospace">${r.total>0.5?Math.round(r.total):'—'}</div>
     </div>`;
   }).join('');
 
+  // Pour chaque ¼h sous l'heure (mini-barre de hauteur proportionnelle), même grille
+  const ruler15 = HEURES.map(h=>{
+    const r = caHeure(h);
+    const cells = ['00','15','30','45'].map((mm,idx)=>{
+      const h24 = h>=24 ? h-24 : h;
+      const key = String(h24).padStart(2,'0')+':'+mm;
+      const v = ca[key]||0;
+      const intensite = v / maxHeure * 4; // ×4 car on compare à une heure entière
+      const opacity = Math.min(0.9, 0.1 + intensite*0.7);
+      const bg = v>0.5 ? `rgba(62,207,142,${opacity.toFixed(2)})` : 'transparent';
+      return `<div title="${key} : ${v.toFixed(2).replace('.',',')} €" style="flex:1;height:18px;background:${bg};border-right:1px solid rgba(255,255,255,.04)"></div>`;
+    }).join('');
+    return `<div style="flex:1;min-width:42px;display:flex;border-right:1px solid var(--bd)">${cells}</div>`;
+  }).join('');
+
   el.innerHTML = `
-    <div style="background:var(--s1);border:1px solid var(--bd);border-radius:10px;overflow:hidden">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--bd)">
+    <div style="background:var(--s1);border:1px solid var(--bd);border-radius:12px;overflow:hidden">
+      <!-- En-tête -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--s2);border-bottom:1px solid var(--bd);flex-wrap:wrap;gap:10px">
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--tx)">${dateTxt}</div>
-          <div style="font-size:10px;color:var(--mu);font-family:'DM Mono',monospace">${heures[0]} → ${heures[heures.length-1]} · ${heures.length} créneaux ¼h</div>
+          <div style="font-size:14px;font-weight:600;color:var(--tx)">${dateTxt}</div>
+          <div style="font-size:10px;color:var(--mu);font-family:'DM Mono',monospace;margin-top:2px">
+            ${heuresPresentes[0]} → ${heuresPresentes[heuresPresentes.length-1]} · ${heuresPresentes.length} créneaux ¼h
+          </div>
         </div>
         <div style="text-align:right">
-          <div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px">Total HT</div>
-          <div style="font-size:18px;font-weight:600;color:var(--ac);font-family:'DM Mono',monospace">${Math.round(total).toLocaleString('fr')} €</div>
+          <div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px">Total HT du jour</div>
+          <div style="font-size:22px;font-weight:600;color:var(--ac);font-family:'DM Mono',monospace">${Math.round(totalJour).toLocaleString('fr')} €</div>
         </div>
       </div>
-      <div style="max-height:480px;overflow-y:auto">${cellules}</div>
+      <!-- Timeline horaire : barres principales -->
+      <div style="display:flex;overflow-x:auto;background:var(--bg)">${ruler}</div>
+      <!-- Sous-barres ¼h (intensité par tranche) -->
+      <div style="display:flex;overflow-x:auto;background:var(--s1);border-top:1px solid var(--bd)">${ruler15}</div>
+      <!-- Légende -->
+      <div style="padding:8px 14px;border-top:1px solid var(--bd);font-size:10px;color:var(--mu);display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+        <span><span style="display:inline-block;width:10px;height:10px;background:#e8a020;vertical-align:middle;margin-right:4px"></span>Intensité du CA par heure</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#3ecf8e;vertical-align:middle;margin-right:4px"></span>Détail des tranches ¼h</span>
+        <span style="margin-left:auto;font-style:italic">Survol = détail au quart d'heure</span>
+      </div>
     </div>`;
 }
 window.hrShowConsultDay = hrShowConsultDay;
