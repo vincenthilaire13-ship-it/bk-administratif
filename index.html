@@ -327,6 +327,10 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
 #sec-horaires .hr-qh-warn{background:#f5a623;color:#0f0f11}
 #sec-horaires .hr-qh-miss{background:#e74c3c;color:#fff}
 #sec-horaires .hr-db-day{margin-left:18px} /* laisse la place à la pastille */
+
+/* Liste déroulante des jours dans CA prévisionnel : largeur confortable pour
+   afficher l'emoji + le libellé du jour + le montant/statut */
+#sec-horaires #hrx-ca-day-sel{min-width:340px;font-family:'DM Mono',monospace;}
 #sec-horaires .hr-np-card.hr-np-editing #hrx-np-form{margin-top:.6rem;margin-bottom:0;border-color:var(--bd2);}
 </style>
 </head>
@@ -9737,6 +9741,22 @@ function applyGrille(){
     // l'utilisateur édite la grille du resto actif : on aligne HR_GRILLE_RESTO dessus
     HR_GRILLE_RESTO = restoActif;
   }
+  // ── CONVERSION FORCÉE EN MODE 15 MIN ───────────────────────────────────────
+  // getEff() compare le CA d'un quart d'heure aux seuils de la grille SANS conversion.
+  // Quelle que soit l'unité d'affichage choisie par l'utilisateur (15/30/60 min), on
+  // s'assure ici que les seuils stockés sont bien exprimés en €/15min.
+  if(grilleMode !== 15){
+    const facteur = 15 / grilleMode; // mode 30 → ÷2, mode 60 → ÷4
+    GRILLE_EDIT = GRILLE_EDIT.map(r=>{
+      const nr = [...r];
+      nr[0] = Math.round(r[0] * facteur);
+      // effectifs (index 2+) INCHANGÉS
+      return nr;
+    });
+    grilleMode = 15;
+    const ms = document.getElementById('hrx-grille-mode');
+    if(ms) ms.value = '15';
+  }
   // Trier par seuil croissant
   GRILLE_EDIT.sort((a,b)=>a[0]-b[0]);
   // Mettre à jour GRILLE utilisée par getEff
@@ -9753,7 +9773,7 @@ function applyGrille(){
   hrShow('planning');
   renderDays();
   const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
-  alert('Grille enregistrée pour '+(noms[HR_GRILLE_RESTO]||HR_GRILLE_RESTO)+'.\n\nLes jours sont en ORANGE : clique sur « 🔄 Actualiser » dans le planning pour recalculer et valider (vert).');
+  alert('Grille enregistrée pour '+(noms[HR_GRILLE_RESTO]||HR_GRILLE_RESTO)+' (référence : ventes 15 min).\n\nLes jours sont en ORANGE : clique sur « 🔄 Actualiser » dans le planning pour recalculer et valider (vert).');
 }
 
 function resetGrille(){
@@ -10025,6 +10045,19 @@ function hrShow(id){
   document.querySelectorAll('#sec-horaires .hr-sec').forEach(s=>s.classList.remove('hr-on'));
   document.querySelectorAll('#sec-horaires .hr-nt').forEach((t,i)=>t.classList.toggle('hr-on',['planning','ca','np','grille'][i]===id));
   document.getElementById('hrx-sec-'+id).classList.add('hr-on');
+  // Quand on entre dans CA prévisionnel, on rafraîchit la liste déroulante des jours
+  // pour que les statuts (🟢/🟠/🔴/⚪) reflètent les derniers PDF déposés.
+  if(id==='ca'){
+    try{
+      hrFillDaySelect();
+      const vueSel = document.getElementById('hrx-vue-sel');
+      const vue = vueSel?vueSel.value:'jour';
+      if(vue==='jour'){
+        const s=document.getElementById('hrx-ca-day-sel');
+        if(s && s.value && /^\d{4}-\d{2}-\d{2}$/.test(s.value)) hrGenFromDate(s.value, true);
+      }
+    }catch(e){ console.warn('hrShow ca refresh', e); }
+  }
 }
 function renderAll(){renderDays();renderMetrics();renderTimeline();}
 
@@ -10192,17 +10225,69 @@ function hrLoadCSVmulti(text, resto){
 function hrFillDaySelect(){
   const sel = document.getElementById('hrx-ca-day-sel');
   if(!sel) return;
-  const dates = Object.keys(HR_DATA).sort();
-  if(!dates.length) return;
-  const fdate = d => { const jours=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']; const mois=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.']; const [y,m,j]=d.split('-'); const dt=hrParse(d); return jours[dt.getDay()]+' '+parseInt(j)+' '+mois[parseInt(m)-1]+' '+y; };
-  sel.innerHTML = dates.map(d=>{
-    const tot = Math.round(Object.values(HR_DATA[d]).reduce((a,b)=>a+b,0));
-    return `<option value="${d}">${fdate(d)} — ${tot.toLocaleString('fr')} €</option>`;
+  const joursLong=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const moisL=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const fdate = d => { const dt=hrParse(d); return joursLong[dt.getDay()]+' '+parseInt(d.slice(8,10))+' '+moisL[parseInt(d.slice(5,7))-1]+' '+d.slice(0,4); };
+
+  // Liste TOUS les jours de l'année (2026 + débordement éventuel sur le futur proche).
+  // On part du 1er janvier 2026 jusqu'à aujourd'hui+90j pour avoir un peu de prévisionnel.
+  const aujourdHui = new Date().toISOString().slice(0,10);
+  const finAffichage = new Date(); finAffichage.setDate(finAffichage.getDate()+90);
+  const finIso = finAffichage.toISOString().slice(0,10);
+  const tousLesJours = [];
+  let d = hrParse('2026-01-01');
+  while(true){
+    const iso = hrISO(d);
+    if(iso > '2026-12-31' && iso > finIso) break;
+    tousLesJours.push(iso);
+    d.setDate(d.getDate()+1);
+    if(tousLesJours.length > 800) break; // garde-fou
+  }
+
+  // Référence d'amplitude du resto pour décider OK / partiel
+  const resto = (typeof HR_RESTO!=='undefined') ? HR_RESTO : 'BK526';
+  const refAmp = (typeof hrAmplitudeReference==='function') ? hrAmplitudeReference(resto) : null;
+
+  // Génère un statut + emoji pour un jour donné
+  const statutJour = (iso) => {
+    const caJour = HR_DATA[iso];
+    if(!caJour || !Object.keys(caJour).length){
+      // Pas de PDF déposé
+      if(iso > aujourdHui) return { emoji:'⚪', label:'à venir', class:'futur' };
+      return { emoji:'🔴', label:'aucun PDF', class:'manquant' };
+    }
+    // PDF déposé : tester la couverture
+    const heuresOK = Object.entries(caJour).filter(([h,v])=>v>0.5).map(([h])=>h).sort();
+    if(heuresOK.length < 4){
+      return { emoji:'🟠', label:`partiel (${heuresOK.length} ¼h)`, class:'partiel' };
+    }
+    if(refAmp && typeof hrHHMMtoMin==='function'){
+      const refOuvMin = hrHHMMtoMin(refAmp.ouverture, false);
+      const refFerMin = hrHHMMtoMin(refAmp.fermeture, true);
+      const detOuvMin = hrHHMMtoMin(heuresOK[0], false);
+      const detFerMin = hrHHMMtoMin(heuresOK[heuresOK.length-1], true);
+      const TOL = 105;
+      if(detOuvMin-refOuvMin > TOL || refFerMin-detFerMin > TOL){
+        return { emoji:'🟠', label:`partiel (${heuresOK[0]}→${heuresOK[heuresOK.length-1]})`, class:'partiel' };
+      }
+    }
+    const tot = Math.round(Object.values(caJour).reduce((a,b)=>a+b,0));
+    return { emoji:'🟢', label:tot.toLocaleString('fr')+' €', class:'ok' };
+  };
+
+  // Construction des options
+  sel.innerHTML = tousLesJours.map(iso=>{
+    const st = statutJour(iso);
+    return `<option value="${iso}" data-statut="${st.class}">${st.emoji} ${fdate(iso)} — ${st.label}</option>`;
   }).join('');
   sel.setAttribute('onchange','hrGenFromDate(this.value)');
-  // Valeur par défaut = dernier jour dispo (mais on NE génère PAS ici, pour ne pas
-  // afficher un dimanche isolé : c'est la vue Semaine qui pilote l'affichage initial)
-  sel.value = dates[dates.length-1];
+
+  // Valeur par défaut = aujourd'hui s'il existe, sinon le dernier jour avec un PDF déposé
+  const datesAvecCA = Object.keys(HR_DATA).sort();
+  let defaut = aujourdHui;
+  if(!tousLesJours.includes(defaut) && datesAvecCA.length) defaut = datesAvecCA[datesAvecCA.length-1];
+  if(!tousLesJours.includes(defaut) && tousLesJours.length) defaut = tousLesJours[tousLesJours.length-1];
+  sel.value = defaut;
 }
 
 // Génère le planning depuis une date importée
