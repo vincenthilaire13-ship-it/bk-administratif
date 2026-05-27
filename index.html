@@ -455,6 +455,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('equipiers')"><span>👥</span><span>Équipiers</span></div>
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
+    <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires-import')"><span>📥</span><span>Importer ventes ¼h</span></div>
     <div class="nav-section role-admin-only" style="display:none">Config</div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
@@ -3438,7 +3439,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T19:05', label: 'v27/05-19h05', affichage: 'mercredi 27 mai 2026 à 19:05' };
+const APP_VERSION = { datetime: '2026-05-27T19:25', label: 'v27/05-19h25', affichage: 'mercredi 27 mai 2026 à 19:25' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -9487,6 +9488,8 @@ function renderTimeline(){
   try {
     const oldBan = document.getElementById('hrx-source-ban');
     if(oldBan) oldBan.remove();
+    const oldTitle = document.getElementById('hrx-day-title');
+    if(oldTitle) oldTitle.remove();
     const iso2026 = (typeof DAY_DATES!=='undefined' && DAY_DATES[curDay]) ? DAY_DATES[curDay] : '';
     const srcDate = (typeof DAY_SOURCES!=='undefined' && DAY_SOURCES[curDay]) ? DAY_SOURCES[curDay] : '';
     const totCA = Object.values(caJour).reduce((a,b)=>a+b,0);
@@ -9497,6 +9500,22 @@ function renderTimeline(){
       const dt=hrParse(d);
       return J[dt.getDay()]+' '+parseInt(d.slice(8,10))+' '+M[parseInt(d.slice(5,7))-1]+' '+d.slice(0,4);
     };
+    // Format long (pour le titre principal) : "Lundi 18 mai 2026"
+    const fmtJourLong = d => {
+      if(!d) return '';
+      const J=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+      const M=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+      const dt=hrParse(d);
+      return J[dt.getDay()]+' '+parseInt(d.slice(8,10))+' '+M[parseInt(d.slice(5,7))-1]+' '+d.slice(0,4);
+    };
+    // ── Titre du jour sélectionné (rappel visuel en haut à gauche) ─────────────
+    let titreHTML = '';
+    if(iso2026){
+      titreHTML = `<div id="hrx-day-title" style="display:flex;align-items:baseline;gap:14px;margin-bottom:10px;flex-wrap:wrap">
+        <div style="font-size:20px;font-weight:600;color:var(--tx);font-family:'DM Sans',sans-serif">📅 ${fmtJourLong(iso2026)}</div>
+        ${totCA > 0.5 ? `<div style="font-size:12px;color:var(--mu);font-family:'DM Mono',monospace">${Math.round(totCA).toLocaleString('fr')} € HT prévus</div>` : ''}
+      </div>`;
+    }
     let bandeau = '';
     if(iso2026 && totCA > 0.5){
       // Y a-t-il un PDF réel pour ce jour ?
@@ -9536,9 +9555,9 @@ function renderTimeline(){
         <span style="color:var(--tx)">Pas de CA disponible pour le <strong>${fmtJour(iso2026)}</strong> — ni réel, ni N-1</span>
       </div>`;
     }
-    if(bandeau){
+    if(titreHTML || bandeau){
       const tlWrap = document.querySelector('#hrx-sec-planning .hr-scx');
-      if(tlWrap){ tlWrap.insertAdjacentHTML('beforebegin', bandeau); }
+      if(tlWrap){ tlWrap.insertAdjacentHTML('beforebegin', titreHTML + bandeau); }
     }
   } catch(e){ console.warn('bandeau source CA', e); }
 
@@ -11267,7 +11286,28 @@ async function hrDropFiles(fileList){
         if(res.date){ HR_ALL[key][res.date]=res.ca; }
         window.HR_ALL=HR_ALL;
         const noms={BK500:'Près des Arènes',BK509:'Saint-Jean-de-Védas',BK526:'Saint-Clément'};
-        hrLog(`<div style="color:#3ecf8e;font-size:12px;margin-bottom:6px">✓ ${file.name} — ${noms[key]||key}, jour ${res.date||'?'}, ${Math.round(res.total).toLocaleString('fr')} €</div>`);
+        // ── PERSISTANCE SUPABASE ──
+        // On enregistre aussi le tranches_ca dans la table ventes_horaire pour
+        // que les données survivent au rafraîchissement et soient partagées entre
+        // les autres utilisateurs / appareils (sinon perdu en mémoire JS).
+        if(typeof SB!=='undefined' && SB && key!=='INCONNU' && res.date){
+          try {
+            const { error: eUp } = await SB.from('ventes_horaire').upsert(
+              { restaurant:key, date:res.date, tranches_ca:res.ca, ht_total:Math.round(res.total*100)/100 },
+              { onConflict:'restaurant,date' }
+            );
+            if(eUp){
+              hrLog(`<div style="color:#fbbf24;font-size:12px;margin-bottom:6px">✓ ${file.name} — ${noms[key]||key}, jour ${res.date}, ${Math.round(res.total).toLocaleString('fr')} € · <em>chargé en mémoire mais erreur sauvegarde : ${eUp.message||eUp}</em></div>`);
+            } else {
+              hrLog(`<div style="color:#3ecf8e;font-size:12px;margin-bottom:6px">✓ ${file.name} — ${noms[key]||key}, jour ${res.date}, ${Math.round(res.total).toLocaleString('fr')} € · <strong>enregistré en base ✓</strong></div>`);
+            }
+          } catch(eS){
+            hrLog(`<div style="color:#fbbf24;font-size:12px;margin-bottom:6px">✓ ${file.name} — ${noms[key]||key}, jour ${res.date}, ${Math.round(res.total).toLocaleString('fr')} € · <em>chargé en mémoire mais erreur sauvegarde : ${eS.message||eS}</em></div>`);
+          }
+        } else {
+          // Pas de SB disponible OU resto inconnu : on log juste
+          hrLog(`<div style="color:#fbbf24;font-size:12px;margin-bottom:6px">✓ ${file.name} — ${noms[key]||key}, jour ${res.date||'?'}, ${Math.round(res.total).toLocaleString('fr')} € · <em>chargé en mémoire uniquement (pas de connexion base)</em></div>`);
+        }
       } else {
         const text=await file.text();
         if(/DATEFISCALE/i.test(text) && /MONTANTHT_TOTAL/i.test(text)){
