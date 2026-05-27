@@ -320,7 +320,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-section role-superadmin-only" style="display:none">Analyse</div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('analyses')"><span>📊</span><span>Analyses</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('equipiers')"><span>👥</span><span>Équipiers</span></div>
-    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
     <div class="nav-section role-admin-only" style="display:none">Config</div>
@@ -1077,74 +1076,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       </div>
     </section>
 
-    <!-- ANNULATIONS -->
-    <section class="section" id="sec-annulations">
-      <div style="max-width:640px">
-        <div class="mgr-card">
-          <div class="mgr-title">🚫 Saisir une annulation</div>
-          <div class="mgr-sub">Déposez les photos des tickets (mauvais ticket + ticket annulé + bon ticket)</div>
-
-          <div class="form-row" style="margin-bottom:14px">
-            <div class="form-group"><label class="form-label">📅 Date</label><input type="date" class="form-input" id="ann-date"></div>
-            <div class="form-group"><label class="form-label">🕐 Heure</label><input type="time" class="form-input" id="ann-heure"></div>
-          </div>
-          <div class="form-row" style="margin-bottom:14px">
-            <div class="form-group"><label class="form-label">💶 Montant annulé (€)</label><input type="number" step="0.01" class="form-input" id="ann-montant" placeholder="0.00"></div>
-            <div class="form-group"><label class="form-label">👤 Manager responsable</label><select class="form-input" id="ann-manager"><option value="">— sélectionner —</option></select></div>
-          </div>
-          <div class="form-group" style="margin-bottom:14px">
-            <label class="form-label">📝 Motif</label>
-            <select class="form-input" id="ann-motif">
-              <option value="">— sélectionner —</option>
-              <option>Erreur de saisie</option>
-              <option>Produit indisponible</option>
-              <option>Réclamation client</option>
-              <option>Problème technique</option>
-              <option>Autre</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom:14px">
-            <label class="form-label">💬 Commentaire</label>
-            <input type="text" class="form-input" id="ann-comment" placeholder="Détails de l'annulation…">
-          </div>
-
-          <!-- Photos tickets -->
-          <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px">Photos des tickets</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">
-            <div>
-              <label class="form-label" style="text-align:center;display:block">❌ Mauvais ticket</label>
-              <div class="drop-zone" style="padding:16px;min-height:80px" onclick="document.getElementById('ann-photo-bad').click()">
-                <div id="prev-bad" style="font-size:10px;color:var(--muted);text-align:center">Photo</div>
-              </div>
-              <input type="file" id="ann-photo-bad" accept="image/*" style="display:none" onchange="previewTicket(this,'prev-bad')">
-            </div>
-            <div>
-              <label class="form-label" style="text-align:center;display:block">🔄 Ticket annulé</label>
-              <div class="drop-zone" style="padding:16px;min-height:80px" onclick="document.getElementById('ann-photo-annul').click()">
-                <div id="prev-annul" style="font-size:10px;color:var(--muted);text-align:center">Photo</div>
-              </div>
-              <input type="file" id="ann-photo-annul" accept="image/*" style="display:none" onchange="previewTicket(this,'prev-annul')">
-            </div>
-            <div>
-              <label class="form-label" style="text-align:center;display:block">✅ Bon ticket</label>
-              <div class="drop-zone" style="padding:16px;min-height:80px" onclick="document.getElementById('ann-photo-good').click()">
-                <div id="prev-good" style="font-size:10px;color:var(--muted);text-align:center">Photo</div>
-              </div>
-              <input type="file" id="ann-photo-good" accept="image/*" style="display:none" onchange="previewTicket(this,'prev-good')">
-            </div>
-          </div>
-
-          <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px" onclick="sauvegarderAnnulation()">💾 Enregistrer l'annulation</button>
-          <div class="mgr-alert-ok" id="ann-ok">✓ Annulation enregistrée !</div>
-        </div>
-
-        <!-- Historique annulations -->
-        <div class="table-card" id="ann-historique-card" style="margin-top:16px">
-          <div class="table-header"><span class="table-title">Historique des annulations</span></div>
-          <div id="ann-historique-content" style="padding:12px"></div>
-        </div>
-      </div>
-    </section>
 
 
     <!-- HORAIRES / PLANNING -->
@@ -3317,7 +3248,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T07:25', label: 'v27/05-07h25', affichage: 'mercredi 27 mai 2026 à 07:25' };
+const APP_VERSION = { datetime: '2026-05-27T07:35', label: 'v27/05-07h35', affichage: 'mercredi 27 mai 2026 à 07:35' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
