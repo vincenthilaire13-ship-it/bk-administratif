@@ -1276,6 +1276,21 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
   </div>
   <div class="hr-ssub" style="margin-top:-6px;font-size:11px">Le CA au quart d'heure est chargé automatiquement (lecture seule). Le planning se met à jour tout seul à chaque changement.</div>
   <div class="hr-ca-grid" id="hrx-ca-grid"></div>
+
+  <!-- ─── CONSULTATION RAPIDE D'UN JOUR ─── -->
+  <div style="margin-top:1.8rem;padding-top:1.2rem;border-top:1px solid var(--bd)">
+    <div class="hr-stitle" style="font-size:14px;margin-bottom:.3rem">🔎 Consulter un jour précis</div>
+    <div class="hr-ssub" style="margin-bottom:.8rem">Sélectionnez n'importe quel jour de l'année. ✓ = PDF déposé · ⚠ = partiel · ✗ = manquant · — = à venir.</div>
+    <div class="hr-ca-ctrl">
+      <div class="hr-cc" style="min-width:380px">
+        <label>Jour</label>
+        <select id="hrx-consult-day-sel" onchange="hrShowConsultDay(this.value)">
+          <option value="">— chargement… —</option>
+        </select>
+      </div>
+    </div>
+    <div id="hrx-consult-content" style="margin-top:.8rem"></div>
+  </div>
 </div>
 
 <div id="hrx-sec-grille" class="hr-sec">
@@ -3348,6 +3363,22 @@ function switchResto(restoId) {
   else if(idActive==='journee') buildJourneeSelect();
   else if(idActive==='managers') renderManagers();
   else if(idActive==='annulations'){renderAnnulationsHistorique();}
+  else if(idActive==='erreurcaisse'){ if(typeof renderErreurCaisseHistorique==='function') renderErreurCaisseHistorique(); }
+  else if(idActive==='controle-depots'){ if(typeof renderImports==='function') renderImports(); }
+  else if(idActive==='equipiers'){ if(typeof chargerEquipiers==='function') chargerEquipiers(); }
+  else if(idActive==='analyses'){
+    // Synchroniser le filtre interne d'Analyses avec le resto global,
+    // puis rafraîchir les boutons resto + les graphes.
+    if(typeof AN_RESTO !== 'undefined'){
+      AN_RESTO = (restoId && restoId!=='ALL') ? restoId : '';
+      try {
+        document.querySelectorAll('.an-resto-btn').forEach(b=>{
+          b.classList.toggle('active', (b.getAttribute('data-r')||'') === AN_RESTO);
+        });
+      } catch(e){}
+    }
+    if(typeof anRefresh==='function') anRefresh();
+  }
   else if(idActive==='horaires'){ if(window.__hrSwitchTo) try{window.__hrSwitchTo(true);}catch(e){console.warn('horaires switch',e);} }
 }
 
@@ -10225,70 +10256,139 @@ function hrLoadCSVmulti(text, resto){
 function hrFillDaySelect(){
   const sel = document.getElementById('hrx-ca-day-sel');
   if(!sel) return;
+  const dates = Object.keys(HR_DATA).sort();
+  if(!dates.length) return;
+  const fdate = d => { const jours=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']; const mois=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.']; const [y,m,j]=d.split('-'); const dt=hrParse(d); return jours[dt.getDay()]+' '+parseInt(j)+' '+mois[parseInt(m)-1]+' '+y; };
+  sel.innerHTML = dates.map(d=>{
+    const tot = Math.round(Object.values(HR_DATA[d]).reduce((a,b)=>a+b,0));
+    return `<option value="${d}">${fdate(d)} — ${tot.toLocaleString('fr')} €</option>`;
+  }).join('');
+  sel.setAttribute('onchange','hrGenFromDate(this.value)');
+  sel.value = dates[dates.length-1];
+  // Rafraîchir aussi le sélecteur de consultation directe (toujours visible)
+  if(typeof hrFillConsultSelect==='function') try{ hrFillConsultSelect(); }catch(e){}
+}
+
+// ── CONSULTATION D'UN JOUR PRÉCIS (sélecteur séparé sous le prévisionnel) ──
+// Remplit la liste avec TOUS les jours de l'année + un statut visuel par jour.
+function hrFillConsultSelect(){
+  const sel = document.getElementById('hrx-consult-day-sel');
+  if(!sel) return;
   const joursLong=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const moisL=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
   const fdate = d => { const dt=hrParse(d); return joursLong[dt.getDay()]+' '+parseInt(d.slice(8,10))+' '+moisL[parseInt(d.slice(5,7))-1]+' '+d.slice(0,4); };
 
-  // Liste TOUS les jours de l'année (2026 + débordement éventuel sur le futur proche).
-  // On part du 1er janvier 2026 jusqu'à aujourd'hui+90j pour avoir un peu de prévisionnel.
+  // Liste tous les jours du 1er janvier 2026 jusqu'à aujourd'hui + 60 jours
   const aujourdHui = new Date().toISOString().slice(0,10);
-  const finAffichage = new Date(); finAffichage.setDate(finAffichage.getDate()+90);
-  const finIso = finAffichage.toISOString().slice(0,10);
-  const tousLesJours = [];
+  const fin = new Date(); fin.setDate(fin.getDate()+60);
+  const finIso = fin.toISOString().slice(0,10);
+  const tous = [];
   let d = hrParse('2026-01-01');
   while(true){
     const iso = hrISO(d);
     if(iso > '2026-12-31' && iso > finIso) break;
-    tousLesJours.push(iso);
+    tous.push(iso);
     d.setDate(d.getDate()+1);
-    if(tousLesJours.length > 800) break; // garde-fou
+    if(tous.length > 800) break;
   }
 
-  // Référence d'amplitude du resto pour décider OK / partiel
-  const resto = (typeof HR_RESTO!=='undefined') ? HR_RESTO : 'BK526';
-  const refAmp = (typeof hrAmplitudeReference==='function') ? hrAmplitudeReference(resto) : null;
+  const refAmp = (typeof hrAmplitudeReference==='function')
+    ? hrAmplitudeReference((typeof HR_RESTO!=='undefined')?HR_RESTO:'BK526') : null;
 
-  // Génère un statut + emoji pour un jour donné
-  const statutJour = (iso) => {
-    const caJour = HR_DATA[iso];
-    if(!caJour || !Object.keys(caJour).length){
-      // Pas de PDF déposé
-      if(iso > aujourdHui) return { emoji:'⚪', label:'à venir', class:'futur' };
-      return { emoji:'🔴', label:'aucun PDF', class:'manquant' };
+  const statut = (iso) => {
+    const ca = HR_DATA[iso];
+    if(!ca || !Object.keys(ca).length){
+      return iso > aujourdHui ? '—' : '✗';
     }
-    // PDF déposé : tester la couverture
-    const heuresOK = Object.entries(caJour).filter(([h,v])=>v>0.5).map(([h])=>h).sort();
-    if(heuresOK.length < 4){
-      return { emoji:'🟠', label:`partiel (${heuresOK.length} ¼h)`, class:'partiel' };
-    }
+    const heuresOK = Object.entries(ca).filter(([h,v])=>v>0.5).map(([h])=>h).sort();
+    if(heuresOK.length < 4) return '⚠';
     if(refAmp && typeof hrHHMMtoMin==='function'){
-      const refOuvMin = hrHHMMtoMin(refAmp.ouverture, false);
-      const refFerMin = hrHHMMtoMin(refAmp.fermeture, true);
-      const detOuvMin = hrHHMMtoMin(heuresOK[0], false);
-      const detFerMin = hrHHMMtoMin(heuresOK[heuresOK.length-1], true);
-      const TOL = 105;
-      if(detOuvMin-refOuvMin > TOL || refFerMin-detFerMin > TOL){
-        return { emoji:'🟠', label:`partiel (${heuresOK[0]}→${heuresOK[heuresOK.length-1]})`, class:'partiel' };
-      }
+      const refOuv = hrHHMMtoMin(refAmp.ouverture, false);
+      const refFer = hrHHMMtoMin(refAmp.fermeture, true);
+      const detOuv = hrHHMMtoMin(heuresOK[0], false);
+      const detFer = hrHHMMtoMin(heuresOK[heuresOK.length-1], true);
+      if(detOuv-refOuv > 105 || refFer-detFer > 105) return '⚠';
     }
-    const tot = Math.round(Object.values(caJour).reduce((a,b)=>a+b,0));
-    return { emoji:'🟢', label:tot.toLocaleString('fr')+' €', class:'ok' };
+    return '✓';
   };
 
-  // Construction des options
-  sel.innerHTML = tousLesJours.map(iso=>{
-    const st = statutJour(iso);
-    return `<option value="${iso}" data-statut="${st.class}">${st.emoji} ${fdate(iso)} — ${st.label}</option>`;
-  }).join('');
-  sel.setAttribute('onchange','hrGenFromDate(this.value)');
+  // Sélection conservée si possible
+  const ancien = sel.value;
+  const datesAvecCA = Object.keys(HR_DATA);
+  let defaut = '';
+  if(datesAvecCA.length){ defaut = [...datesAvecCA].sort().pop(); }
 
-  // Valeur par défaut = aujourd'hui s'il existe, sinon le dernier jour avec un PDF déposé
-  const datesAvecCA = Object.keys(HR_DATA).sort();
-  let defaut = aujourdHui;
-  if(!tousLesJours.includes(defaut) && datesAvecCA.length) defaut = datesAvecCA[datesAvecCA.length-1];
-  if(!tousLesJours.includes(defaut) && tousLesJours.length) defaut = tousLesJours[tousLesJours.length-1];
-  sel.value = defaut;
+  sel.innerHTML = '<option value="">— Choisir un jour —</option>' + tous.map(iso=>{
+    const st = statut(iso);
+    const ca = HR_DATA[iso];
+    const tot = ca ? Math.round(Object.values(ca).reduce((a,b)=>a+b,0)) : null;
+    const suffix = (st==='✓' || st==='⚠') && tot!=null ? ` — ${tot.toLocaleString('fr')} €` : (st==='✗' ? ' — aucun PDF' : (st==='—' ? ' — à venir' : ''));
+    return `<option value="${iso}">${st}  ${fdate(iso)}${suffix}</option>`;
+  }).join('');
+
+  // Restaurer la sélection
+  if(ancien && tous.includes(ancien)) sel.value = ancien;
+  else if(defaut) sel.value = defaut;
+
+  // Si une valeur valide est sélectionnée, on déclenche l'affichage
+  if(sel.value) hrShowConsultDay(sel.value);
+  else { const c=document.getElementById('hrx-consult-content'); if(c) c.innerHTML=''; }
 }
+window.hrFillConsultSelect = hrFillConsultSelect;
+
+// Affiche le détail ¼h d'un jour donné dans la zone hrx-consult-content
+function hrShowConsultDay(iso){
+  const el = document.getElementById('hrx-consult-content');
+  if(!el) return;
+  if(!iso){ el.innerHTML=''; return; }
+  const ca = HR_DATA[iso] || {};
+  const heures = Object.keys(ca).sort();
+  const joursLong=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const moisL=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const dt=hrParse(iso);
+  const dateTxt = joursLong[dt.getDay()]+' '+parseInt(iso.slice(8,10))+' '+moisL[parseInt(iso.slice(5,7))-1]+' '+iso.slice(0,4);
+
+  if(!heures.length){
+    const aujourdHui = new Date().toISOString().slice(0,10);
+    const msg = iso > aujourdHui
+      ? 'Ce jour est à venir : aucun PDF n\'a encore été déposé.'
+      : 'Aucun PDF des ventes ¼h n\'a été déposé pour ce jour. Ouvrir « Ma journée » pour le déposer.';
+    el.innerHTML = `<div style="background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:14px 18px;font-size:12px;color:var(--mu)">📅 <strong style="color:var(--tx)">${dateTxt}</strong><br>${msg}</div>`;
+    return;
+  }
+
+  const total = heures.reduce((a,h)=>a+(ca[h]||0),0);
+  const maxVal = Math.max(...heures.map(h=>ca[h]||0));
+  // Tableau : 4 colonnes (HH:MM | barre proportionnelle | montant) sur plusieurs lignes
+  const cellules = heures.map(h=>{
+    const v = ca[h]||0;
+    const pct = maxVal>0 ? Math.round(v/maxVal*100) : 0;
+    const couleur = v<10 ? '#3a3a44' : (v<100 ? '#3ecf8e' : (v<300 ? '#e8a020' : '#f5a623'));
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--bd);font-family:'DM Mono',monospace;font-size:11px">
+      <span style="min-width:48px;color:var(--mu)">${h}</span>
+      <div style="flex:1;background:var(--s2);height:14px;border-radius:3px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${couleur};transition:width .2s"></div>
+      </div>
+      <span style="min-width:70px;text-align:right;color:var(--tx);font-weight:${v>0?'600':'400'}">${v.toFixed(2).replace('.',',')} €</span>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="background:var(--s1);border:1px solid var(--bd);border-radius:10px;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--s2);border-bottom:1px solid var(--bd)">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--tx)">${dateTxt}</div>
+          <div style="font-size:10px;color:var(--mu);font-family:'DM Mono',monospace">${heures[0]} → ${heures[heures.length-1]} · ${heures.length} créneaux ¼h</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:10px;color:var(--mu);text-transform:uppercase;letter-spacing:.5px">Total HT</div>
+          <div style="font-size:18px;font-weight:600;color:var(--ac);font-family:'DM Mono',monospace">${Math.round(total).toLocaleString('fr')} €</div>
+        </div>
+      </div>
+      <div style="max-height:480px;overflow-y:auto">${cellules}</div>
+    </div>`;
+}
+window.hrShowConsultDay = hrShowConsultDay;
 
 // Génère le planning depuis une date importée
 function hrGenFromDate(date, garderOnglet){
