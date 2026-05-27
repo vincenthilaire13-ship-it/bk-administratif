@@ -244,13 +244,55 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 
 /* ─── Couleur active du restaurant (barre haute + accents) ─── */
 /* La couleur du resto actif est appliquée dynamiquement via la variable --resto-color */
-body{--resto-color:transparent}
+body{--resto-color:transparent;--resto-color-rgb:0,0,0}
 #resto-color-bar{position:fixed;top:0;left:0;right:0;height:4px;background:var(--resto-color);z-index:9998;transition:background .25s;pointer-events:none}
 .sidebar-logo{border-left:3px solid var(--resto-color);transition:border-color .25s}
 .sidebar-logo .resto{color:var(--resto-color);font-weight:700;transition:color .25s}
 .sidebar-logo .bk{color:var(--resto-color);transition:color .25s}
 /* Bouton resto actif dans le topbar : utilise la couleur du resto au lieu de l'accent global */
 .btn.btn-resto-active{background:var(--resto-color)!important;color:#fff!important;border-color:var(--resto-color)!important;font-weight:600}
+
+/* ─── Cartes (KPI, tables, sections) teintées de la couleur du resto ─── */
+/* Teinte appliquée par-dessus le fond noir pour identifier visuellement le restaurant */
+.kpi,
+.table-card,
+.mgr-card,
+.chart-card,
+.seuil-card{
+  background:linear-gradient(rgba(var(--resto-color-rgb),.10),rgba(var(--resto-color-rgb),.10)),var(--card);
+  border-color:rgba(var(--resto-color-rgb),.28);
+  transition:background .25s,border-color .25s;
+}
+.kpi:hover,
+.table-card:hover,
+.mgr-card:hover,
+.chart-card:hover,
+.seuil-card:hover{
+  border-color:rgba(var(--resto-color-rgb),.5);
+}
+/* Header des tables (th) : léger plus teinté pour démarquer */
+.table-card th{
+  background:linear-gradient(rgba(var(--resto-color-rgb),.15),rgba(var(--resto-color-rgb),.15)),var(--bg3);
+}
+/* Inputs/selects dans les cartes : teinte douce pour cohérence visuelle */
+.mgr-card .form-input,
+.mgr-card input[type=text],
+.mgr-card input[type=date],
+.mgr-card input[type=number],
+.mgr-card select,
+.mgr-card textarea{
+  background:linear-gradient(rgba(var(--resto-color-rgb),.06),rgba(var(--resto-color-rgb),.06)),var(--bg3);
+}
+/* Zone de drop (PDF) : teinte plus marquée */
+.mgr-card .drop-zone{
+  background:linear-gradient(rgba(var(--resto-color-rgb),.08),rgba(var(--resto-color-rgb),.08)),var(--bg3);
+  border-color:rgba(var(--resto-color-rgb),.3);
+}
+.mgr-card .drop-zone:hover,
+.mgr-card .drop-zone.drag-over{
+  border-color:rgba(var(--resto-color-rgb),.6);
+  background:linear-gradient(rgba(var(--resto-color-rgb),.14),rgba(var(--resto-color-rgb),.14)),var(--bg3);
+}
 .role-badge{font-size:9px;text-transform:uppercase;letter-spacing:.1em;padding:2px 8px;border-radius:99px;font-weight:600}
 .role-admin{background:rgba(248,113,113,.2);color:#f87171}
 .role-superviseur{background:rgba(96,165,250,.2);color:#60a5fa}
@@ -278,6 +320,13 @@ body{--resto-color:transparent}
 #sec-horaires{--bg:#0f0f11;--s1:#1a1a1e;--s2:#222228;--bd:#2e2e36;--bd2:#3a3a44;--tx:#f0f0f2;--mu:#7a7a8a;--ac:#e8e020;}#sec-horaires *{box-sizing:border-box;margin:0;padding:0;}#sec-horaires{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}#sec-horaires .hr-hdr{display:flex;align-items:center;justify-content:space-between;padding:.7rem 1.5rem;border-bottom:1px solid var(--bd);background:var(--s1);position:sticky;top:0;z-index:100;}#sec-horaires .hr-hdr-title{font-size:15px;font-weight:600;}#sec-horaires .hr-hdr-sub{font-size:11px;color:var(--mu);font-family:'DM Mono',monospace;}#sec-horaires .hr-nav{display:flex;gap:4px;}#sec-horaires .hr-nt{padding:6px 13px;border-radius:8px;font-size:13px;cursor:pointer;color:var(--mu);border:1px solid transparent;transition:all .15s;}#sec-horaires .hr-nt:hover{color:var(--tx);background:var(--s2);}#sec-horaires .hr-nt.hr-on{color:var(--ac);border-color:var(--bd2);background:var(--s2);}#sec-horaires .hr-hdr-r{display:flex;gap:8px;}#sec-horaires .hr-btn{padding:6px 13px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;border:1px solid var(--bd2);background:var(--s2);color:var(--tx);transition:all .15s;}#sec-horaires .hr-btn:hover{background:var(--bd);}#sec-horaires .hr-btn-ac{background:var(--ac);color:#000;border-color:var(--ac);font-weight:600;}#sec-horaires .hr-btn-ac:hover{background:#f5e820;}#sec-horaires .hr-sec{display:none;padding:1.2rem 1.5rem;}#sec-horaires .hr-sec.hr-on{display:block;}#sec-horaires .hr-mrow{display:flex;gap:10px;margin-bottom:1.2rem;flex-wrap:wrap;}#sec-horaires .hr-mc{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:.7rem 1rem;flex:1;min-width:110px;}#sec-horaires .hr-mc-l{font-size:10px;color:var(--mu);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}#sec-horaires .hr-mc-v{font-size:22px;font-weight:500;}#sec-horaires .hr-mc-s{font-size:11px;color:var(--mu);margin-top:1px;}#sec-horaires .hr-plan-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px;}#sec-horaires .hr-days{display:flex;gap:5px;flex-wrap:wrap;}#sec-horaires .hr-db{padding:10px 14px;border-radius:10px;font-size:12px;border:1px solid var(--bd);background:var(--s2);color:var(--mu);cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:135px;}#sec-horaires .hr-db:hover{color:var(--tx);border-color:var(--bd2);}#sec-horaires .hr-db.hr-on{color:var(--ac);border-color:var(--ac);background:rgba(232,224,32,.07);}#sec-horaires .hr-db-day{font-size:13px;font-weight:600;}#sec-horaires .hr-db-ca{font-size:10px;font-family:'DM Mono',monospace;opacity:.7;}#sec-horaires .hr-scx{overflow-x:auto;}#sec-horaires .hr-tl-wrap{background:var(--s1);border:1px solid var(--bd);border-radius:14px;overflow:hidden;}#sec-horaires .hr-tl-top{display:flex;border-bottom:1px solid var(--bd);position:sticky;top:53px;z-index:50;background:var(--s1);}#sec-horaires .hr-tl-lh{display:none;}#sec-horaires .hr-tl-hh{flex:1;display:flex;min-width:920px;}#sec-horaires .hr-tl-h{flex:1;text-align:center;font-size:10px;color:var(--mu);font-family:'DM Mono',monospace;padding:12px 0;border-right:1px solid var(--bd);}#sec-horaires .hr-tl-h:last-child{border-right:none;}#sec-horaires .hr-tl-row{display:flex;border-bottom:1px solid var(--bd);min-height:28px;}#sec-horaires .hr-tl-row:last-child{border-bottom:none;}#sec-horaires .hr-tl-row:hover{background:rgba(255,255,255,.015);}#sec-horaires .hr-tl-i{display:none;}#sec-horaires .hr-tl-b{flex:1;position:relative;display:flex;align-items:center;min-width:920px;}#sec-horaires .hr-tl-gl{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;pointer-events:none;}#sec-horaires .hr-tl-gl div{flex:1;border-right:1px solid rgba(255,255,255,.025);}#sec-horaires .hr-tl-gl div:last-child{border-right:none;}#sec-horaires .hr-bar{position:absolute;height:19px;border-radius:4px;display:flex;align-items:center;padding:0 5px;font-size:9px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;top:50%;transform:translateY(-50%);letter-spacing:.3px;transition:filter .12s;}#sec-horaires .hr-bar:hover{filter:brightness(1.2);z-index:20;}#sec-horaires .hr-leg{display:flex;flex-wrap:wrap;gap:8px;padding:.7rem 1.2rem;border-top:1px solid var(--bd);}#sec-horaires .hr-li{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--mu);}#sec-horaires .hr-ld{width:9px;height:9px;border-radius:2px;}#sec-horaires .hr-ca-ctrl{display:flex;gap:12px;margin-bottom:1.2rem;flex-wrap:wrap;align-items:flex-end;}#sec-horaires .hr-cc{display:flex;flex-direction:column;gap:4px;}#sec-horaires .hr-cc label{font-size:10px;font-family:'DM Mono',monospace;color:var(--mu);text-transform:uppercase;}#sec-horaires .hr-cc select{background:var(--s1);border:1px solid var(--bd2);border-radius:8px;padding:6px 11px;font-size:13px;color:var(--tx);font-family:'DM Sans',sans-serif;outline:none;}#sec-horaires .hr-ca-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:1.2rem;}#sec-horaires .hr-ca-cell{background:var(--s1);border:1px solid var(--bd);border-radius:9px;padding:.5rem .8rem;}#sec-horaires .hr-ca-cell label{font-size:10px;font-family:'DM Mono',monospace;color:var(--mu);display:flex;justify-content:space-between;margin-bottom:4px;}#sec-horaires .hr-ca-cell label span{color:var(--ac);font-size:9px;}#sec-horaires .hr-ca-cell input{width:100%;background:var(--s2);border:1px solid var(--bd2);border-radius:6px;padding:4px 7px;font-size:12px;color:var(--tx);font-family:'DM Mono',monospace;outline:none;}#sec-horaires .hr-ca-cell input:focus{border-color:var(--ac);}#sec-horaires .hr-ca-bar{height:3px;border-radius:2px;margin-top:4px;background:var(--ac);min-width:1px;}#sec-horaires .hr-ca-cell.hr-hi{border-color:rgba(232,224,32,.4);}#sec-horaires .hr-gt-wrap{overflow-x:auto;border:1px solid var(--bd);border-radius:12px;}#sec-horaires .hr-gt{width:100%;border-collapse:collapse;font-size:11px;font-family:'DM Mono',monospace;}#sec-horaires .hr-gt th{background:var(--s2);color:var(--mu);padding:6px 9px;border-bottom:1px solid var(--bd);border-right:1px solid var(--bd);text-align:center;font-weight:500;white-space:nowrap;}#sec-horaires .hr-gt td{padding:4px 7px;border-bottom:1px solid var(--bd);border-right:1px solid var(--bd);text-align:center;color:var(--tx);}#sec-horaires .hr-gt tr:last-child td{border-bottom:none;}#sec-horaires .hr-gt td:first-child, #sec-horaires .hr-gt th:first-child{text-align:left;padding-left:12px;}#sec-horaires .hr-cv{display:inline-block;padding:2px 6px;border-radius:4px;font-weight:600;}#sec-horaires .hr-np-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;}#sec-horaires .hr-np-card{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:.9rem 1.1rem;display:flex;flex-direction:column;gap:6px;}#sec-horaires .hr-np-top{display:flex;align-items:center;justify-content:space-between;}#sec-horaires .hr-np-nm{font-size:14px;font-weight:500;}#sec-horaires .hr-np-bg{font-size:9px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:4px;background:rgba(120,144,156,.15);color:#78909c;border:1px solid rgba(120,144,156,.3);}#sec-horaires .hr-np-ds{font-size:12px;color:var(--mu);line-height:1.5;}#sec-horaires .hr-np-ft{display:flex;gap:6px;align-items:center;}#sec-horaires .hr-np-dt{width:8px;height:8px;border-radius:2px;flex-shrink:0;}#sec-horaires .hr-np-tm{font-size:10px;font-family:'DM Mono',monospace;color:var(--mu);}#sec-horaires .hr-stitle{font-size:16px;font-weight:500;margin-bottom:.4rem;}#sec-horaires .hr-ssub{font-size:12px;color:var(--mu);margin-bottom:1.2rem;}#sec-horaires .hr-db.hr-ok{border-color:#3ecf8e!important;background:rgba(62,207,142,.14)!important;color:#3ecf8e!important;transition:all .25s;}#sec-horaires .hr-db.hr-ok .hr-db-day{color:#3ecf8e!important;}#sec-horaires .hr-db.hr-ok::after{content:'✓';position:absolute;top:6px;right:8px;color:#3ecf8e;font-weight:700;font-size:12px;}#sec-horaires .hr-db.hr-warn{border-color:#f5a623!important;background:rgba(245,166,35,.12)!important;color:#f5a623!important;transition:all .25s;}#sec-horaires .hr-db.hr-warn .hr-db-day{color:#f5a623!important;}#sec-horaires .hr-db.hr-warn::after{content:'⚠';position:absolute;top:6px;right:8px;color:#f5a623;font-weight:700;font-size:12px;}#sec-horaires .hr-db{position:relative;}@keyframes hrSpin{to{transform:rotate(360deg)}}#sec-horaires .hr-btn.hr-spinning{opacity:.7;pointer-events:none;}#sec-horaires .hr-btn .hr-spin-ico{display:inline-block;}#sec-horaires .hr-btn.hr-spinning .hr-spin-ico{animation:hrSpin .7s linear infinite;}#sec-horaires #hrx-rows{padding-top:62px;}#sec-horaires #hrx-rows .hr-tl-row:first-child{min-height:34px;}
 #sec-horaires #hrx-taux-input::-webkit-outer-spin-button,#sec-horaires #hrx-taux-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 #sec-horaires .hr-np-card.hr-np-editing{border-color:var(--ac);box-shadow:0 0 0 1px rgba(232,224,32,.25);}
+
+/* ─── Pastille de couverture PDF Quart d'heure (en haut à gauche des boutons jour) ─── */
+#sec-horaires .hr-qh{position:absolute;top:6px;left:8px;width:14px;height:14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;cursor:help;line-height:1}
+#sec-horaires .hr-qh-ok{background:#3ecf8e;color:#0f0f11}
+#sec-horaires .hr-qh-warn{background:#f5a623;color:#0f0f11}
+#sec-horaires .hr-qh-miss{background:#e74c3c;color:#fff}
+#sec-horaires .hr-db-day{margin-left:18px} /* laisse la place à la pastille */
 #sec-horaires .hr-np-card.hr-np-editing #hrx-np-form{margin-top:.6rem;margin-bottom:0;border-color:var(--bd2);}
 </style>
 </head>
@@ -3298,10 +3347,21 @@ function switchResto(restoId) {
   else if(idActive==='horaires'){ if(window.__hrSwitchTo) try{window.__hrSwitchTo(true);}catch(e){console.warn('horaires switch',e);} }
 }
 
-// Applique la couleur d'identification du restaurant sur la barre haute + sidebar
+// Applique la couleur d'identification du restaurant sur la barre haute + sidebar + cartes
 function applyRestoColor(restoId){
   const couleur = RESTAURANTS[restoId]?.couleur || 'transparent';
   document.body.style.setProperty('--resto-color', couleur);
+  // Calcul de la version RGB pour pouvoir l'utiliser dans des rgba() (teinte sur les cartes)
+  const rgb = hexToRgb(couleur);
+  document.body.style.setProperty('--resto-color-rgb', rgb || '0,0,0');
+}
+
+// Convertit "#rrggbb" en "r, g, b" — retourne null si format inconnu
+function hexToRgb(hex){
+  if(!hex || hex==='transparent') return null;
+  const m = hex.replace('#','').match(/^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if(!m) return null;
+  return parseInt(m[1],16)+','+parseInt(m[2],16)+','+parseInt(m[3],16);
 }
 
 function getSeedForResto(year) {
@@ -5824,6 +5884,21 @@ async function lireTousPDFs(files) {
         MGR_JOUR.fichiers.ventes = file.name;
         MGR_VENTES_TXT = txt;
         MGR_VENTES_AB = ab.slice(0); // copie de l'arrayBuffer pour alimenter les horaires
+        // Analyse fine du PDF ventes : détection de couverture partielle
+        try {
+          if(typeof hrParsePDF === 'function'){
+            const detail = await hrParsePDF(ab.slice(0));
+            if(detail && detail.ca){
+              MGR_JOUR.ventes.ca_15min = detail.ca; // {HH:MM: montant} par quart d'heure
+              MGR_JOUR.ventes.resto_detecte = detail.resto;
+              // Évaluer la couverture pour le restaurant détecté (sinon resto utilisateur)
+              const restoEval = detail.resto || CURRENT_USER?.resto || ACTIVE_RESTO;
+              if(restoEval && restoEval!=='ALL' && typeof hrEvaluerCouverture==='function'){
+                MGR_JOUR.ventes.couverture = hrEvaluerCouverture(detail.ca, restoEval);
+              }
+            }
+          }
+        } catch(e){ console.warn('analyse couverture PDF ventes', e); }
         summaries.push({key:'ventes', nom:file.name, label:'Ventes horaire ¼h', ok:true, date:MGR_JOUR.ventes?.date, info:`${MGR_JOUR.ventes.tickets||'?'} tickets`});
       } else if(type === 'sos'){
         MGR_JOUR.sos = parserSOS(txt);
@@ -5874,6 +5949,11 @@ async function lireTousPDFs(files) {
   } else if(datesDistinctes.length > 1){
     bloque = true;
     alerte = `🚫 <strong>Les dates ne correspondent pas !</strong> Dates trouvées : ${datesDistinctes.map(d=>formatDate(d)).join(' · ')}. Vérifiez que les 4 PDF sont bien du même jour.`;
+  } else if(MGR_JOUR.ventes && MGR_JOUR.ventes.couverture && MGR_JOUR.ventes.couverture.partiel){
+    // PDF des ventes ¼h incomplet (journée non finie ou mauvais fichier)
+    bloque = true;
+    const c = MGR_JOUR.ventes.couverture;
+    alerte = `🚫 <strong>PDF des ventes ¼h incomplet.</strong><br>${c.raison}<br><span style="font-size:10px;color:var(--muted2)">Re-générez le PDF en fin de journée fiscale, puis redéposez-le.</span>`;
   }
 
   // Aucun PDF reconnu du tout
@@ -9459,6 +9539,9 @@ function renderDays(){
   const wrap=document.getElementById('hrx-days');wrap.innerHTML='';
   const joursLong=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const moisC=['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
+  // Amplitude de référence pour le resto actif (utilisée pour évaluer chaque jour)
+  const refAmp = (typeof hrAmplitudeReference==='function' && typeof HR_RESTO!=='undefined' && HR_RESTO)
+    ? hrAmplitudeReference(HR_RESTO) : null;
   DAY_LABELS.forEach((d,i)=>{
     const h=calcHeures(i);
     const actif = (i===curDay);
@@ -9482,7 +9565,48 @@ function renderDays(){
     if(DAY_VAC && DAY_VAC[i]){
       vacLine=`<span style="font-size:9px;color:#60a5fa;font-family:'DM Mono',monospace;margin-top:1px;width:100%">🏖️ Vac. ${DAY_VAC[i]}</span>`;
     }
-    btn.innerHTML=`<span class="hr-db-day"${actif?' style="color:var(--ac)"':''}>${titre}</span><span class="hr-db-ca">${DAY_TOTALS[i].toLocaleString('fr')} € · ${h}h</span>${refLine}${vacLine}`;
+    // Pastille couverture PDF Quart d'heure pour ce jour
+    let qhPill = '';
+    if(iso2026 && typeof HR_DATA!=='undefined' && HR_DATA){
+      const caJour = HR_DATA[iso2026];
+      if(caJour && Object.keys(caJour).length){
+        // Évalue la couverture en réutilisant la même logique que pour Ma journée
+        const ouvDet = Object.entries(caJour).filter(([h,v])=>v>0.5).map(([h])=>h).sort();
+        if(ouvDet.length>=4){
+          let partiel = false;
+          let tooltip = '';
+          if(refAmp){
+            const ouv = ouvDet[0], fer = ouvDet[ouvDet.length-1];
+            const refOuvMin = hrHHMMtoMin(refAmp.ouverture, false);
+            const refFerMin = hrHHMMtoMin(refAmp.fermeture, true);
+            const detOuvMin = hrHHMMtoMin(ouv, false);
+            const detFerMin = hrHHMMtoMin(fer, true);
+            const TOL = 105;
+            if(detOuvMin-refOuvMin > TOL || refFerMin-detFerMin > TOL){
+              partiel = true;
+              tooltip = `Couverture partielle : ${ouv} → ${fer} (réf. resto : ${refAmp.ouverture} → ${refAmp.fermeture})`;
+            } else {
+              tooltip = `Couverture OK : ${ouv} → ${fer} (${ouvDet.length} créneaux ¼h)`;
+            }
+          } else {
+            tooltip = `Couverture : ${ouvDet[0]} → ${ouvDet[ouvDet.length-1]} (${ouvDet.length} créneaux ¼h)`;
+          }
+          qhPill = partiel
+            ? `<span class="hr-qh hr-qh-warn" title="${tooltip}">!</span>`
+            : `<span class="hr-qh hr-qh-ok" title="${tooltip}">✓</span>`;
+        } else {
+          qhPill = `<span class="hr-qh hr-qh-warn" title="PDF déposé mais très peu de tranches (${ouvDet.length})">!</span>`;
+        }
+      } else {
+        // Aucun PDF déposé pour ce jour
+        // On ne montre la pastille rouge que pour les jours passés (sinon ça pollue le futur)
+        const aujourdHui = new Date().toISOString().slice(0,10);
+        if(iso2026 <= aujourdHui){
+          qhPill = `<span class="hr-qh hr-qh-miss" title="Aucun PDF des ventes ¼h déposé pour ce jour">✗</span>`;
+        }
+      }
+    }
+    btn.innerHTML=`${qhPill}<span class="hr-db-day"${actif?' style="color:var(--ac)"':''}>${titre}</span><span class="hr-db-ca">${DAY_TOTALS[i].toLocaleString('fr')} € · ${h}h</span>${refLine}${vacLine}`;
     btn.onclick=()=>{curDay=i;renderAll();};
     // État de synchro grille→planning, persistant et par semaine (via Supabase) :
     //   VERT   = semaine validée (actualisée) avec la grille actuelle
@@ -10911,6 +11035,92 @@ window.updateCell=updateCell;
 window.updateSeuil=updateSeuil;
 window.addGrilleRow=addGrilleRow;
 window.removeGrilleRow=removeGrilleRow;
+// ── DÉTECTION D'UN PDF DE VENTES PARTIEL ──────────────────────────────────────
+// Pour un resto donné, calcule l'amplitude d'ouverture "habituelle" à partir
+// des PDF déjà déposés. Retourne { ouverture:"HH:MM", fermeture:"HH:MM", nbJoursRef }
+function hrAmplitudeReference(resto){
+  const jours = (typeof HR_ALL!=='undefined' && HR_ALL[resto]) ? HR_ALL[resto] : {};
+  const ouvs=[], fers=[];
+  Object.entries(jours).forEach(([date, ca])=>{
+    const heuresAvecCA = Object.entries(ca)
+      .filter(([h,v])=>v>0.5)  // ignore les 0,00 et bruit < 0.50 €
+      .map(([h])=>h)
+      .sort();
+    if(heuresAvecCA.length < 8) return; // jour trop court, on l'ignore (ex. test, jour férié)
+    ouvs.push(heuresAvecCA[0]);
+    fers.push(heuresAvecCA[heuresAvecCA.length-1]);
+  });
+  if(!ouvs.length) return null; // aucune référence
+  // Médiane
+  const mediane = arr => { const s=[...arr].sort(); return s[Math.floor(s.length/2)]; };
+  return { ouverture: mediane(ouvs), fermeture: mediane(fers), nbJoursRef: ouvs.length };
+}
+
+// Convertit "HH:MM" en minutes depuis minuit (gère les heures après minuit en ajoutant 24h)
+function hrHHMMtoMin(s, apresMinuit){
+  if(!s) return null;
+  const [h,m] = s.split(':').map(Number);
+  let mins = h*60+m;
+  // Heures de "fin de service" : si on a 00:00 → 03:00, on considère comme j+1
+  if(apresMinuit && h<6) mins += 24*60;
+  return mins;
+}
+
+// Évalue si un dépôt {ca:{HH:MM:montant}, resto} est PARTIEL par rapport aux jours
+// déjà connus pour ce resto. Retourne { partiel:bool, raison:string, ouvDetectee, ferDetectee, ref }
+function hrEvaluerCouverture(ca, resto){
+  // Tranches non vides du nouveau PDF
+  const heuresOK = Object.entries(ca||{})
+    .filter(([h,v])=>v>0.5)
+    .map(([h])=>h)
+    .sort();
+  if(heuresOK.length===0){
+    return { partiel:true, raison:'Aucune tranche horaire avec CA — PDF illisible.', ouvDetectee:null, ferDetectee:null, ref:null };
+  }
+  const ouvDet = heuresOK[0];
+  const ferDet = heuresOK[heuresOK.length-1];
+  const ref = hrAmplitudeReference(resto);
+
+  // Cas 1 : on a une référence du resto → on compare
+  if(ref){
+    const refOuvMin = hrHHMMtoMin(ref.ouverture, false);
+    const refFerMin = hrHHMMtoMin(ref.fermeture, true);
+    const detOuvMin = hrHHMMtoMin(ouvDet, false);
+    const detFerMin = hrHHMMtoMin(ferDet, true);
+    // On tolère 1h45 d'écart (= 7 quarts d'heure) sur chaque bord
+    const TOL = 105;
+    const trouOuverture = detOuvMin - refOuvMin; // positif = manque le début
+    const trouFermeture = refFerMin - detFerMin; // positif = manque la fin
+    if(trouOuverture > TOL){
+      return { partiel:true,
+        raison:`PDF partiel : l'ouverture détectée est à <strong>${ouvDet}</strong>, alors que ce restaurant ouvre habituellement à <strong>${ref.ouverture}</strong>. Il manque le matin (≈${Math.round(trouOuverture/60*10)/10}h de service).`,
+        ouvDetectee:ouvDet, ferDetectee:ferDet, ref };
+    }
+    if(trouFermeture > TOL){
+      return { partiel:true,
+        raison:`PDF partiel : la dernière vente détectée est à <strong>${ferDet}</strong>, alors que ce restaurant ferme habituellement à <strong>${ref.fermeture}</strong>. Il manque l'après-midi/soir (≈${Math.round(trouFermeture/60*10)/10}h de service).`,
+        ouvDetectee:ouvDet, ferDetectee:ferDet, ref };
+    }
+    return { partiel:false, raison:'', ouvDetectee:ouvDet, ferDetectee:ferDet, ref };
+  }
+
+  // Cas 2 : pas de référence (premier PDF de ce resto) → heuristique simple
+  // Un BK ouvre vers 10-11h et ferme vers 22-00h → au moins 11h d'amplitude attendues
+  const detOuvMin = hrHHMMtoMin(ouvDet, false);
+  const detFerMin = hrHHMMtoMin(ferDet, true);
+  const amplitude = detFerMin - detOuvMin;
+  if(amplitude < 11*60){
+    const heures = Math.round(amplitude/60*10)/10;
+    return { partiel:true,
+      raison:`PDF probablement partiel : seulement ${heures}h de service détectées (${ouvDet} → ${ferDet}). Un Burger King couvre habituellement 11h ou plus.`,
+      ouvDetectee:ouvDet, ferDetectee:ferDet, ref:null };
+  }
+  return { partiel:false, raison:'', ouvDetectee:ouvDet, ferDetectee:ferDet, ref:null };
+}
+
+window.hrAmplitudeReference = hrAmplitudeReference;
+window.hrEvaluerCouverture  = hrEvaluerCouverture;
+
 // ── PARSEUR PDF : VENTES PAR QUART D'HEURE (CA HT total/tranche) ──────────────
 // Détecte aussi le restaurant et le type de document.
 function hrDetectResto(txt){
