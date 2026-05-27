@@ -3439,7 +3439,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T19:40', label: 'v27/05-19h40', affichage: 'mercredi 27 mai 2026 à 19:40' };
+const APP_VERSION = { datetime: '2026-05-27T19:55', label: 'v27/05-19h55', affichage: 'mercredi 27 mai 2026 à 19:55' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -11295,6 +11295,7 @@ async function hrDropFiles(fileList){
                 • Premières heures : ${heuresStr||'<em>aucune</em>'}<br>
                 • Montants (n.nn) détectés : ${d.nbMontantsDetectes}<br>
                 • Échantillon montants : ${echantillonStr||'<em>aucun</em>'}<br>
+                • Inspection ligne : <span style="word-break:break-all">${d.inspectionLigne||'<em>(pas dheure détectée)</em>'}</span><br>
                 • Aperçu texte : <span style="word-break:break-all">${(d.apercuTexte||'').slice(0,400)}</span>
               </div>
             </details>`;
@@ -11611,46 +11612,60 @@ async function hrParsePDF(arrayBuffer){
   // (les PDF BK français peuvent utiliser "24,89" au lieu de "24.89")
   const isMontant = s => /^\d+[.,]\d{2}$/.test(s);
   const toNum = s => parseFloat(s.replace(',', '.'));
-  // Heures : HH:MM avec HH plausible (5h à 30h pour gérer après minuit), en colonne gauche
-  const heures = items.filter(it=>{
+
+  // ── DÉTECTION DES HEURES (HH:MM) ──
+  // Les heures peuvent apparaître à différentes positions x selon la mise en page
+  // du PDF (parfois en 2 colonnes côte à côte). On garde TOUTES les positions,
+  // puis on dédoublonne par tranche horaire unique en gardant la 1ère occurrence
+  // (= la colonne "Heure" principale, à gauche).
+  const heuresBrutes = items.filter(it=>{
     const m = it.str.match(/^(\d{1,2}):(\d{2})$/);
     if(!m) return false;
     const hh = parseInt(m[1],10);
+    const mm = parseInt(m[2],10);
     if(hh<0 || hh>29) return false;
-    return it.x < 0.20*W; // colonne gauche : élargie à 20% au lieu de 140px en dur
+    if(mm!==0 && mm!==15 && mm!==30 && mm!==45) return false; // que les vrais quarts d'heure
+    return it.x < 0.30*W; // colonne gauche élargie : ≤ 30%
   });
-  // Tentative principale : fenêtre 86%-94% (colonne "Total HT")
-  let montants = items.filter(it=>isMontant(it.str) && it.x>0.86*W && it.x<0.94*W);
+  // Dédoublonnage : pour chaque HH:MM unique sur une même page, on garde l'occurrence
+  // dont la coordonnée x est la plus petite (= la 1ère colonne "Heure").
+  const heuresMap = new Map();
+  heuresBrutes.forEach(h=>{
+    const cle = h.page+'|'+h.str;
+    const existant = heuresMap.get(cle);
+    if(!existant || h.x < existant.x) heuresMap.set(cle, h);
+  });
+  const heures = Array.from(heuresMap.values());
+
+  // ── EXTRACTION DES MONTANTS ──
+  // Le "Total HT" est par convention le DERNIER montant sur la ligne (le plus à droite).
+  // On prend donc tous les montants au format n.nn ou n,nn et on associe à chaque
+  // heure le montant le plus à droite sur la même ligne y (tolérance ±25px).
+  const tousMontants = items.filter(it=>isMontant(it.str));
+  const TOLERANCE_Y = 25; // tolérance verticale assouplie
   const ca = {};
-  const remplir = (montantsList) => {
-    const out = {};
-    heures.forEach(h=>{
-      const cand = montantsList
-        .filter(m=>m.page===h.page && Math.abs(m.y-h.y)<18)
-        .map(m=>({d:Math.abs(m.y-h.y), v:toNum(m.str)}))
-        .sort((a,b)=>a.d-b.d);
-      if(cand.length) out[h.str] = cand[0].v;
-    });
-    return out;
-  };
-  Object.assign(ca, remplir(montants));
-  // REPLI 1 : si trop peu de tranches récupérées, élargir la fenêtre à 80%-96%
-  if(Object.keys(ca).length < heures.length * 0.5){
-    montants = items.filter(it=>isMontant(it.str) && it.x>0.80*W && it.x<0.96*W);
-    const ca2 = remplir(montants);
-    if(Object.keys(ca2).length > Object.keys(ca).length){
-      for(const k in ca) delete ca[k];
-      Object.assign(ca, ca2);
+  heures.forEach(h=>{
+    const ligne = tousMontants
+      .filter(m=>m.page===h.page && Math.abs(m.y-h.y) < TOLERANCE_Y)
+      .sort((a,b)=>b.x-a.x); // tri x décroissant → le 1er est le plus à droite (= Total HT)
+    if(ligne.length){
+      // Le montant le plus à droite est le Total HT de la tranche
+      // (vrai dans tous les formats de rapport BK observés)
+      ca[h.str] = toNum(ligne[0].str);
     }
-  }
-  // REPLI 2 : si toujours rien, prendre le MONTANT LE PLUS À DROITE sur la ligne de l'heure
-  if(Object.keys(ca).length === 0){
-    const tousMontants = items.filter(it=>isMontant(it.str));
+  });
+  // SANITY CHECK : si plusieurs valeurs sont identiques (genre toutes à 0.00),
+  // c'est qu'on a probablement lu un total de pourcentage. Dans ce cas, on
+  // retente en prenant le SECOND montant le plus à droite.
+  const valeurs = Object.values(ca);
+  if(valeurs.length>5 && valeurs.filter(v=>v===0).length > valeurs.length*0.7){
+    Object.keys(ca).forEach(k=>delete ca[k]);
     heures.forEach(h=>{
       const ligne = tousMontants
-        .filter(m=>m.page===h.page && Math.abs(m.y-h.y)<18)
-        .sort((a,b)=>b.x-a.x); // tri x décroissant : prendre celui le plus à droite
-      if(ligne.length) ca[h.str] = toNum(ligne[0].str);
+        .filter(m=>m.page===h.page && Math.abs(m.y-h.y) < TOLERANCE_Y)
+        .sort((a,b)=>b.x-a.x);
+      if(ligne.length>=2) ca[h.str] = toNum(ligne[1].str);
+      else if(ligne.length) ca[h.str] = toNum(ligne[0].str);
     });
   }
   const total = Object.values(ca).reduce((a,b)=>a+b,0);
@@ -11658,18 +11673,31 @@ async function hrParsePDF(arrayBuffer){
   // pour pouvoir identifier le pattern manquant et adapter le parseur si besoin.
   let diag = null;
   if(Object.keys(ca).length === 0){
-    const tousMontants = items.filter(it=>isMontant(it.str));
+    const tousMontantsD = items.filter(it=>isMontant(it.str));
     // Échantillon : 8 premiers montants avec leurs positions, et les heures détectées
-    const echantillon = tousMontants.slice(0, 12).map(m=>({
+    const echantillon = tousMontantsD.slice(0, 12).map(m=>({
       val:m.str, x:Math.round(m.x), y:Math.round(m.y), xPct:Math.round(m.x/W*1000)/10, page:m.page
     }));
+    // INSPECTION : pour la 1ère heure détectée, on liste TOUS les items qui sont
+    // sur sa même ligne y (toute la largeur). Ça permet de voir ce que pdf.js
+    // associe à cette heure et pourquoi le matching échoue.
+    let inspectionLigne = '';
+    if(heures.length){
+      const h0 = heures[0];
+      const surLigne = items
+        .filter(it=>it.page===h0.page && Math.abs(it.y-h0.y) < 30)
+        .sort((a,b)=>a.x-b.x)
+        .map(it=>`${it.str}@x=${Math.round(it.x)}`);
+      inspectionLigne = `Ligne y=${Math.round(h0.y)} de ${h0.str} (page ${h0.page}) : ${surLigne.slice(0,20).join(' | ')}${surLigne.length>20?' …':''}`;
+    }
     diag = {
       largeurPDF: Math.round(W),
       nbItemsTotal: items.length,
       nbHeuresDetectees: heures.length,
       premieresHeures: heures.slice(0, 5).map(h=>({h:h.str, x:Math.round(h.x), y:Math.round(h.y), page:h.page})),
-      nbMontantsDetectes: tousMontants.length,
+      nbMontantsDetectes: tousMontantsD.length,
       echantillonMontants: echantillon,
+      inspectionLigne: inspectionLigne,
       // Texte concaténé des 500 premiers caractères pour voir ce qui est dedans
       apercuTexte: allText.substring(0, 500).replace(/\s+/g,' ').trim()
     };
