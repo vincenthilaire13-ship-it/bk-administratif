@@ -3285,7 +3285,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T07:35', label: 'v27/05-07h35' };
+const APP_VERSION = { datetime: '2026-05-27T08:00', label: 'v27/05-08h00' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6839,6 +6839,93 @@ function sosPerfList(avgs){
 
 function sosSetMode(mode){ SOS_PERF_MODE = mode; anRender(); }
 
+// Rapport de présence des directeurs — fidèle au modèle "Rapidité de Service"
+// 3 cartes colorées par resto/directeur + comparatif + historique
+function sosRapportDirecteurs(rows){
+  const codes = (typeof getCodes==='function') ? getCodes() : {directeurs:[]};
+  const nomDir = (resto)=>{
+    const d = (codes.directeurs||[]).find(x=>x.resto===resto);
+    return d ? d.nom : null;
+  };
+  const DIRS = [
+    {resto:'BK500', short:'Arènes',     color:'#1D9E75', bg:'rgba(29,158,117,.14)', fg:'#1D9E75'},
+    {resto:'BK509', short:'St-Jean',    color:'#378ADD', bg:'rgba(55,138,221,.14)', fg:'#378ADD'},
+    {resto:'BK526', short:'St-Clément', color:'#BA7517', bg:'rgba(186,117,23,.16)', fg:'#d9760f'},
+  ];
+
+  // Cartes par directeur
+  let cards = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px">';
+  DIRS.forEach(dir=>{
+    const dd = rows.filter(d=>d.restaurant===dir.resto);
+    const total = dd.length;
+    const matin = dd.filter(d=>d.directeur_midi).length;
+    const soir  = dd.filter(d=>d.directeur_soir).length;
+    const present = dd.filter(d=>d.directeur_midi||d.directeur_soir).length;
+    const dn = nomDir(dir.resto) || (RESTAURANTS[dir.resto]?.nom||dir.resto);
+    cards += `<div style="background:${dir.bg};border-radius:10px;padding:12px">
+      <div style="font-size:13px;font-weight:600;color:${dir.fg};margin-bottom:1px">${dn}</div>
+      <div style="font-size:10px;color:${dir.fg};opacity:.75;margin-bottom:8px">${RESTAURANTS[dir.resto]?.nom||dir.resto}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <div style="background:var(--card);border-radius:6px;padding:6px;text-align:center">
+          <div style="font-size:9px;color:var(--muted)">Jours enreg.</div>
+          <div style="font-size:18px;font-weight:700;color:${dir.fg}">${total}</div>
+        </div>
+        <div style="background:var(--card);border-radius:6px;padding:6px;text-align:center">
+          <div style="font-size:9px;color:var(--muted)">Présent</div>
+          <div style="font-size:18px;font-weight:700;color:${dir.fg}">${present}</div>
+        </div>
+        <div style="background:var(--card);border-radius:6px;padding:6px;text-align:center">
+          <div style="font-size:9px;color:var(--muted)">Rush matin ☀️</div>
+          <div style="font-size:18px;font-weight:700;color:${dir.fg}">${matin}</div>
+        </div>
+        <div style="background:var(--card);border-radius:6px;padding:6px;text-align:center">
+          <div style="font-size:9px;color:var(--muted)">Rush soir 🌙</div>
+          <div style="font-size:18px;font-weight:700;color:${dir.fg}">${soir}</div>
+        </div>
+      </div>
+      ${total>0?`<div style="margin-top:8px;font-size:11px;color:${dir.fg};text-align:center;font-weight:600">Taux présence : ${Math.round(present/total*100)}%</div>`:''}
+    </div>`;
+  });
+  cards += '</div>';
+
+  // Comparatif des 3 directeurs
+  let comparatif = `<div class="table-card" style="margin-bottom:12px"><div class="table-header"><span class="table-title">📊 Comparatif des 3 directeurs</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Directeur</th><th>Resto</th><th class="num">Jours</th><th>Présence</th><th class="num">Midi</th><th class="num">Soir</th><th class="num">Taux</th></tr></thead><tbody>`;
+  DIRS.forEach(dir=>{
+    const dd = rows.filter(d=>d.restaurant===dir.resto);
+    const total = dd.length;
+    const matin = dd.filter(d=>d.directeur_midi).length;
+    const soir  = dd.filter(d=>d.directeur_soir).length;
+    const complet = dd.filter(d=>d.directeur_midi&&d.directeur_soir).length;
+    const partiel = dd.filter(d=>(d.directeur_midi&&!d.directeur_soir)||(!d.directeur_midi&&d.directeur_soir)).length;
+    const taux = total>0?Math.round((complet+partiel*0.5)/total*100):0;
+    const dn = nomDir(dir.resto) || (RESTAURANTS[dir.resto]?.nom||dir.resto);
+    comparatif += `<tr>
+      <td style="font-weight:600;color:${dir.fg}">${dn}</td>
+      <td style="color:var(--muted2);font-size:11px">${dir.short}</td>
+      <td class="num">${total}</td>
+      <td style="font-size:11px;color:var(--muted2)">${complet} complet${complet!==1?'s':''} · ${partiel} partiel${partiel!==1?'s':''}</td>
+      <td class="num">${matin}</td>
+      <td class="num">${soir}</td>
+      <td class="num"><span style="background:${taux>=50?'rgba(62,207,142,.14)':'rgba(245,166,35,.14)'};color:${taux>=50?'var(--green)':'var(--yellow)'};padding:1px 7px;border-radius:4px;font-weight:600">${taux}%</span></td>
+    </tr>`;
+  });
+  comparatif += '</tbody></table></div></div>';
+
+  // Historique récent
+  const histo = [...rows].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,25).map(d=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><div style="font-size:13px;font-weight:500">${d.date?formatDate(d.date):'—'}</div><div style="font-size:11px;color:var(--muted2)">${RESTAURANTS[d.restaurant]?.nom||d.restaurant||''}</div></div>
+      <div style="display:flex;gap:6px">
+        <span style="font-size:10px;padding:2px 8px;border-radius:4px;${d.directeur_midi?'background:rgba(62,207,142,.14);color:var(--green)':'background:var(--bg3);color:var(--muted)'}">${d.directeur_midi?'✓ Matin':'— Matin'}</span>
+        <span style="font-size:10px;padding:2px 8px;border-radius:4px;${d.directeur_soir?'background:rgba(62,207,142,.14);color:var(--green)':'background:var(--bg3);color:var(--muted)'}">${d.directeur_soir?'✓ Soir':'— Soir'}</span>
+      </div>
+    </div>`).join('');
+  const histoCard = `<div class="table-card"><div class="table-header"><span class="table-title">📅 Historique de présence</span></div><div style="padding:6px 14px 12px">${histo||'<div class="empty"><div class="empty-sub">Aucune donnée.</div></div>'}</div></div>`;
+
+  return `<div class="table-header" style="border:none;padding:0 0 10px"><span class="table-title">👔 Rapport de présence — Directeurs</span></div>` + cards + comparatif + histoCard;
+}
+
 function anRenderSOS(){
   const rows = (AN_DATA.sosTout || AN_DATA.sos || []).filter(r=>r.total_sec!=null || SOS_TRANCHES.some(t=>r[t.id]!=null));
   if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service','Importez un PDF SOS Drive dans « Ma journée » — il apparaîtra ici automatiquement.');
@@ -6890,35 +6977,43 @@ function anRenderSOS(){
   const trRows = SOS_TRANCHES.filter(t=>trAgg[t.id]).map(t=>{ const a=trAgg[t.id]; return `<tr><td>${t.label} <span style="color:var(--muted);font-size:10px">${t.sub}</span></td><td class="num" style="font-weight:600;color:${sosColor(a.moy)}">${secToHMS(a.moy)}</td><td class="num">${a.n}</td></tr>`; }).join('');
   const trancheCard = `<div class="table-card" style="margin-bottom:16px"><div class="table-header"><span class="table-title">Moyenne par tranche horaire</span></div><div class="table-wrap"><table><thead><tr><th>Tranche</th><th class="num">Temps moy.</th><th class="num">Jours</th></tr></thead><tbody>${trRows}</tbody></table></div></div>`;
 
-  // ── RAPPORT DE PRÉSENCE DES DIRECTEURS ──
-  const totJours = rows.length;
-  const presMidi = rows.filter(r=>r.directeur_midi).length;
-  const presSoir = rows.filter(r=>r.directeur_soir).length;
-  const presRows = rows.slice(0,90).map(r=>`<tr>
-    <td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
-    <td class="num" style="font-weight:600;color:${r.total_sec!=null?sosColor(r.total_sec):'var(--muted)'}">${r.total_sec!=null?secToHMS(r.total_sec):'—'}</td>
-    <td style="text-align:center">${r.directeur_midi?'☀️ oui':'—'}</td>
-    <td style="text-align:center">${r.directeur_soir?'🌙 oui':'—'}</td>
-  </tr>`).join('');
-  const dirReport = `<div class="table-card" style="margin-bottom:16px">
-    <div class="table-header"><span class="table-title">👔 Rapport de présence — Directeurs</span></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px">
-      <div style="text-align:center;background:var(--bg3);border-radius:8px;padding:12px">
-        <div style="font-size:11px;color:var(--muted)">Présence rush midi ☀️</div>
-        <div style="font-size:22px;font-weight:700;color:var(--accent)">${totJours?Math.round(presMidi/totJours*100):0}%</div>
-        <div style="font-size:10px;color:var(--muted2)">${presMidi}/${totJours} jours</div>
-      </div>
-      <div style="text-align:center;background:var(--bg3);border-radius:8px;padding:12px">
-        <div style="font-size:11px;color:var(--muted)">Présence rush soir 🌙</div>
-        <div style="font-size:22px;font-weight:700;color:var(--accent)">${totJours?Math.round(presSoir/totJours*100):0}%</div>
-        <div style="font-size:10px;color:var(--muted2)">${presSoir}/${totJours} jours</div>
-      </div>
-    </div>
-    <div class="table-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Temps</th><th style="text-align:center">Midi</th><th style="text-align:center">Soir</th></tr></thead><tbody>${presRows}</tbody></table></div>
+  // ── RAPPORT DE PRÉSENCE DES DIRECTEURS (fidèle au modèle, avec sous-menu période) ──
+  const dirRows = sosFilterDirPeriode(rows);
+  const dirPresets = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 12px">
+    <button class="an-preset${SOS_DIR_PRESET==='semaine'?' active':''}" onclick="sosSetDirPreset('semaine')">Une semaine</button>
+    <button class="an-preset${SOS_DIR_PRESET==='mois'?' active':''}" onclick="sosSetDirPreset('mois')">Un mois</button>
+    <button class="an-preset${SOS_DIR_PRESET==='tout'?' active':''}" onclick="sosSetDirPreset('tout')">Tout</button>
+    <button class="an-preset${SOS_DIR_PRESET==='custom'?' active':''}" onclick="sosSetDirPreset('custom')">Personnalisé</button>
+    <span style="display:${SOS_DIR_PRESET==='custom'?'inline-flex':'none'};gap:8px;align-items:center">
+      <input type="date" id="sos-dir-from" value="${SOS_DIR_FROM||''}" onchange="sosDirCustomChange()" style="padding:5px 9px;border-radius:7px;border:1px solid var(--border2);background:var(--card);color:var(--text);font-size:12px">
+      <input type="date" id="sos-dir-to" value="${SOS_DIR_TO||''}" onchange="sosDirCustomChange()" style="padding:5px 9px;border-radius:7px;border:1px solid var(--border2);background:var(--card);color:var(--text);font-size:12px">
+    </span>
   </div>`;
+  const dirReport = dirPresets + sosRapportDirecteurs(dirRows);
 
   return kpis + toggle + compare + classementGlobal + trancheCard + dirReport;
 }
+
+// Période du rapport directeur (indépendante du reste)
+let SOS_DIR_PRESET = 'tout';
+let SOS_DIR_FROM = '';
+let SOS_DIR_TO = '';
+function sosFilterDirPeriode(rows){
+  if(SOS_DIR_PRESET==='tout') return rows;
+  const today = new Date();
+  let from = null;
+  if(SOS_DIR_PRESET==='semaine'){ from=new Date(); from.setDate(from.getDate()-6); }
+  else if(SOS_DIR_PRESET==='mois'){ from=new Date(); from.setDate(from.getDate()-29); }
+  else if(SOS_DIR_PRESET==='custom'){
+    const f = SOS_DIR_FROM||'2000-01-01', t = SOS_DIR_TO||'2099-12-31';
+    return rows.filter(r=>(r.date||'')>=f && (r.date||'')<=t);
+  }
+  const pad=n=>String(n).padStart(2,'0');
+  const iso = from ? from.getFullYear()+'-'+pad(from.getMonth()+1)+'-'+pad(from.getDate()) : '2000-01-01';
+  return rows.filter(r=>(r.date||'')>=iso);
+}
+function sosSetDirPreset(p){ SOS_DIR_PRESET=p; if(p!=='custom') anRender(); else anRender(); }
+function sosDirCustomChange(){ SOS_DIR_FROM=document.getElementById('sos-dir-from')?.value||''; SOS_DIR_TO=document.getElementById('sos-dir-to')?.value||''; anRender(); }
 
 // ───────── BONS REPAS — détection abus (doublons + total élevé) ─────────
 function anRenderRepas(){
