@@ -3438,7 +3438,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T17:35', label: 'v27/05-17h35', affichage: 'mercredi 27 mai 2026 à 17:35' };
+const APP_VERSION = { datetime: '2026-05-27T19:05', label: 'v27/05-19h05', affichage: 'mercredi 27 mai 2026 à 19:05' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -5896,6 +5896,15 @@ async function lireTousPDFs(files) {
     document.getElementById('mgr-loading-text').textContent = `Lecture ${i+1}/${files.length} : ${file.name}…`;
     try {
       const ab = await file.arrayBuffer();
+      // ── IMPORTANT ── pdf.js détache l'ArrayBuffer qu'on lui passe pour des raisons
+      // de perf interne. Du coup, faire ab.slice() après l'appel à pdf.js plante avec
+      // "Cannot perform ArrayBuffer.prototype.slice on a detached ArrayBuffer".
+      // SOLUTION : on clone l'ArrayBuffer en sauvegarde dans une Uint8Array AVANT le
+      // 1er appel à pdf.js, puis on dérive toutes les copies suivantes de cette
+      // sauvegarde (qui elle reste indépendante).
+      const abBackup = new Uint8Array(ab.byteLength);
+      abBackup.set(new Uint8Array(ab));
+      const freshAB = () => abBackup.slice().buffer; // copie fraîche à chaque appel
       const pdf = await pdfjsLib.getDocument({data:ab}).promise;
       let txt = '';
       for(let p=1;p<=pdf.numPages;p++){
@@ -5913,7 +5922,7 @@ async function lireTousPDFs(files) {
       let detailVentes = null;
       if(!typeFinal && typeof hrParsePDF === 'function'){
         try {
-          const test = await hrParsePDF(ab.slice(0));
+          const test = await hrParsePDF(freshAB());
           if(test && test.ca && Object.keys(test.ca).length > 0){
             typeFinal = 'ventes';
             detailVentes = test;
@@ -5945,11 +5954,11 @@ async function lireTousPDFs(files) {
         MGR_JOUR.dates.ventes = MGR_JOUR.ventes?.date || null;
         MGR_JOUR.fichiers.ventes = file.name;
         MGR_VENTES_TXT = txt;
-        MGR_VENTES_AB = ab.slice(0); // copie de l'arrayBuffer pour alimenter les horaires
+        MGR_VENTES_AB = freshAB(); // copie fraîche pour alimenter les horaires plus tard
         // Analyse fine du PDF ventes : détection de couverture partielle
         try {
           if(typeof hrParsePDF === 'function'){
-            const detail = detailVentes || await hrParsePDF(ab.slice(0));
+            const detail = detailVentes || await hrParsePDF(freshAB());
             if(detail && detail.ca){
               MGR_JOUR.ventes.ca_15min = detail.ca; // {HH:MM: montant} par quart d'heure
               MGR_JOUR.ventes.resto_detecte = detail.resto;
@@ -6528,24 +6537,34 @@ async function enregistrerJourneeMgr() {
       // 4bis) ALIMENTER LES HORAIRES / PLANNING : extraire le CA par quart d'heure et l'injecter dans HR_ALL
       try {
         if(MGR_VENTES_AB && typeof hrParsePDF==='function'){
-          const res = await hrParsePDF(MGR_VENTES_AB.slice(0));
-          if(res && res.ca && Object.keys(res.ca).length){
-            const rDate = res.date || date;
-            const rResto = (res.resto && res.resto!=='ALL') ? res.resto : resto;
-            if(typeof HR_ALL!=='undefined'){
+          // Sécurité : si l'ArrayBuffer a été détaché par pdf.js dans un appel
+          // précédent, on l'esquive proprement plutôt que de planter.
+          let bufPourHr = null;
+          try { bufPourHr = MGR_VENTES_AB.slice(0); }
+          catch(eDetach){
+            console.warn('[ventes_horaire] MGR_VENTES_AB détaché, on saute l\'alimentation horaires', eDetach);
+          }
+          if(bufPourHr){
+            const res = await hrParsePDF(bufPourHr);
+            if(res && res.ca && Object.keys(res.ca).length && typeof HR_ALL!=='undefined'){
+              const rDate = res.date || date;
+              const rResto = (res.resto && res.resto!=='ALL') ? res.resto : resto;
               if(!HR_ALL[rResto]) HR_ALL[rResto] = {};
               HR_ALL[rResto][rDate] = res.ca;        // {HH:MM: montant} pour ce jour
               window.HR_ALL = HR_ALL;
               // Si on regarde ce resto, rafraîchir la vue active
               if(typeof HR_RESTO!=='undefined' && HR_RESTO===rResto){ HR_DATA = HR_ALL[rResto]; window.HR_DATA = HR_DATA; }
-              // Persister la courbe horaire dans la table ventes_horaire (colonne tranches déjà au format jsonb)
+              // Persister la courbe horaire dans la table ventes_horaire (colonne tranches_ca)
               try {
                 const { error: eUp } = await SB.from('ventes_horaire').upsert({restaurant:rResto, date:rDate, tranches_ca: res.ca},{onConflict:'restaurant,date'});
                 if(eUp){
                   console.error('[upsert tranches_ca]', eUp);
                   erreurs.push('Tranches ¼h (horaires) : '+(eUp.message||eUp));
                 }
-              } catch(e){ console.error('[upsert tranches_ca exception]', e); erreurs.push('Tranches ¼h (horaires) : '+(e.message||e)); }
+              } catch(eU){
+                console.error('[upsert tranches_ca exception]', eU);
+                erreurs.push('Tranches ¼h (horaires) : '+(eU.message||eU));
+              }
             }
           }
         }
