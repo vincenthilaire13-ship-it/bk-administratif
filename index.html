@@ -345,6 +345,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
   <div class="topbar">
     <div style="display:flex;align-items:center;gap:12px">
       <div class="topbar-title" id="page-title">Dashboard</div>
+      <span id="app-version-badge" title="Version de l'application" style="font-size:9.5px;color:var(--muted2);background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;white-space:nowrap"></span>
       <!-- Sélecteur resto : visible admin/superviseur uniquement -->
       <div id="resto-switcher" style="display:none;align-items:center;gap:6px">
         <button id="sw-BK500" class="btn" style="font-size:11px;padding:4px 10px" onclick="switchResto('BK500')">🏟️ BK 500</button>
@@ -3296,6 +3297,10 @@ function applyRestoFilter() {
   }
 }
 
+// ══ VERSION DE L'APPLICATION ══
+// À mettre à jour à chaque nouvel index déployé (date + petit numéro).
+const APP_VERSION = { date: '2026-05-27', label: 'v27/05' };
+
 // ══ SUPABASE CONFIG ══
 const SB_URL_DEFAULT = 'https://qywucwvcnijkbdcdczch.supabase.co';
 const SB_KEY_DEFAULT = 'sb_publishable_OjZ_TMHBKogqLzhay1JNJw_mUo5Zru0';
@@ -5206,6 +5211,17 @@ function setSession(user) {
 
   document.getElementById('login-screen').style.display   = 'none';
   document.getElementById('app-shell').style.display      = 'flex';
+
+  // Badge de version de l'application
+  try {
+    const vb = document.getElementById('app-version-badge');
+    if(vb){
+      const d = new Date(APP_VERSION.date);
+      const dStr = d.toLocaleDateString('fr-FR',{day:'2-digit',month:'long',year:'numeric'});
+      vb.textContent = '⚡ Mis à jour le '+dStr;
+      vb.title = 'Version '+APP_VERSION.label+' — '+dStr;
+    }
+  } catch(e){}
 
   // Badge + nom dans sidebar
   const badge = document.getElementById('role-badge');
