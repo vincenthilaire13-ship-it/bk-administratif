@@ -13,13 +13,14 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg:#0a0a0b;--bg2:#111114;--bg3:#18181d;--card:#1c1c22;
-  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
-  --accent:#f5a623;--accent2:#e8d5a3;
-  --green:#3ecf8e;--red:#f87171;--yellow:#fbbf24;--blue:#60a5fa;
-  --text:#f0ede8;--muted:#6b6b7a;--muted2:#9d9daa;
+  --bg:#f7f7f8;--bg2:#ffffff;--bg3:#f0f0f2;--card:#ffffff;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.14);
+  --accent:#e8821e;--accent2:#9a6212;
+  --green:#15803d;--red:#dc2626;--yellow:#b45309;--blue:#2563eb;
+  --text:#18181b;--muted:#9b9ba6;--muted2:#5c5c68;
   --font-head:'Syne',sans-serif;--font-mono:'DM Mono',monospace;
   --radius:12px;--radius-sm:8px;
+  --hover:rgba(0,0,0,.04);--hover2:rgba(0,0,0,.06);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
@@ -32,7 +33,7 @@ body{font-family:var(--font-mono);background:var(--bg);color:var(--text);min-hei
 .sidebar-nav{flex:1;padding:12px 0;overflow-y:auto}
 .nav-section{padding:8px 16px 4px;font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;color:var(--muted2);font-size:12px;transition:all .15s;border-left:2px solid transparent}
-.nav-item:hover{color:var(--text);background:rgba(255,255,255,.04)}
+.nav-item:hover{color:var(--text);background:var(--hover)}
 .nav-item.active{color:var(--accent);border-left-color:var(--accent);background:rgba(245,166,35,.06)}
 .sidebar-bottom{padding:16px 20px;border-top:1px solid var(--border);font-size:10px;color:var(--muted)}
 .status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px;animation:pulse 2s infinite}
@@ -42,7 +43,7 @@ body{font-family:var(--font-mono);background:var(--bg);color:var(--text);min-hei
 .topbar-title{font-family:var(--font-head);font-size:16px;font-weight:700}
 .topbar-right{display:flex;align-items:center;gap:10px}
 .btn{padding:7px 14px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:transparent;color:var(--text);font-family:var(--font-mono);font-size:11px;cursor:pointer;transition:all .15s}
-.btn:hover{background:rgba(255,255,255,.06)}
+.btn:hover{background:var(--hover2)}
 .btn-accent{background:var(--accent);color:#000;border-color:var(--accent);font-weight:500}
 .btn-accent:hover{background:#e8961a}
 .content{padding:28px}
@@ -61,12 +62,30 @@ body{font-family:var(--font-mono);background:var(--bg);color:var(--text);min-hei
 .table-title{font-family:var(--font-head);font-size:13px;font-weight:600}
 .table-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse}
-th{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:500;padding:10px 14px;border-bottom:1px solid var(--border);text-align:left;background:rgba(255,255,255,.02);white-space:nowrap}
-td{padding:9px 14px;border-bottom:1px solid rgba(255,255,255,.04);font-size:12px;color:var(--text);white-space:nowrap}
+th{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:500;padding:10px 14px;border-bottom:1px solid var(--border);text-align:left;background:var(--bg3);white-space:nowrap}
+td{padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text);white-space:nowrap}
 tr:last-child td{border-bottom:none}
-tr:hover td{background:rgba(255,255,255,.02)}
+tr:hover td{background:var(--hover)}
 tr.total-row td{font-weight:500;background:rgba(245,166,35,.05);border-top:1px solid rgba(245,166,35,.2)}
 .num{text-align:right}
+/* ── Barre de filtre style épuré (inspirée index Rapidité de Service) ── */
+.an-filter{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:18px}
+.an-presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.an-preset{padding:5px 12px;border-radius:7px;border:1px solid var(--border2);font-size:12px;cursor:pointer;background:var(--card);color:var(--muted2);transition:all .15s}
+.an-preset:hover{color:var(--text)}
+.an-preset.active{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+.an-dates{display:none;gap:10px;margin-bottom:10px}
+.an-dates.show{display:flex}
+.an-dates input{padding:6px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--card);color:var(--text);font-size:12px;font-family:var(--font-mono)}
+.an-restos{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-top:10px;border-top:1px solid var(--border)}
+.an-restos .lbl{font-size:11px;color:var(--muted)}
+.an-resto-btn{padding:5px 12px;border-radius:7px;border:1px solid var(--border2);font-size:12px;cursor:pointer;background:var(--card);color:var(--muted2);transition:all .15s}
+.an-resto-btn:hover{color:var(--text)}
+.an-resto-btn.active{font-weight:600}
+.an-tabs2{display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:10px;margin-bottom:16px;overflow-x:auto}
+.an-tab2{flex:1;min-width:max-content;padding:8px 14px;border-radius:7px;border:none;background:none;font-size:12.5px;cursor:pointer;color:var(--muted2);white-space:nowrap;transition:all .15s}
+.an-tab2:hover{color:var(--text)}
+.an-tab2.active{background:var(--card);color:var(--text);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .chip{display:inline-block;font-size:9px;font-weight:500;padding:2px 7px;border-radius:99px;white-space:nowrap}
 .chip-ok{background:rgba(62,207,142,.15);color:#3ecf8e}
 .chip-warn{background:rgba(251,191,36,.15);color:#fbbf24}
@@ -115,7 +134,7 @@ tr.total-row td{font-weight:500;background:rgba(245,166,35,.05);border-top:1px s
 .analyse-text strong{color:var(--text);font-weight:500}
 .canal-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .canal-name{font-size:11px;color:var(--muted2);min-width:110px}
-.canal-bar-bg{flex:1;height:6px;background:rgba(255,255,255,.08);border-radius:99px;overflow:hidden}
+.canal-bar-bg{flex:1;height:6px;background:rgba(0,0,0,.08);border-radius:99px;overflow:hidden}
 .canal-bar{height:100%;border-radius:99px;transition:width .6s ease}
 .canal-pct{font-size:11px;color:var(--text);min-width:38px;text-align:right}
 .canal-val{font-size:10px;color:var(--muted);min-width:65px;text-align:right}
@@ -965,24 +984,35 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <!-- SUIVI MANAGERS -->
     <!-- ════════ ANALYSES ════════ -->
     <section class="section" id="sec-analyses">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px" id="an-tabs">
-        <button class="btn an-tab btn-accent" data-an="sos"  onclick="anSwitch('sos')">🚗 Temps de service</button>
-        <button class="btn an-tab" data-an="repas"           onclick="anSwitch('repas')">🍔 Bons repas</button>
-        <button class="btn an-tab" data-an="annulations"     onclick="anSwitch('annulations')">🚫 Annulations</button>
-        <button class="btn an-tab" data-an="corrections"     onclick="anSwitch('corrections')">✏️ Corrections</button>
-        <button class="btn an-tab" data-an="tables"          onclick="anSwitch('tables')">📂 Tables ouvertes</button>
-        <button class="btn an-tab" data-an="parmanager"      onclick="anSwitch('parmanager')">👔 Par manager</button>
-        <button class="btn an-tab" data-an="parleader"       onclick="anSwitch('parleader')">⭐ Par leader</button>
-        <button class="btn an-tab" data-an="restos"          onclick="anSwitch('restos')">🏆 Classement restos</button>
+      <div class="an-tabs2" id="an-tabs">
+        <button class="an-tab2 active" data-an="sos"  onclick="anSwitch('sos')">🚗 Temps de service</button>
+        <button class="an-tab2" data-an="repas"           onclick="anSwitch('repas')">🍔 Bons repas</button>
+        <button class="an-tab2" data-an="annulations"     onclick="anSwitch('annulations')">🚫 Annulations</button>
+        <button class="an-tab2" data-an="corrections"     onclick="anSwitch('corrections')">✏️ Corrections</button>
+        <button class="an-tab2" data-an="tables"          onclick="anSwitch('tables')">📂 Tables ouvertes</button>
+        <button class="an-tab2" data-an="parmanager"      onclick="anSwitch('parmanager')">👔 Par manager</button>
+        <button class="an-tab2" data-an="parleader"       onclick="anSwitch('parleader')">⭐ Par leader</button>
+        <button class="an-tab2" data-an="restos"          onclick="anSwitch('restos')">🏆 Classement restos</button>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:18px;flex-wrap:wrap">
-        <span style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)">Période</span>
-        <input type="date" class="form-input" id="an-date-from" style="width:auto;padding:6px 10px" onchange="anRefresh()">
-        <span style="color:var(--muted)">→</span>
-        <input type="date" class="form-input" id="an-date-to" style="width:auto;padding:6px 10px" onchange="anRefresh()">
-        <button class="btn" style="font-size:10px;padding:5px 10px" onclick="anSetPeriode(7)">7 j</button>
-        <button class="btn" style="font-size:10px;padding:5px 10px" onclick="anSetPeriode(30)">30 j</button>
-        <button class="btn" style="font-size:10px;padding:5px 10px" onclick="anSetPeriode(90)">90 j</button>
+      <div class="an-filter">
+        <div class="an-presets" id="an-presets">
+          <button class="an-preset" data-p="7" onclick="anSetPreset('7',this)">7 jours</button>
+          <button class="an-preset" data-p="30" onclick="anSetPreset('30',this)">30 jours</button>
+          <button class="an-preset" data-p="mois" onclick="anSetPreset('mois',this)">Ce mois</button>
+          <button class="an-preset active" data-p="tout" onclick="anSetPreset('tout',this)">Tout</button>
+          <button class="an-preset" data-p="custom" onclick="anSetPreset('custom',this)">Personnalisé</button>
+        </div>
+        <div class="an-dates" id="an-dates">
+          <input type="date" id="an-date-from" onchange="anRefresh()">
+          <input type="date" id="an-date-to" onchange="anRefresh()">
+        </div>
+        <div class="an-restos" id="an-restos">
+          <span class="lbl">Restaurant :</span>
+          <button class="an-resto-btn active" data-r="" onclick="anSetResto('',this)">Tous</button>
+          <button class="an-resto-btn" data-r="BK500" style="--c:#1D9E75" onclick="anSetResto('BK500',this)">BK 500 · Arènes</button>
+          <button class="an-resto-btn" data-r="BK509" style="--c:#378ADD" onclick="anSetResto('BK509',this)">BK 509 · St-Jean</button>
+          <button class="an-resto-btn" data-r="BK526" style="--c:#BA7517" onclick="anSetResto('BK526',this)">BK 526 · St-Clément</button>
+        </div>
       </div>
       <div id="an-content">
         <div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Analyses</div><div class="empty-sub">Chargement…</div></div>
@@ -1224,7 +1254,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
               dépose-les l'un après l'autre, ils se cumulent.
             </p>
             <div id="hr-drop" 
-              style="border:2px dashed var(--border);border-radius:14px;padding:42px 20px;text-align:center;cursor:pointer;transition:all .15s;background:rgba(255,255,255,.02)"
+              style="border:2px dashed var(--border);border-radius:14px;padding:42px 20px;text-align:center;cursor:pointer;transition:all .15s;background:var(--bg3)"
               onclick="document.getElementById('hr-drop-input').click()">
               <div style="font-size:42px;margin-bottom:10px">📂</div>
               <div style="font-size:15px;font-weight:600;margin-bottom:4px">Glisse tes fichiers ici</div>
@@ -3899,7 +3929,7 @@ function renderComparaisonRestos() {
 // ══ CHARTS ══
 let CH = {};
 function killChart(id){if(CH[id]){CH[id].destroy();delete CH[id];}}
-const GC = 'rgba(255,255,255,.04)';
+const GC = 'rgba(0,0,0,.06)';
 const TC = '#6b6b7a';
 
 // ══ GRANULARITÉ DASHBOARD ══
@@ -4229,7 +4259,7 @@ function renderJournee(d) {
           return suiv && !suiv[0].startsWith('─');
         });
         return finales.map(r=>r[0].startsWith('─')?
-          `<tr><td colspan="5" style="padding:6px 14px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);background:rgba(255,255,255,.02)">${r[0].replace(/─/g,'').trim()}</td></tr>`:
+          `<tr><td colspan="5" style="padding:6px 14px;font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);background:var(--bg3)">${r[0].replace(/─/g,'').trim()}</td></tr>`:
           `<tr><td>${r[0]}</td><td class="num">${r[1]}</td><td class="num" style="color:var(--muted)">${r[2]}</td><td class="num" style="color:var(--muted)">${r[3]}</td><td>${r[4]}</td></tr>`
         ).join('');
       })()}</tbody>
@@ -4281,7 +4311,7 @@ function loadHistorique() {
   const fmap={ca:'_caht',tickets:'tickets_nb',drive:'drive_voitures',corrections:'corrections_montant',remises:'remises_pct',livraisons:'_lvht'};
   const flabels={ca:'CA HT',tickets:'Tickets',drive:'Drive voitures',corrections:'Corrections €',remises:'Remises %',livraisons:'Livraison CA HT'};
   const clrs={ca:'#f5a623',tickets:'#60a5fa',drive:'#60a5fa',corrections:'#f87171',remises:'#fbbf24',livraisons:'#3ecf8e'};
-  const TC='#6b6b7a', GC='rgba(255,255,255,.04)';
+  const TC='#9b9ba6', GC='rgba(0,0,0,.06)';
   // Champs HT calculés pour le graphe/tableau historique
   fd.forEach(d=>{ d._caht = caHT(d); d._lvht = canalHT(d,'livraison'); });
   fdN1.forEach(d=>{ d._caht = caHT_n1(d); d._lvht = canalHT(d,'livraison'); });
@@ -4342,7 +4372,7 @@ function loadHistorique() {
     <div class="chart-label">${flabels[filtre]} — ${moisLabel} vs ${moisN1Label}</div>
     <div class="legend" style="margin-bottom:8px">
       <span class="legend-item"><span class="legend-sq" style="background:${clrs[filtre]}"></span>${yr}</span>
-      <span class="legend-item"><span class="legend-sq" style="background:rgba(255,255,255,.2)"></span>${yrN1}</span>
+      <span class="legend-item"><span class="legend-sq" style="background:rgba(0,0,0,.18)"></span>${yrN1}</span>
     </div>
     <div class="chart-wrap tall"><canvas id="chart-hist" role="img" aria-label="Historique ${filtre}">Historique.</canvas></div>
   </div>
@@ -4457,7 +4487,7 @@ function loadHistorique() {
     type:'bar',
     data:{labels:labels26,datasets:[
       {label:yr,data:vals26,backgroundColor:clrs[filtre],borderRadius:3,borderSkipped:false},
-      {label:yrN1,data:vals25,backgroundColor:'rgba(255,255,255,.15)',borderRadius:3,borderSkipped:false}
+      {label:yrN1,data:vals25,backgroundColor:'rgba(0,0,0,.13)',borderRadius:3,borderSkipped:false}
     ]},
     options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y?.toLocaleString('fr-FR')||0)}}},scales:{x:{ticks:{color:TC,font:{size:9}},grid:{display:false}},y:{ticks:{color:TC,font:{size:9}},grid:{color:GC},beginAtZero:true}}}
   });
@@ -6397,35 +6427,58 @@ function checkSession(){
 let AN_TAB = 'sos';
 let AN_DATA = { sos:[], repas:[], annulations:[] };
 let _anLoaded = false;
+let AN_PRESET = 'tout';   // période par défaut : tout l'historique
+let AN_RESTO  = '';        // '' = tous les restos
 
-function anSetPeriode(jours){
+function anSetPreset(p, btn){
+  AN_PRESET = p;
+  document.querySelectorAll('#an-presets .an-preset').forEach(b=>b.classList.toggle('active', b===btn));
+  const dates = document.getElementById('an-dates');
+  if(p==='custom'){ dates.classList.add('show'); return; } // attend que l'utilisateur choisisse les dates
+  dates.classList.remove('show');
+  // calculer from/to selon le preset
   const to = new Date();
-  const from = new Date(); from.setDate(from.getDate()-jours+1);
-  document.getElementById('an-date-from').value = from.toISOString().slice(0,10);
-  document.getElementById('an-date-to').value   = to.toISOString().slice(0,10);
+  let from = null;
+  if(p==='7'){ from=new Date(); from.setDate(from.getDate()-6); }
+  else if(p==='30'){ from=new Date(); from.setDate(from.getDate()-29); }
+  else if(p==='mois'){ from=new Date(to.getFullYear(), to.getMonth(), 1); }
+  else if(p==='tout'){ from=null; }
+  const pad=n=>String(n).padStart(2,'0');
+  const iso=d=>d?d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()):'';
+  document.getElementById('an-date-from').value = from?iso(from):'';
+  document.getElementById('an-date-to').value   = iso(to);
+  anRefresh();
+}
+
+function anSetResto(r, btn){
+  AN_RESTO = r;
+  document.querySelectorAll('#an-restos .an-resto-btn').forEach(b=>{
+    const on = b===btn;
+    b.classList.toggle('active', on);
+    b.style.background = on && b.dataset.r ? (b.style.getPropertyValue('--c')||'var(--accent)') : '';
+    b.style.color = on ? (b.dataset.r?'#fff':'var(--text)') : '';
+    b.style.borderColor = on && b.dataset.r ? (b.style.getPropertyValue('--c')||'var(--accent)') : '';
+  });
   anRefresh();
 }
 
 function anSwitch(tab){
   AN_TAB = tab;
-  document.querySelectorAll('.an-tab').forEach(b=>b.classList.toggle('btn-accent', b.dataset.an===tab));
+  document.querySelectorAll('.an-tab2').forEach(b=>b.classList.toggle('active', b.dataset.an===tab));
   anRender();
 }
 
 async function anInit(){
-  // période par défaut : 30 derniers jours si pas encore réglée
-  if(!document.getElementById('an-date-from').value){
-    anSetPeriode(30); // déclenche anRefresh
-  } else {
-    anRefresh();
-  }
+  // période par défaut : Tout
+  anRefresh();
 }
 
 async function anRefresh(){
   const from = document.getElementById('an-date-from').value;
   const to   = document.getElementById('an-date-to').value;
-  let resto = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') ? ACTIVE_RESTO : (CURRENT_USER?.resto||null);
-  if(resto==='ALL' || resto==='Administration') resto = null; // 'ALL' = voir tous les restos, pas de filtre
+  // Priorité au bouton resto de la barre de filtre ; sinon resto actif (jamais 'ALL')
+  let resto = AN_RESTO || (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? ACTIVE_RESTO : (CURRENT_USER?.resto||null));
+  if(resto==='ALL' || resto==='Administration') resto = null;
   document.getElementById('an-content').innerHTML = '<div class="empty"><div class="empty-icon" style="animation:pulse 1.5s infinite">📊</div><div class="empty-title">Chargement des données…</div></div>';
 
   if(!SB){
@@ -7125,7 +7178,7 @@ function anDrawCharts(){
   const grid = getComputedStyle(document.body).getPropertyValue('--muted')||'#6b6b7a';
   const baseOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
     scales:{x:{ticks:{font:{size:9},color:'#9d9daa',maxRotation:45,autoSkip:true,maxTicksLimit:14},grid:{display:false}},
-            y:{ticks:{font:{size:10},color:'#9d9daa'},grid:{color:'rgba(255,255,255,.05)'},beginAtZero:true}}};
+            y:{ticks:{font:{size:10},color:'#5c5c68'},grid:{color:'rgba(0,0,0,.06)'},beginAtZero:true}}};
 
   if(AN_TAB==='sos'){
     const c=document.getElementById('an-sos-canvas'); if(!c)return;
@@ -10122,7 +10175,7 @@ function hrInitDropZone(){
   const z=document.getElementById('hr-drop');
   if(!z || z.__init) return; z.__init=true;
   ['dragenter','dragover'].forEach(ev=>z.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();z.style.borderColor='var(--accent)';z.style.background='rgba(245,166,35,.06)';}));
-  ['dragleave','drop'].forEach(ev=>z.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();z.style.borderColor='var(--border)';z.style.background='rgba(255,255,255,.02)';}));
+  ['dragleave','drop'].forEach(ev=>z.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();z.style.borderColor='var(--border)';z.style.background='var(--bg3)';}));
   z.addEventListener('drop',e=>{ if(e.dataTransfer&&e.dataTransfer.files) hrDropFiles(e.dataTransfer.files); });
 }
 window.hrInitDropZone=hrInitDropZone;
