@@ -3285,7 +3285,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T07:10', label: 'v27/05-07h10' };
+const APP_VERSION = { datetime: '2026-05-27T07:35', label: 'v27/05-07h35' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6770,108 +6770,154 @@ const _anEmpty = (ico,titre,sub)=>`<div class="empty"><div class="empty-icon">${
 
 // ───────── TEMPS DE SERVICE (SOS) ─────────
 // ───────── TEMPS DE SERVICE (SOS) — classement managers ─────────
-const SOS_SEUIL_ORANGE = 165;   // 02:45 (objectif "Total")
-const SOS_SEUIL_ROUGE  = 210;   // 03:30
-function anRenderSOS(){
-  // Temps de service : tout l'historique (pas la fenêtre de dates)
-  const rows = (AN_DATA.sosTout || AN_DATA.sos || []).filter(r=>r.total_sec);
-  if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service','Importez un PDF SOS Drive dans Saisie — il apparaîtra ici automatiquement.');
-  const moy = Math.round(rows.reduce((a,b)=>a+b.total_sec,0)/rows.length);
-  const best = rows.reduce((a,b)=>a.total_sec<b.total_sec?a:b);
-  const worst= rows.reduce((a,b)=>a.total_sec>b.total_sec?a:b);
-  const totVoit = rows.reduce((a,b)=>a+(b.total_voitures||0),0);
+const SOS_SEUIL_ORANGE = 165;   // gardé pour compatibilité ailleurs
+const SOS_SEUIL_ROUGE  = 210;
+// Tranches du temps de service (mapping sos_drive → shift)
+const SOS_TRANCHES = [
+  {id:'ts_matinee',   label:'Matinée',    sub:'7h→12h',  shift:'open'},
+  {id:'ts_dejeuner',  label:'Déjeuner',   sub:'12h→14h', shift:'open'},
+  {id:'ts_apresmidi', label:'Après-midi', sub:'14h→19h', shift:'open'},
+  {id:'ts_diner',     label:'Dîner',      sub:'19h→21h', shift:'close'},
+  {id:'ts_soir',      label:'Soir',       sub:'21h→23h', shift:'close'},
+  {id:'ts_nuit',      label:'Nuit',       sub:'23h→4h',  shift:'close'},
+];
+const SOS_OBJ = 300, SOS_OBJ_ORANGE = 450, SOS_OBJ_ROUGE = 600; // 5min / 7:30 / 10min
+const SOS_ABG = ['#dff0e8','#dde9f6','#f3e6cf','#f3e0d6','#e8e0f2','#d9eef0'];
+const SOS_AFG = ['#177a4c','#1c5fa0','#8a5a12','#9a3d20','#5b3a9e','#1d6e74'];
+let SOS_PERF_MODE = 'managers'; // managers | leaders
 
-  // Agréger par manager (ouverture ET fermeture comptent pour la journée)
-  const byMgr = {};
-  rows.forEach(r=>{
-    [r.manager_ouverture, r.manager_fermeture].filter(Boolean).forEach(nom=>{
-      if(!byMgr[nom]) byMgr[nom]={nom, sum:0, n:0, jours:new Set()};
-      byMgr[nom].sum+=r.total_sec; byMgr[nom].n++; byMgr[nom].jours.add(r.date);
+function sosColor(sec){ if(sec<=SOS_OBJ) return 'var(--green)'; if(sec<=SOS_OBJ_ORANGE) return 'var(--yellow)'; return 'var(--red)'; }
+function sosBg(sec){ if(sec<=SOS_OBJ) return 'rgba(62,207,142,.14)'; if(sec<=SOS_OBJ_ORANGE) return 'rgba(245,166,35,.14)'; return 'rgba(248,113,113,.14)'; }
+function sosLabel(sec){ if(sec<=SOS_OBJ) return '✓ Objectif'; return '+'+secToHMS(sec-SOS_OBJ)+' / obj'; }
+
+// Calcule les moyennes par responsable, en filtrant selon la présence directeur
+// avecDir: null = tous, true = tranches avec directeur présent, false = sans
+function sosComputeStats(rows, isMgr, avecDir){
+  const stats = {};
+  rows.forEach(d=>{
+    SOS_TRANCHES.forEach(t=>{
+      const v = d[t.id];
+      if(v==null) return;
+      const dirPresent = t.shift==='open' ? !!d.directeur_midi : !!d.directeur_soir;
+      if(avecDir===true  && !dirPresent) return;
+      if(avecDir===false &&  dirPresent) return;
+      let name;
+      if(t.shift==='open') name = isMgr ? d.manager_ouverture : d.leader_ouverture;
+      else                 name = isMgr ? d.manager_fermeture : d.leader_fermeture;
+      if(!name) return;
+      if(!stats[name]) stats[name] = {nom:name, total:0, count:0};
+      stats[name].total += v; stats[name].count++;
     });
   });
-  const classement = Object.values(byMgr).map(m=>({nom:m.nom, moy:Math.round(m.sum/m.n), jours:m.jours.size}))
-    .sort((a,b)=>b.moy-a.moy); // pire (plus lent) en haut
+  return Object.values(stats)
+    .map(s=>({nom:s.nom, avg:s.count?Math.round(s.total/s.count):null, count:s.count}))
+    .filter(s=>s.avg!=null)
+    .sort((a,b)=>a.avg-b.avg);
+}
 
+function sosPerfList(avgs){
+  if(!avgs.length) return '<div class="empty" style="padding:14px"><div class="empty-sub">Pas de données.</div></div>';
+  const maxA = Math.max(...avgs.map(x=>x.avg), 1);
+  return avgs.map((p,i)=>{
+    const init = (p.nom||'?').split(/\s+/).map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
+    const pct = Math.round(p.avg/maxA*100);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:12px;color:var(--muted);min-width:18px">${i+1}</span>
+      <div style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;background:${SOS_ABG[i%6]};color:${SOS_AFG[i%6]}">${init}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:500">${p.nom}</div>
+        <div style="font-size:10px;color:var(--muted)">${p.count} tranche${p.count!==1?'s':''}</div>
+        <div style="height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;margin-top:4px"><div style="height:100%;border-radius:99px;width:${pct}%;background:${sosColor(p.avg)}"></div></div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:14px;font-weight:600;color:${sosColor(p.avg)}">${secToHMS(p.avg)}</div>
+        <div style="font-size:10px;margin-top:2px"><span style="background:${sosBg(p.avg)};color:${sosColor(p.avg)};padding:1px 6px;border-radius:4px">${sosLabel(p.avg)}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function sosSetMode(mode){ SOS_PERF_MODE = mode; anRender(); }
+
+function anRenderSOS(){
+  const rows = (AN_DATA.sosTout || AN_DATA.sos || []).filter(r=>r.total_sec!=null || SOS_TRANCHES.some(t=>r[t.id]!=null));
+  if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service','Importez un PDF SOS Drive dans « Ma journée » — il apparaîtra ici automatiquement.');
+
+  const isMgr = SOS_PERF_MODE==='managers';
+  const avgsAll  = sosComputeStats(rows, isMgr, null);
+  const avgsAvec = sosComputeStats(rows, isMgr, true);
+  const avgsSans = sosComputeStats(rows, isMgr, false);
+
+  // KPI généraux
+  const joursAvecTotal = rows.filter(r=>r.total_sec!=null);
+  const moyJour = joursAvecTotal.length ? Math.round(joursAvecTotal.reduce((a,b)=>a+b.total_sec,0)/joursAvecTotal.length) : null;
+  const totVoit = rows.reduce((a,b)=>a+(b.total_voitures||0),0);
   const kpis = `
   <div class="kpi-grid">
-    <div class="kpi ${moy<=SOS_SEUIL_ORANGE?'ok':moy<=SOS_SEUIL_ROUGE?'warn':'bad'}"><div class="kpi-label">Temps moyen / jour</div><div class="kpi-val">${secToHMS(moy)}</div><div style="font-size:10px;color:var(--muted2)">${rows.length} jours</div></div>
-    <div class="kpi ok"><div class="kpi-label">Meilleur jour</div><div class="kpi-val">${secToHMS(best.total_sec)}</div><div style="font-size:10px;color:var(--muted2)">${formatDate(best.date)}</div></div>
-    <div class="kpi bad"><div class="kpi-label">Jour le + lent</div><div class="kpi-val">${secToHMS(worst.total_sec)}</div><div style="font-size:10px;color:var(--muted2)">${formatDate(worst.date)}</div></div>
-    <div class="kpi neutral"><div class="kpi-label">Voitures totales</div><div class="kpi-val">${fmt(totVoit)}</div><div style="font-size:10px;color:var(--muted2)">${Math.round(totVoit/rows.length)} / jour</div></div>
+    <div class="kpi ${moyJour==null?'neutral':moyJour<=SOS_OBJ_ORANGE?'ok':moyJour<=SOS_OBJ_ROUGE?'warn':'bad'}"><div class="kpi-label">Temps moyen / jour</div><div class="kpi-val">${moyJour==null?'—':secToHMS(moyJour)}</div><div style="font-size:10px;color:var(--muted2)">${joursAvecTotal.length} jours</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Voitures (total)</div><div class="kpi-val">${totVoit.toLocaleString('fr-FR')}</div></div>
+    <div class="kpi neutral"><div class="kpi-label">${isMgr?'Managers':'Leaders'} suivis</div><div class="kpi-val">${avgsAll.length}</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Objectif tranche</div><div class="kpi-val">${secToHMS(SOS_OBJ)}</div></div>
   </div>`;
 
-  // Classement managers (pire → meilleur)
-  const clt = anClassement('🏆 Classement managers — temps de service (pire → meilleur)', classement.length+' managers',
-    [
-      {label:'#', render:(l,i)=>anBadge(i)},
-      {label:'Manager', key:'nom'},
-      {label:'Temps moyen', num:true, render:l=>{const f=anFeu(l.moy,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${secToHMS(l.moy)}</span>`;}},
-      {label:'Jours', num:true, key:'jours'},
-    ], classement);
+  // Toggle Managers / Leaders
+  const toggle = `<div style="display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:10px;margin-bottom:14px;max-width:320px">
+    <button onclick="sosSetMode('managers')" style="flex:1;padding:7px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;${isMgr?'background:var(--card);font-weight:600;color:var(--text)':'background:none;color:var(--muted2)'}">Managers</button>
+    <button onclick="sosSetMode('leaders')" style="flex:1;padding:7px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;${!isMgr?'background:var(--card);font-weight:600;color:var(--text)':'background:none;color:var(--muted2)'}">Leaders</button>
+  </div>`;
 
-  // Classement leaders (ouverture/fermeture)
-  const byLdr = {};
-  rows.forEach(r=>{
-    [r.leader_ouverture, r.leader_fermeture].filter(Boolean).forEach(nom=>{
-      if(!byLdr[nom]) byLdr[nom]={nom, sum:0, n:0, jours:new Set()};
-      byLdr[nom].sum+=r.total_sec; byLdr[nom].n++; byLdr[nom].jours.add(r.date);
-    });
-  });
-  const cltLdr = Object.values(byLdr).map(m=>({nom:m.nom, moy:Math.round(m.sum/m.n), jours:m.jours.size})).sort((a,b)=>b.moy-a.moy);
-  const cltLdrTbl = cltLdr.length ? anClassement('⭐ Classement leaders — temps de service (pire → meilleur)', cltLdr.length+' leaders',
-    [
-      {label:'#', render:(l,i)=>anBadge(i)},
-      {label:'Leader', key:'nom'},
-      {label:'Temps moyen', num:true, render:l=>{const f=anFeu(l.moy,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${secToHMS(l.moy)}</span>`;}},
-      {label:'Jours', num:true, key:'jours'},
-    ], cltLdr) : '';
+  // Comparaison avec / sans directeur côte à côte
+  const compare = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+    <div class="table-card" style="border-top:3px solid var(--red)">
+      <div class="table-header"><span class="table-title">❌ Sans directeur</span></div>
+      <div style="padding:6px 14px 12px">${sosPerfList(avgsSans)}</div>
+    </div>
+    <div class="table-card" style="border-top:3px solid var(--green)">
+      <div class="table-header"><span class="table-title">✅ Avec directeur</span></div>
+      <div style="padding:6px 14px 12px">${sosPerfList(avgsAvec)}</div>
+    </div>
+  </div>`;
 
-  // Effet présence directeur : temps moyen avec / sans directeur présent
-  const avecDir = rows.filter(r=>r.directeur_midi||r.directeur_soir);
-  const sansDir = rows.filter(r=>!r.directeur_midi&&!r.directeur_soir);
-  const moyAvec = avecDir.length?Math.round(avecDir.reduce((a,b)=>a+b.total_sec,0)/avecDir.length):null;
-  const moySans = sansDir.length?Math.round(sansDir.reduce((a,b)=>a+b.total_sec,0)/sansDir.length):null;
-  let dirCard='';
-  if(avecDir.length || sansDir.length){
-    dirCard = `<div class="table-card" style="margin-top:16px">
-      <div class="table-header"><span class="table-title">🎯 Effet présence directeur</span></div>
-      <div class="table-wrap"><table><thead><tr><th>Situation</th><th class="num">Jours</th><th class="num">Temps moyen</th></tr></thead><tbody>
-        <tr><td>Directeur présent (rush)</td><td class="num">${avecDir.length}</td><td class="num" style="font-weight:600">${moyAvec!=null?secToHMS(moyAvec):'—'}</td></tr>
-        <tr><td>Directeur absent</td><td class="num">${sansDir.length}</td><td class="num" style="font-weight:600">${moySans!=null?secToHMS(moySans):'—'}</td></tr>
-      </tbody></table></div></div>`;
-  }
+  // Classement global
+  const classementGlobal = `<div class="table-card" style="margin-bottom:16px">
+    <div class="table-header"><span class="table-title">🏆 Classement global — ${isMgr?'managers':'leaders'} (meilleur → moins bon)</span></div>
+    <div style="padding:6px 14px 12px">${sosPerfList(avgsAll)}</div>
+  </div>`;
 
   // Moyenne par tranche
-  const trancheLabels = {matinee:'Matinée',dejeuner:'Déjeuner',apresmidi:'Après-midi',diner:'Dîner',soir:'Soir',nuit:'Nuit',peaknuit:'Peak nuit'};
-  const trancheAgg = {};
-  rows.forEach(r=>{(r.tranches||[]).forEach(t=>{ if(t.total_sec==null)return; if(!trancheAgg[t.key])trancheAgg[t.key]={sum:0,n:0,voit:0}; trancheAgg[t.key].sum+=t.total_sec; trancheAgg[t.key].n++; trancheAgg[t.key].voit+=t.voitures||0; });});
-  const trancheRows = Object.keys(trancheLabels).filter(k=>trancheAgg[k]).map(k=>{const a=trancheAgg[k];const m=Math.round(a.sum/a.n);const f=anFeu(m,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas');return `<tr><td>${trancheLabels[k]}</td><td class="num" style="font-weight:600;color:${f.col}">${f.dot} ${secToHMS(m)}</td><td class="num">${a.voit}</td></tr>`;}).join('');
+  const trAgg = {};
+  SOS_TRANCHES.forEach(t=>{ let s=0,n=0; rows.forEach(r=>{ if(r[t.id]!=null){s+=r[t.id];n++;} }); if(n) trAgg[t.id]={moy:Math.round(s/n), n}; });
+  const trRows = SOS_TRANCHES.filter(t=>trAgg[t.id]).map(t=>{ const a=trAgg[t.id]; return `<tr><td>${t.label} <span style="color:var(--muted);font-size:10px">${t.sub}</span></td><td class="num" style="font-weight:600;color:${sosColor(a.moy)}">${secToHMS(a.moy)}</td><td class="num">${a.n}</td></tr>`; }).join('');
+  const trancheCard = `<div class="table-card" style="margin-bottom:16px"><div class="table-header"><span class="table-title">Moyenne par tranche horaire</span></div><div class="table-wrap"><table><thead><tr><th>Tranche</th><th class="num">Temps moy.</th><th class="num">Jours</th></tr></thead><tbody>${trRows}</tbody></table></div></div>`;
 
-  // Vue présence / jour (qui était là)
-  const presenceRows = rows.slice().reverse().map(r=>`
-    <tr><td style="color:var(--accent)">${formatDate(r.date)} ${jourSemaine(new Date(r.date))}</td>
-      <td class="num" style="font-weight:600;color:${(anFeu(r.total_sec,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas')).col}">${secToHMS(r.total_sec)}</td>
-      <td>${r.manager_ouverture||'—'}${r.manager_fermeture&&r.manager_fermeture!==r.manager_ouverture?' / '+r.manager_fermeture:''}</td>
-      <td>${r.leader_ouverture||'—'}${r.leader_fermeture&&r.leader_fermeture!==r.leader_ouverture?' / '+r.leader_fermeture:''}</td>
-      <td style="text-align:center">${r.directeur_midi?'☀️':''}${r.directeur_soir?'🌙':''}${!r.directeur_midi&&!r.directeur_soir?'—':''}</td>
-    </tr>`).join('');
-  const presenceCard = `<div class="table-card" style="margin-top:16px">
-    <div class="table-header"><span class="table-title">📋 Présence par jour (qui était là)</span></div>
-    <div class="table-wrap" style="max-height:360px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Temps</th><th>Manager (ouv/ferm)</th><th>Leader (ouv/ferm)</th><th style="text-align:center">Directeur</th></tr></thead><tbody>${presenceRows}</tbody></table></div></div>`;
-
-  return kpis + `
-  <div class="chart-card full" style="margin-bottom:16px">
-    <div class="chart-label">Évolution du temps de service total / jour</div>
-    <div class="chart-wrap tall"><canvas id="an-sos-canvas"></canvas></div>
-  </div>
-  ${clt}
-  ${cltLdrTbl?`<div style="height:16px"></div>`+cltLdrTbl:''}
-  ${dirCard}
-  ${presenceCard}
-  <div class="table-card" style="margin-top:16px">
-    <div class="table-header"><span class="table-title">Moyenne par tranche horaire</span></div>
-    <div class="table-wrap"><table><thead><tr><th>Tranche</th><th class="num">Temps moy.</th><th class="num">Voitures</th></tr></thead><tbody>${trancheRows}</tbody></table></div>
+  // ── RAPPORT DE PRÉSENCE DES DIRECTEURS ──
+  const totJours = rows.length;
+  const presMidi = rows.filter(r=>r.directeur_midi).length;
+  const presSoir = rows.filter(r=>r.directeur_soir).length;
+  const presRows = rows.slice(0,90).map(r=>`<tr>
+    <td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
+    <td class="num" style="font-weight:600;color:${r.total_sec!=null?sosColor(r.total_sec):'var(--muted)'}">${r.total_sec!=null?secToHMS(r.total_sec):'—'}</td>
+    <td style="text-align:center">${r.directeur_midi?'☀️ oui':'—'}</td>
+    <td style="text-align:center">${r.directeur_soir?'🌙 oui':'—'}</td>
+  </tr>`).join('');
+  const dirReport = `<div class="table-card" style="margin-bottom:16px">
+    <div class="table-header"><span class="table-title">👔 Rapport de présence — Directeurs</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px">
+      <div style="text-align:center;background:var(--bg3);border-radius:8px;padding:12px">
+        <div style="font-size:11px;color:var(--muted)">Présence rush midi ☀️</div>
+        <div style="font-size:22px;font-weight:700;color:var(--accent)">${totJours?Math.round(presMidi/totJours*100):0}%</div>
+        <div style="font-size:10px;color:var(--muted2)">${presMidi}/${totJours} jours</div>
+      </div>
+      <div style="text-align:center;background:var(--bg3);border-radius:8px;padding:12px">
+        <div style="font-size:11px;color:var(--muted)">Présence rush soir 🌙</div>
+        <div style="font-size:22px;font-weight:700;color:var(--accent)">${totJours?Math.round(presSoir/totJours*100):0}%</div>
+        <div style="font-size:10px;color:var(--muted2)">${presSoir}/${totJours} jours</div>
+      </div>
+    </div>
+    <div class="table-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Temps</th><th style="text-align:center">Midi</th><th style="text-align:center">Soir</th></tr></thead><tbody>${presRows}</tbody></table></div>
   </div>`;
+
+  return kpis + toggle + compare + classementGlobal + trancheCard + dirReport;
 }
 
 // ───────── BONS REPAS — détection abus (doublons + total élevé) ─────────
