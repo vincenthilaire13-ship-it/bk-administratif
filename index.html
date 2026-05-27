@@ -314,9 +314,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-full-only" style="display:none" onclick="nav('journee')"><span>📅</span><span>Journée</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('historique')"><span>📈</span><span>Historique</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('comparaison')"><span>🔄</span><span>Comparaison N-1</span></div>
-    <div class="nav-section role-superadmin-only" style="display:none">Saisie</div>
-    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('saisie')"><span>📥</span><span>Importer PDF</span></div>
-    <div class="nav-item role-admin-only" style="display:none" onclick="nav('import-masse')"><span>⚡</span><span>Import massif</span></div>
     <div class="nav-section role-mgrspace" style="display:none">Ma journée</div>
     <div class="nav-item role-mgrspace" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
     <div class="nav-section role-superadmin-only" style="display:none">Analyse</div>
@@ -886,89 +883,10 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
           </div>
         </div>
 
-      </div>
-    </section>
-
-        <!-- IMPORT MASSIF ADMIN -->
-    <section class="section" id="sec-import-masse">
-      <div style="max-width:700px">
-        <div class="mgr-card">
-          <div class="mgr-title">⚡ Import massif — Admin</div>
-          <div class="mgr-sub">Glissez tous vos PDF en même temps — extraction et enregistrement automatiques, aucune confirmation demandée</div>
-
-          <div style="margin-bottom:14px">
-            <label class="form-label">🏪 Restaurant concerné</label>
-            <select class="form-input" id="masse-resto" style="max-width:300px">
-              <option value="BK526">🌿 BK 526 — Saint-Clément-Rivière</option>
-              <option value="BK509">🏪 BK 509 — Saint-Jean-de-Védas</option>
-              <option value="BK500">🏟️ BK 500 — Arènes</option>
-            </select>
-          </div>
-
-          <div class="drop-zone" id="masse-drop-zone"
-               onclick="document.getElementById('masse-file-input').click()"
-               ondragover="event.preventDefault();this.classList.add('drag-over')"
-               ondragleave="this.classList.remove('drag-over')"
-               ondrop="handleMasseDrop(event)"
-               style="min-height:150px">
-            <div class="drop-zone-icon" style="font-size:40px">📂</div>
-            <div class="drop-zone-text" style="font-size:14px">Glissez <span>tous vos PDF ici</span></div>
-            <div style="font-size:11px;color:var(--muted);margin-top:6px">Plusieurs PDF simultanés · Extraction automatique · Aucune saisie requise</div>
-          </div>
-          <input type="file" id="masse-file-input" multiple accept=".pdf" style="display:none" onchange="handleMasseFiles(this.files)">
-
-          <!-- Barre de progression -->
-          <div id="masse-progress-wrap" style="display:none;margin-top:14px">
-            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted2);margin-bottom:6px">
-              <span id="masse-progress-label">Traitement en cours…</span>
-              <span id="masse-progress-pct">0%</span>
-            </div>
-            <div style="background:var(--bg3);border-radius:99px;height:6px;overflow:hidden">
-              <div id="masse-progress-bar" style="height:100%;background:var(--accent);border-radius:99px;transition:width .3s;width:0%"></div>
-            </div>
-          </div>
-
-          <!-- Résultats -->
-          <div id="masse-results" style="margin-top:14px"></div>
-        </div>
-
-        <!-- IMPORT CSV HISTORIQUE -->
-        <div class="mgr-card" style="margin-top:18px">
-          <div class="mgr-title">📊 Import CSV — Historique</div>
-          <div class="mgr-sub">Un seul fichier CSV avec tout l'historique (ex : janvier 2025 → mai 2026). Les chiffres sont lus en HT, instantané, sans IA.</div>
-
-          <div style="margin-bottom:14px">
-            <label class="form-label">🏪 Restaurant <span style="font-weight:400;color:var(--muted);font-size:10px">(détecté automatiquement — modifiable si besoin)</span></label>
-            <select class="form-input" id="csv-resto" style="max-width:300px">
-              <option value="BK526">🌿 BK 526 — Saint-Clément-Rivière</option>
-              <option value="BK509">🏪 BK 509 — Saint-Jean-de-Védas</option>
-              <option value="BK500">🏟️ BK 500 — Arènes</option>
-            </select>
-          </div>
-
-          <div class="drop-zone" id="csv-drop-zone"
-               onclick="document.getElementById('csv-file-input').click()"
-               ondragover="event.preventDefault();this.classList.add('drag-over')"
-               ondragleave="this.classList.remove('drag-over')"
-               ondrop="handleCsvDrop(event)"
-               style="min-height:130px">
-            <div class="drop-zone-icon" style="font-size:38px">📄</div>
-            <div class="drop-zone-text" style="font-size:14px">Glissez le <span>fichier CSV ici</span></div>
-            <div style="font-size:11px;color:var(--muted);margin-top:6px">Le restaurant est reconnu automatiquement d'après le nom du fichier</div>
-          </div>
-          <input type="file" id="csv-file-input" accept=".csv,.txt" style="display:none" onchange="handleCsvFile(this.files[0])">
-
-          <div id="csv-status" style="font-size:12px;color:var(--muted2);margin-top:10px;display:none"></div>
-          <div id="csv-preview" style="margin-top:14px"></div>
-          <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px;margin-top:12px;display:none" id="csv-confirm-btn" onclick="confirmCsvImport()">
-            💾 Enregistrer ces journées
-          </button>
-        </div>
-
-        <!-- CONTRÔLE DES IMPORTS (déplacé ici, sous l'import massif) -->
-        <div class="mgr-card" style="margin-top:18px">
-          <div class="mgr-title">🗂️ Contrôle des dépôts PDF</div>
-          <div class="mgr-sub">Vérifie, par restaurant et par jour, quels documents ont bien été déposés (Synthèse CA · SOS Drive · Ventes ¼h · Bons repas).</div>
+        <!-- CONTRÔLE DES DÉPÔTS PDF (visible dans Ma journée) -->
+        <div class="mgr-card" style="margin-top:18px" id="mgr-controle-depots">
+          <div class="mgr-title">🗂️ Contrôle des dépôts</div>
+          <div class="mgr-sub">Vérifie quels documents (Synthèse CA · SOS Drive · Ventes ¼h · Bons repas) ont bien été déposés, par jour.</div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0">
             <label style="font-size:11px;color:var(--muted2)">Du</label>
             <input type="date" class="form-input" id="imp-date-from" style="width:auto;padding:6px 10px">
@@ -976,15 +894,16 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
             <input type="date" class="form-input" id="imp-date-to" style="width:auto;padding:6px 10px">
             <button class="btn" onclick="impSetPeriode(7)">7 j</button>
             <button class="btn" onclick="impSetPeriode(30)">30 j</button>
-            <button class="btn" onclick="impSetPeriode(90)">90 j</button>
             <button class="btn btn-accent" onclick="renderImports()">↺ Actualiser</button>
           </div>
           <div id="imports-content">
-            <div class="empty"><div class="empty-icon">🗂️</div><div class="empty-title">Contrôle des imports</div><div class="empty-sub">Cliquez sur Actualiser pour vérifier.</div></div>
+            <div class="empty"><div class="empty-icon">🗂️</div><div class="empty-title">Contrôle des dépôts</div><div class="empty-sub">Cliquez sur Actualiser.</div></div>
           </div>
         </div>
+
       </div>
     </section>
+
 
     <!-- SUIVI MANAGERS -->
     <!-- ════════ ANALYSES ════════ -->
@@ -3215,6 +3134,8 @@ function nav(id) {
     const dateEl = document.getElementById('mgr-hello-date');
     if(dateEl) dateEl.textContent = new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     populateManagerSelect();
+    // Charger le contrôle des dépôts (30 derniers jours) s'il est présent
+    try { if(document.getElementById('imp-date-from')){ if(!document.getElementById('imp-date-from').value) impSetPeriode(30); else renderImports(); } } catch(e){}
   }
   if(id==='annulations'){renderAnnulationsHistorique();populateAnnManagerSelect();}
   if(id==='horaires'){
@@ -3303,7 +3224,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T18:19', label: 'v27/05-18h19' };
+const APP_VERSION = { datetime: '2026-05-27T06:19', label: 'v27/05-06h19' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -5284,8 +5205,8 @@ function applyRoleUI(role) {
   document.querySelectorAll('.role-admin-only').forEach(el=>el.style.display=isAdmin  ?'':'none');
   // role-superadmin-only : réservé superviseur+admin (PAS le directeur) — ex. Suivi managers, Ventes
   document.querySelectorAll('.role-superadmin-only').forEach(el=>el.style.display=isSuperOrAdmin?'':'none');
-  // role-mgrspace : l'espace "Ma journée" — visible manager ET directeur
-  document.querySelectorAll('.role-mgrspace').forEach(el=>el.style.display=(isManager||isDirecteur)?'':'none');
+  // role-mgrspace : l'espace "Ma journée" — visible manager, directeur ET admin
+  document.querySelectorAll('.role-mgrspace').forEach(el=>el.style.display=(isManager||isDirecteur||isAdmin)?'':'none');
 
   // Sélecteur resto dans topbar
   const sw = document.getElementById('resto-switcher');
@@ -5527,7 +5448,11 @@ function handleMgrDrop(e) {
 }
 
 function handleMgrFiles(files) {
-  FILES_LIST = Array.from(files);
+  // Accumuler les fichiers : on peut déposer les 4 d'un coup OU un par un.
+  // Un nouveau dépôt s'ajoute à la liste sans écraser les précédents (dédoublonnage par nom).
+  const nouveaux = Array.from(files||[]);
+  const existants = new Set(FILES_LIST.map(f=>f.name));
+  nouveaux.forEach(f=>{ if(!existants.has(f.name)){ FILES_LIST.push(f); existants.add(f.name); } });
   renderFileList();
   if(FILES_LIST.length > 0) lireTousPDFs(FILES_LIST);
 }
@@ -6201,7 +6126,7 @@ function renderFileList(){
       <span class="file-item-del" onclick="removeFile(${i})">✕</span>
     </div>`).join('');
 }
-function removeFile(i){FILES_LIST.splice(i,1);renderFileList();}
+function removeFile(i){ FILES_LIST.splice(i,1); renderFileList(); if(FILES_LIST.length>0){ lireTousPDFs(FILES_LIST); } else { MGR_JOUR=null; const s2=document.getElementById('mgr-step2'); if(s2) s2.style.display='none'; } }
 function envoyerFichiers(){
   if(!FILES_LIST.length) return;
   const ok=document.getElementById('mgr-ok');
@@ -6289,6 +6214,37 @@ async function diagnostiquerSync(){
 }
 
 // Charge et affiche la liste des équipiers (rangée auto depuis les bons repas), groupée par resto
+// ══ ENREGISTREMENT AUTOMATIQUE D'UN ÉQUIPIER ══
+// Système "vivant" : dès qu'un nom apparaît dans un document (bons repas, annulation,
+// erreur caisse, etc.), on crée l'équipier s'il n'existe pas, ou on met à jour "vu_le".
+// Réutilisable partout. Ne bloque jamais le flux principal (erreurs ignorées en silence).
+async function enregistrerEquipier(resto, nom, code, dateVu){
+  if(!SB || !nom) return;
+  nom = String(nom).trim();
+  if(!nom) return;
+  const r = (resto && resto!=='ALL' && resto!=='Administration') ? resto : 'BK526';
+  // Clé : code si dispo, sinon le nom normalisé (pour éviter les doublons sans code)
+  const cle = (code && String(code).trim()) ? String(code).trim() : ('NOM_'+nom.toUpperCase().replace(/[^A-Z0-9]+/g,'_'));
+  const ligne = { restaurant:r, code:cle, nom:nom, vu_le:(dateVu||new Date().toISOString().slice(0,10)) };
+  try {
+    await SB.from('equipiers').upsert(ligne, {onConflict:'restaurant,code'});
+  } catch(e){ /* table absente ou erreur : on ignore pour ne pas bloquer l'import */ }
+}
+
+// Enregistre plusieurs équipiers d'un coup (liste de {nom, code})
+async function enregistrerEquipiers(resto, liste, dateVu){
+  if(!SB || !Array.isArray(liste) || !liste.length) return;
+  const r = (resto && resto!=='ALL' && resto!=='Administration') ? resto : 'BK526';
+  const rows = liste.filter(e=>e && e.nom).map(e=>{
+    const nom=String(e.nom).trim();
+    const cle=(e.code && String(e.code).trim()) ? String(e.code).trim() : ('NOM_'+nom.toUpperCase().replace(/[^A-Z0-9]+/g,'_'));
+    return { restaurant:r, code:cle, nom:nom, vu_le:(dateVu||new Date().toISOString().slice(0,10)) };
+  });
+  if(!rows.length) return;
+  try { await SB.from('equipiers').upsert(rows, {onConflict:'restaurant,code'}); }
+  catch(e){ /* ignore */ }
+}
+
 async function chargerEquipiers(){
   const el = document.getElementById('equipiers-content');
   if(!el) return;
@@ -7538,6 +7494,11 @@ function sauvegarderAnnulation() {
           SB.from('annulations').insert(base).then(({error:e2})=>{ if(e2) console.warn('SB annulation (sans equipier)', e2); });
         }
       });
+      // Système vivant : tout nom mentionné (équipier ET manager) est créé dans la liste équipiers s'il n'existe pas
+      const restoAnn = CURRENT_USER?.resto||'BK526';
+      const dISO2 = date && date.includes('/') ? date.split('/').reverse().join('-') : date;
+      if(equipier) enregistrerEquipier(restoAnn, equipier, null, dISO2);
+      if(mgrResp)  enregistrerEquipier(restoAnn, mgrResp, null, dISO2);
     }
   } catch(e){ console.warn(e); }
 
@@ -7849,13 +7810,16 @@ async function traiterPDFSecondaire(type, fullText){
           await SB.from('repas_employes').delete().eq('restaurant',resto).eq('date',rep.date);
           const rows = rep.employes.map(e=>({restaurant:resto,date:rep.date,nom:e.nom,code:e.code,nb_repas:e.nb_repas,valorisation:e.valorisation,supplement:e.supplement,couronnes:e.couronnes}));
           if(rows.length) await SB.from('repas_employes').insert(rows);
+          // Système vivant : créer/mettre à jour chaque équipier rencontré
+          await enregistrerEquipiers(resto, rep.employes.map(e=>({nom:e.nom, code:e.code})), rep.date);
         } catch(e){ console.warn('repas_employes', e); finir(false,'✗ Repas : '+(e.message||e)); return; }
         // total dans la journée
         let clean = filtrerColonnesJournees({restaurant:resto,date:rep.date,repas_employes_nb:rep.total.nb_repas,repas_employes_montant:rep.total.valorisation});
         await SB.from('journees').upsert(clean,{onConflict:'restaurant,date'});
         await loadAll();
+        try { if(document.getElementById('equipiers-content')) chargerEquipiers(); } catch(e){}
       }
-      finir(true, `✓ Repas employés importés (${formatDate(rep.date)}) — ${rep.employes.length} salariés, ${rep.total.nb_repas} repas, ${fmt(rep.total.valorisation)} €.`);
+      finir(true, `✓ Repas employés importés (${formatDate(rep.date)}) — ${rep.employes.length} salariés, ${rep.total.nb_repas} repas, ${fmt(rep.total.valorisation)} €. Liste des équipiers mise à jour.`);
       return;
     }
     if(type==='ventes'){
