@@ -316,13 +316,14 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-full-only" style="display:none" onclick="nav('comparaison')"><span>🔄</span><span>Comparaison N-1</span></div>
     <div class="nav-section role-mgrspace" style="display:none">Ma journée</div>
     <div class="nav-item role-mgrspace" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
+    <div class="nav-item role-mgrspace" style="display:none" onclick="nav('controle-depots')"><span>🗂️</span><span>Contrôle des dépôts</span></div>
     <div class="nav-section role-superadmin-only" style="display:none">Analyse</div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('analyses')"><span>📊</span><span>Analyses</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('equipiers')"><span>👥</span><span>Équipiers</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
+    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('erreurcaisse')"><span>💶</span><span>Erreur caisse</span></div>
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
-    <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires-import')"><span>📥</span><span>Importer horaires</span></div>
     <div class="nav-section role-admin-only" style="display:none">Config</div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
@@ -883,8 +884,13 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
           </div>
         </div>
 
-        <!-- CONTRÔLE DES DÉPÔTS PDF (visible dans Ma journée) -->
-        <div class="mgr-card" style="margin-top:18px" id="mgr-controle-depots">
+      </div>
+    </section>
+
+    <!-- CONTRÔLE DES DÉPÔTS (section séparée, sous Ma journée) -->
+    <section class="section" id="sec-controle-depots">
+      <div style="max-width:900px">
+        <div class="mgr-card" id="mgr-controle-depots">
           <div class="mgr-title">🗂️ Contrôle des dépôts</div>
           <div class="mgr-sub">Vérifie quels documents (Synthèse CA · SOS Drive · Ventes ¼h · Bons repas) ont bien été déposés, par jour.</div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0">
@@ -900,7 +906,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
             <div class="empty"><div class="empty-icon">🗂️</div><div class="empty-title">Contrôle des dépôts</div><div class="empty-sub">Cliquez sur Actualiser.</div></div>
           </div>
         </div>
-
       </div>
     </section>
 
@@ -912,6 +917,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
         <button class="an-tab2 active" data-an="sos"  onclick="anSwitch('sos')">🚗 Temps de service</button>
         <button class="an-tab2" data-an="repas"           onclick="anSwitch('repas')">🍔 Bons repas</button>
         <button class="an-tab2" data-an="annulations"     onclick="anSwitch('annulations')">🚫 Annulations</button>
+        <button class="an-tab2" data-an="erreurscaisse"    onclick="anSwitch('erreurscaisse')">💶 Erreurs caisse</button>
         <button class="an-tab2" data-an="corrections"     onclick="anSwitch('corrections')">✏️ Corrections</button>
         <button class="an-tab2" data-an="tables"          onclick="anSwitch('tables')">📂 Tables ouvertes</button>
         <button class="an-tab2" data-an="parmanager"      onclick="anSwitch('parmanager')">👔 Par manager</button>
@@ -1052,6 +1058,59 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
         <div class="table-card" id="ann-historique-card" style="margin-top:16px">
           <div class="table-header"><span class="table-title">Historique des annulations</span></div>
           <div id="ann-historique-content" style="padding:12px"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ERREUR CAISSE -->
+    <section class="section" id="sec-erreurcaisse">
+      <div style="max-width:640px">
+        <div class="mgr-card">
+          <div class="mgr-title">💶 Déclarer une erreur de caisse</div>
+          <div class="mgr-sub">Renseignez le montant de l'écart, le manager et l'équipier concernés. Ces données alimentent l'analyse.</div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;margin-bottom:12px">
+            <div>
+              <label class="form-label">Date</label>
+              <input type="date" class="form-input" id="ec-date">
+            </div>
+            <div>
+              <label class="form-label">Montant de l'écart (€)</label>
+              <input type="number" step="0.01" class="form-input" id="ec-montant" placeholder="ex : 12.50">
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div>
+              <label class="form-label">Sens de l'écart</label>
+              <select class="form-input" id="ec-sens">
+                <option value="manquant">Manquant (caisse en moins)</option>
+                <option value="excedent">Excédent (caisse en plus)</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Manager responsable</label>
+              <select class="form-input" id="ec-manager"><option value="">— sélectionner —</option></select>
+            </div>
+          </div>
+
+          <div style="margin-bottom:12px">
+            <label class="form-label">Équipier concerné</label>
+            <input type="text" class="form-input" id="ec-equipier" placeholder="Nom de l'équipier (caisse)">
+          </div>
+
+          <div style="margin-bottom:14px">
+            <label class="form-label">Commentaire (facultatif)</label>
+            <input type="text" class="form-input" id="ec-comment" placeholder="ex : erreur de rendu monnaie">
+          </div>
+
+          <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px" onclick="enregistrerErreurCaisse()">💾 Enregistrer l'erreur de caisse</button>
+          <div id="ec-msg" style="display:none;font-size:12px;text-align:center;margin-top:8px"></div>
+        </div>
+
+        <div class="table-card" style="margin-top:16px">
+          <div class="table-header"><span class="table-title">Erreurs de caisse enregistrées</span></div>
+          <div id="ec-historique-content" style="padding:12px"></div>
         </div>
       </div>
     </section>
@@ -3134,10 +3193,12 @@ function nav(id) {
     const dateEl = document.getElementById('mgr-hello-date');
     if(dateEl) dateEl.textContent = new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     populateManagerSelect();
-    // Charger le contrôle des dépôts (30 derniers jours) s'il est présent
-    try { if(document.getElementById('imp-date-from')){ if(!document.getElementById('imp-date-from').value) impSetPeriode(30); else renderImports(); } } catch(e){}
+  }
+  if(id==='controle-depots'){
+    try { if(!document.getElementById('imp-date-from').value) impSetPeriode(30); else renderImports(); } catch(e){}
   }
   if(id==='annulations'){renderAnnulationsHistorique();populateAnnManagerSelect();}
+  if(id==='erreurcaisse'){populateErreurCaisseSelect();renderErreurCaisseHistorique();}
   if(id==='horaires'){
     if(window.__hrInit) try{window.__hrInit();}catch(e){console.warn('init horaires',e);}
     // Basculer sur le resto actif si différent
@@ -3224,7 +3285,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T06:19', label: 'v27/05-06h19' };
+const APP_VERSION = { datetime: '2026-05-27T07:10', label: 'v27/05-07h10' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -3278,6 +3339,7 @@ alter table sos_drive add column if not exists ts_soir int;
 alter table sos_drive add column if not exists ts_nuit int;
 create table if not exists ventes_horaire (restaurant text not null, date date not null, tickets_total int, ht_total numeric, tranches jsonb, created_at timestamptz default now(), primary key(restaurant,date));
 create table if not exists annulations (id bigint generated by default as identity primary key, restaurant text not null, date date, heure text, montant numeric, manager text, equipier text, commentaire text, ticket_bad_manquant text, ticket_annul_manquant text, ticket_good_manquant text, created_at timestamptz default now());
+create table if not exists erreurs_caisse (id bigint generated by default as identity primary key, restaurant text not null, date date, montant numeric, sens text, manager text, equipier text, commentaire text, created_at timestamptz default now());
 alter table annulations add column if not exists equipier text;
 alter table repas_employes enable row level security;
 alter table sos_drive enable row level security;
@@ -3329,6 +3391,8 @@ alter table journees add column if not exists annulations_pct numeric;
 alter table journees add column if not exists commandes_ouvertes_pct numeric;`;
 
 const SQL_COLONNES_PDF = `-- Colonnes completes de la Synthese CA (PDF) - a coller dans Supabase SQL Editor puis Run
+-- Pour les courbes horaires (planning) alimentees par le PDF ventes 1/4h :
+alter table ventes_horaire add column if not exists tranches_ca jsonb;
 -- Sans risque : "if not exists" ne touche jamais une colonne deja creee.
 alter table journees add column if not exists ca_ttc numeric;
 alter table journees add column if not exists ca_prevu numeric;
@@ -5409,6 +5473,76 @@ function populateAnnManagerSelect() {
   }
 }
 
+// ══ ERREUR DE CAISSE ══
+function populateErreurCaisseSelect(){
+  const codes = getCodes();
+  const resto = (CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') ? CURRENT_USER.resto : (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? ACTIVE_RESTO : null);
+  const mgrs = resto ? codes.managers.filter(m=>!m.resto || m.resto===resto) : codes.managers;
+  const opts = mgrs.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
+  const el = document.getElementById('ec-manager');
+  if(el){
+    el.innerHTML = '<option value="">— sélectionner —</option>' + opts;
+    if(CURRENT_USER?.nom){ const o=el.querySelector(`option[value="${CURRENT_USER.nom}"]`); if(o) o.selected=true; }
+  }
+  // date du jour par défaut
+  const d = document.getElementById('ec-date');
+  if(d && !d.value) d.value = new Date().toISOString().slice(0,10);
+}
+
+async function enregistrerErreurCaisse(){
+  const msg = document.getElementById('ec-msg');
+  const show = (txt,col)=>{ if(msg){ msg.style.display='block'; msg.style.color=col; msg.textContent=txt; } };
+  const date    = document.getElementById('ec-date')?.value || new Date().toISOString().slice(0,10);
+  const montant = parseFloat(document.getElementById('ec-montant')?.value||'');
+  const sens    = document.getElementById('ec-sens')?.value || 'manquant';
+  const manager = document.getElementById('ec-manager')?.value || CURRENT_USER?.nom || null;
+  const equipier= (document.getElementById('ec-equipier')?.value||'').trim() || null;
+  const comment = (document.getElementById('ec-comment')?.value||'').trim() || null;
+
+  if(isNaN(montant) || montant===0){ show('Indiquez un montant d\'écart.', 'var(--red)'); return; }
+  if(!SB){ show('Base non connectée.', 'var(--red)'); return; }
+
+  const resto = restoReel();
+  const ligne = { restaurant:resto, date, montant:Math.abs(montant), sens, manager, equipier, commentaire:comment };
+  try {
+    const { error } = await SB.from('erreurs_caisse').insert(ligne);
+    if(error){ show('Erreur : '+(error.message||error), 'var(--red)'); return; }
+    // Système vivant : créer manager et équipier dans la liste équipiers
+    if(manager) enregistrerEquipier(resto, manager, null, date);
+    if(equipier) enregistrerEquipier(resto, equipier, null, date);
+    show('✓ Erreur de caisse enregistrée ('+fmt(Math.abs(montant))+' € '+(sens==='manquant'?'manquant':'excédent')+').', 'var(--green)');
+    // reset
+    document.getElementById('ec-montant').value='';
+    document.getElementById('ec-equipier').value='';
+    document.getElementById('ec-comment').value='';
+    renderErreurCaisseHistorique();
+  } catch(e){ show('Erreur : '+(e.message||e), 'var(--red)'); }
+}
+
+async function renderErreurCaisseHistorique(){
+  const el = document.getElementById('ec-historique-content');
+  if(!el) return;
+  if(!SB){ el.innerHTML='<div class="empty"><div class="empty-icon">🔌</div><div class="empty-title">Non connecté</div></div>'; return; }
+  el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">Chargement…</div>';
+  try {
+    let q = SB.from('erreurs_caisse').select('*');
+    const resto = (CURRENT_USER?.role==='directeur' && CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') ? CURRENT_USER.resto
+                : (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' && ACTIVE_RESTO!=='Administration' ? ACTIVE_RESTO : null);
+    if(resto) q = q.eq('restaurant', resto);
+    const { data, error } = await q.order('date',{ascending:false}).limit(60);
+    if(error){ el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Table erreurs_caisse introuvable</div><div class="empty-sub">Configuration → Copier le SQL des colonnes du PDF, puis Run dans Supabase.</div></div>'; return; }
+    if(!data || !data.length){ el.innerHTML='<div class="empty"><div class="empty-icon">💶</div><div class="empty-title">Aucune erreur de caisse</div></div>'; return; }
+    const rows = data.map(r=>`<tr>
+      <td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
+      <td class="num" style="font-weight:600;color:${r.sens==='excedent'?'var(--green)':'var(--red)'}">${r.sens==='excedent'?'+':'−'}${fmt(Math.abs(r.montant||0))} €</td>
+      <td>${r.manager||'—'}</td>
+      <td style="color:var(--muted2)">${r.equipier||'—'}</td>
+      <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td>
+    </tr>`).join('');
+    el.innerHTML = `<table><thead><tr><th>Date</th><th class="num">Écart</th><th>Manager</th><th>Équipier</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } catch(e){ el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Erreur de chargement</div></div>'; }
+}
+
 function populateManagerSelect() {
   const codes = getCodes();
   const resto = (CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') ? CURRENT_USER.resto : (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? ACTIVE_RESTO : null);
@@ -5521,6 +5655,7 @@ async function lireTousPDFs(files) {
         MGR_JOUR.dates.ventes = MGR_JOUR.ventes?.date || null;
         MGR_JOUR.fichiers.ventes = file.name;
         MGR_VENTES_TXT = txt;
+        MGR_VENTES_AB = ab.slice(0); // copie de l'arrayBuffer pour alimenter les horaires
         summaries.push({key:'ventes', nom:file.name, label:'Ventes horaire ¼h', ok:true, date:MGR_JOUR.ventes?.date, info:`${MGR_JOUR.ventes.tickets||'?'} tickets`});
       } else if(type === 'sos'){
         MGR_JOUR.sos = parserSOS(txt);
@@ -5617,6 +5752,7 @@ async function lireTousPDFs(files) {
 }
 
 let MGR_VENTES_TXT = null;
+let MGR_VENTES_AB = null;
 
 async function extrairePDFManager(file) {
   document.getElementById('mgr-loading').style.display = 'block';
@@ -6076,6 +6212,26 @@ async function enregistrerJourneeMgr() {
         tranches: MGR_JOUR.ventes.tranches||[]
       },{onConflict:'restaurant,date'});
       if(eV){ erreurs.push('Ventes : '+eV.message); console.error('ventes_horaire', eV); }
+
+      // 4bis) ALIMENTER LES HORAIRES / PLANNING : extraire le CA par quart d'heure et l'injecter dans HR_ALL
+      try {
+        if(MGR_VENTES_AB && typeof hrParsePDF==='function'){
+          const res = await hrParsePDF(MGR_VENTES_AB.slice(0));
+          if(res && res.ca && Object.keys(res.ca).length){
+            const rDate = res.date || date;
+            const rResto = (res.resto && res.resto!=='ALL') ? res.resto : resto;
+            if(typeof HR_ALL!=='undefined'){
+              if(!HR_ALL[rResto]) HR_ALL[rResto] = {};
+              HR_ALL[rResto][rDate] = res.ca;        // {HH:MM: montant} pour ce jour
+              window.HR_ALL = HR_ALL;
+              // Si on regarde ce resto, rafraîchir la vue active
+              if(typeof HR_RESTO!=='undefined' && HR_RESTO===rResto){ HR_DATA = HR_ALL[rResto]; window.HR_DATA = HR_DATA; }
+              // Persister la courbe horaire dans la table ventes_horaire (colonne tranches déjà au format jsonb)
+              try { await SB.from('ventes_horaire').upsert({restaurant:rResto, date:rDate, tranches_ca: res.ca},{onConflict:'restaurant,date'}); } catch(e){}
+            }
+          }
+        }
+      } catch(e){ console.warn('alimentation horaires depuis ventes', e); }
     }
 
     // Recharger les données depuis Supabase pour que tout s'affiche immédiatement
@@ -6543,6 +6699,14 @@ async function anRefresh(){
       AN_DATA.journeesTout = jTout.data||[];
     } catch(e){ console.warn('chargement annulations complet', e); AN_DATA.annulationsTout=[]; AN_DATA.journeesTout=[]; }
 
+    // ── ERREURS DE CAISSE : tout l'historique ──
+    try {
+      let rEc = SB.from('erreurs_caisse').select('*');
+      if(resto) rEc = rEc.eq('restaurant', resto);
+      const ecTout = await rEc.order('date',{ascending:false});
+      AN_DATA.erreursCaisseTout = ecTout.data||[];
+    } catch(e){ console.warn('chargement erreurs caisse', e); AN_DATA.erreursCaisseTout=[]; }
+
     anRender();
   } catch(err){
     console.error('anRefresh', err);
@@ -6592,6 +6756,7 @@ function anRender(){
   if(AN_TAB==='sos')          el.innerHTML = anRenderSOS();
   else if(AN_TAB==='repas')   el.innerHTML = anRenderRepas();
   else if(AN_TAB==='annulations') el.innerHTML = anRenderAnnulations();
+  else if(AN_TAB==='erreurscaisse') el.innerHTML = anRenderErreursCaisse();
   else if(AN_TAB==='corrections') el.innerHTML = anRenderCorrections();
   else if(AN_TAB==='tables')  el.innerHTML = anRenderTables();
   else if(AN_TAB==='parmanager') el.innerHTML = anRenderParPersonne('manager');
@@ -6941,6 +7106,65 @@ function anRenderAnnulations(){
   </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune annulation détaillée enregistrée. Les annulations détaillées (heure, manager, équipier, photo) seront reliées demain depuis les PDF/CSV.</div></div>`;
 
   return kpis + suiviTbl + `<div style="height:16px"></div>` + cltMgrTbl + (cltMgr.length?`<div style="height:16px"></div>`:'') + cltEqTbl + detailTbl;
+}
+
+// ───────── ERREURS DE CAISSE — suivi & classements ─────────
+function anRenderErreursCaisse(){
+  const rows = [...(AN_DATA.erreursCaisseTout || [])];
+  if(!rows.length) return _anEmpty('💶','Aucune erreur de caisse','Déclarez les erreurs via le menu « Erreur caisse » — elles apparaîtront ici.');
+  rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  const totMontant = rows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
+  const nb = rows.length;
+  const manquants = rows.filter(r=>r.sens!=='excedent');
+  const excedents = rows.filter(r=>r.sens==='excedent');
+  const totManq = manquants.reduce((a,b)=>a+Math.abs(b.montant||0),0);
+  const totExc  = excedents.reduce((a,b)=>a+Math.abs(b.montant||0),0);
+
+  const kpis = `
+  <div class="kpi-grid">
+    <div class="kpi bad"><div class="kpi-label">Total erreurs</div><div class="kpi-val">${nb}</div></div>
+    <div class="kpi bad"><div class="kpi-label">Montant total (écarts)</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
+    <div class="kpi warn"><div class="kpi-label">Manquant cumulé</div><div class="kpi-val">−${fmt(totManq)} €</div></div>
+    <div class="kpi ok"><div class="kpi-label">Excédent cumulé</div><div class="kpi-val">+${fmt(totExc)} €</div></div>
+  </div>`;
+
+  // Par équipier
+  const byEq={}; rows.forEach(r=>{ const e=r.equipier||'(non renseigné)'; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=Math.abs(r.montant||0); });
+  const cltEq=Object.values(byEq).sort((a,b)=>b.montant-a.montant);
+  // Par manager
+  const byMgr={}; rows.forEach(r=>{ const m=r.manager||'(non renseigné)'; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0); });
+  const cltMgr=Object.values(byMgr).sort((a,b)=>b.montant-a.montant);
+
+  const cltEqTbl = anClassement('🧑‍🍳 Classement équipiers — erreurs de caisse (pire → meilleur)', cltEq.length+' équipiers',
+    [
+      {label:'#', render:(l,i)=>anBadge(i)},
+      {label:'Équipier', key:'nom'},
+      {label:'Nb', num:true, key:'nb'},
+      {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,20,60,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
+    ], cltEq);
+
+  const cltMgrTbl = anClassement('👔 Classement managers — erreurs de caisse', cltMgr.length+' managers',
+    [
+      {label:'#', render:(l,i)=>anBadge(i)},
+      {label:'Manager', key:'nom'},
+      {label:'Nb', num:true, key:'nb'},
+      {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,20,60,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
+    ], cltMgr);
+
+  const detail = rows.slice(0,120).map(r=>`
+    <tr><td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
+      <td class="num" style="font-weight:600;color:${r.sens==='excedent'?'var(--green)':'var(--red)'}">${r.sens==='excedent'?'+':'−'}${fmt(Math.abs(r.montant||0))} €</td>
+      <td>${r.manager||'—'}</td>
+      <td style="color:var(--muted2)">${r.equipier||'—'}</td>
+      <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`).join('');
+  const detailTbl = `
+  <div class="table-card" style="margin-top:16px">
+    <div class="table-header"><span class="table-title">Détail des erreurs de caisse</span><span style="font-size:10px;color:var(--muted)">${nb} erreurs</span></div>
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Écart</th><th>Manager</th><th>Équipier</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
+  </div>`;
+
+  return kpis + cltEqTbl + `<div style="height:16px"></div>` + cltMgrTbl + detailTbl;
 }
 
 // ───────── CORRECTIONS — classement managers (depuis journees) ─────────
@@ -9316,6 +9540,22 @@ window.__hrInit=function(){
     if(window.HR_SEED_BK509) HR_ALL['BK509']=window.HR_SEED_BK509;
     if(window.HR_SEED_BK500) HR_ALL['BK500']=window.HR_SEED_BK500;
     window.HR_ALL=HR_ALL;
+    // Charger les courbes horaires déposées via "Ma journée" (table ventes_horaire.tranches_ca)
+    if(typeof SB!=='undefined' && SB){
+      SB.from('ventes_horaire').select('restaurant,date,tranches_ca').then(({data,error})=>{
+        if(error||!data) return;
+        let n=0;
+        data.forEach(row=>{
+          if(row.tranches_ca && typeof row.tranches_ca==='object'){
+            let rt=row.restaurant; if(rt==='ALL'||rt==='Administration') rt='BK526';
+            const dt=(row.date||'').slice(0,10);
+            if(!HR_ALL[rt]) HR_ALL[rt]={};
+            HR_ALL[rt][dt]=row.tranches_ca; n++;
+          }
+        });
+        if(n){ window.HR_ALL=HR_ALL; const r=(typeof HR_RESTO!=='undefined'&&HR_RESTO)?HR_RESTO:'BK526'; if(HR_ALL[r]){HR_DATA=HR_ALL[r];window.HR_DATA=HR_DATA;} try{hrFillDaySelect&&hrFillDaySelect();hrFillWeekSelect&&hrFillWeekSelect();}catch(e){} }
+      });
+    }
     const resto = hrCurrentResto();
     if(HR_ALL[resto]){ HR_DATA=HR_ALL[resto]; HR_RESTO=resto; window.HR_DATA=HR_DATA; }
     else if(HR_ALL['BK526']){ HR_DATA=HR_ALL['BK526']; HR_RESTO='BK526'; window.HR_DATA=HR_DATA; }
