@@ -3438,7 +3438,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T07:55', label: 'v27/05-07h55', affichage: 'mercredi 27 mai 2026 à 07:55' };
+const APP_VERSION = { datetime: '2026-05-27T17:35', label: 'v27/05-17h35', affichage: 'mercredi 27 mai 2026 à 17:35' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -4243,14 +4243,16 @@ function renderCharts() {
 function buildJourneeSelect() {
   const sel = document.getElementById('select-journee');
   sel.innerHTML = '<option value="">Choisir une journée...</option>';
-  // Tri par date croissante (la plus ancienne en haut, la plus récente en bas)
-  const sorted = [...DATA].sort((a,b)=> (a.date||'').localeCompare(b.date||''));
+  // Tri par date DÉCROISSANTE : la plus récente en haut, la plus ancienne en bas.
+  // Ainsi quand on ouvre le menu, la dernière journée (sélectionnée par défaut) est
+  // tout de suite visible et le menu se déroule naturellement vers le bas.
+  const sorted = [...DATA].sort((a,b)=> (b.date||'').localeCompare(a.date||''));
   sorted.forEach(d=>{
     sel.innerHTML += `<option value="${d.date}">${formatDate(d.date)} ${jourSemaine(d.date)} — ${fmt(caHT(d))}€ HT</option>`;
   });
-  // Afficher directement la dernière journée enregistrée (sans sélection manuelle)
+  // Afficher directement la dernière journée enregistrée (= la première dans l'ordre décroissant)
   if(sorted.length){
-    const derniere = sorted[sorted.length-1];
+    const derniere = sorted[0];
     sel.value = derniere.date;
     renderJournee(derniere);
   }
@@ -4259,8 +4261,9 @@ function buildJourneeSelect() {
 function loadJournee(mode) {
   let d;
   if(mode==='latest') {
-    const sorted = [...DATA].sort((a,b)=> (a.date||'').localeCompare(b.date||''));
-    d = sorted[sorted.length-1];
+    // Plus récente = la plus grande date
+    const sorted = [...DATA].sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+    d = sorted[0];
   }
   else { const v = document.getElementById('select-journee').value; if(!v) return; d = DATA.find(x=>x.date===v); }
   if(!d) return;
@@ -5902,18 +5905,43 @@ async function lireTousPDFs(files) {
       }
 
       const type = detecterTypePDF(txt);
-      if(type === 'synthese'){
+      // ── REPLI : si le type n'est pas détecté via le texte séquentiel,
+      // on tente une 2ème détection via hrParsePDF (qui utilise les coordonnées x/y).
+      // Beaucoup de PDF BK ont du texte mal ordonné qui empêche detecterTypePDF de
+      // matcher, alors que le contenu réel est bien un rapport de ventes ¼h.
+      let typeFinal = type;
+      let detailVentes = null;
+      if(!typeFinal && typeof hrParsePDF === 'function'){
+        try {
+          const test = await hrParsePDF(ab.slice(0));
+          if(test && test.ca && Object.keys(test.ca).length > 0){
+            typeFinal = 'ventes';
+            detailVentes = test;
+            console.log('[pdf-recovery] '+file.name+' identifié comme ventes via hrParsePDF (texte séquentiel échec)');
+          }
+        } catch(e){ /* on continue, ce n'était pas un PDF de ventes ¼h */ }
+      }
+      if(typeFinal === 'synthese'){
         MGR_JOUR.synthese = parserSynthesCA(txt);
         MGR_JOUR.dates.synthese = MGR_JOUR.synthese?.date || null;
         MGR_JOUR.fichiers.synthese = file.name;
         summaries.push({key:'synthese', nom:file.name, label:'Synthèse CA', ok:true, date:MGR_JOUR.synthese?.date});
-      } else if(type === 'repas'){
+      } else if(typeFinal === 'repas'){
         MGR_JOUR.repas = parserRepas(txt);
         MGR_JOUR.dates.repas = MGR_JOUR.repas?.date || null;
         MGR_JOUR.fichiers.repas = file.name;
         summaries.push({key:'repas', nom:file.name, label:'Repas employés', ok:true, date:MGR_JOUR.repas?.date, info:`${MGR_JOUR.repas.employes.length} employés · ${MGR_JOUR.repas.total?.nb_repas||'?'} repas`});
-      } else if(type === 'ventes'){
+      } else if(typeFinal === 'ventes'){
         MGR_JOUR.ventes = parserVentesHoraire(txt);
+        // Si parserVentesHoraire n'a rien extrait mais qu'on a un detailVentes (via hrParsePDF),
+        // on reconstruit les infos minimum à partir de hrParsePDF.
+        if((!MGR_JOUR.ventes || (!MGR_JOUR.ventes.ht && !MGR_JOUR.ventes.tickets)) && detailVentes){
+          const ht = Object.values(detailVentes.ca).reduce((a,b)=>a+b,0);
+          MGR_JOUR.ventes = MGR_JOUR.ventes || {};
+          MGR_JOUR.ventes.date = MGR_JOUR.ventes.date || detailVentes.date;
+          MGR_JOUR.ventes.ht = MGR_JOUR.ventes.ht || Math.round(ht*100)/100;
+          MGR_JOUR.ventes.tranches = MGR_JOUR.ventes.tranches || [];
+        }
         MGR_JOUR.dates.ventes = MGR_JOUR.ventes?.date || null;
         MGR_JOUR.fichiers.ventes = file.name;
         MGR_VENTES_TXT = txt;
@@ -5921,7 +5949,7 @@ async function lireTousPDFs(files) {
         // Analyse fine du PDF ventes : détection de couverture partielle
         try {
           if(typeof hrParsePDF === 'function'){
-            const detail = await hrParsePDF(ab.slice(0));
+            const detail = detailVentes || await hrParsePDF(ab.slice(0));
             if(detail && detail.ca){
               MGR_JOUR.ventes.ca_15min = detail.ca; // {HH:MM: montant} par quart d'heure
               MGR_JOUR.ventes.resto_detecte = detail.resto;
@@ -5934,7 +5962,7 @@ async function lireTousPDFs(files) {
           }
         } catch(e){ console.warn('analyse couverture PDF ventes', e); }
         summaries.push({key:'ventes', nom:file.name, label:'Ventes horaire ¼h', ok:true, date:MGR_JOUR.ventes?.date, info:`${MGR_JOUR.ventes.tickets||'?'} tickets`});
-      } else if(type === 'sos'){
+      } else if(typeFinal === 'sos'){
         MGR_JOUR.sos = parserSOS(txt);
         MGR_JOUR.dates.sos = MGR_JOUR.sos?.date || null;
         MGR_JOUR.fichiers.sos = file.name;
@@ -5943,8 +5971,10 @@ async function lireTousPDFs(files) {
         summaries.push({key:null, nom:file.name, label:'Document non reconnu', ok:false});
       }
     } catch(err) {
-      summaries.push({key:null, nom:file.name, label:'Erreur lecture ('+file.name+')', ok:false});
-      console.error(err);
+      // On affiche le message d'erreur RÉEL pour identifier la cause (au lieu d'un texte générique)
+      const msgErr = (err && err.message) ? err.message : String(err);
+      summaries.push({key:null, nom:file.name, label:'Erreur lecture ('+file.name+') — '+msgErr, ok:false});
+      console.error('[mgr-pdf]', file.name, err);
     }
   }
 
@@ -6509,7 +6539,13 @@ async function enregistrerJourneeMgr() {
               // Si on regarde ce resto, rafraîchir la vue active
               if(typeof HR_RESTO!=='undefined' && HR_RESTO===rResto){ HR_DATA = HR_ALL[rResto]; window.HR_DATA = HR_DATA; }
               // Persister la courbe horaire dans la table ventes_horaire (colonne tranches déjà au format jsonb)
-              try { await SB.from('ventes_horaire').upsert({restaurant:rResto, date:rDate, tranches_ca: res.ca},{onConflict:'restaurant,date'}); } catch(e){}
+              try {
+                const { error: eUp } = await SB.from('ventes_horaire').upsert({restaurant:rResto, date:rDate, tranches_ca: res.ca},{onConflict:'restaurant,date'});
+                if(eUp){
+                  console.error('[upsert tranches_ca]', eUp);
+                  erreurs.push('Tranches ¼h (horaires) : '+(eUp.message||eUp));
+                }
+              } catch(e){ console.error('[upsert tranches_ca exception]', e); erreurs.push('Tranches ¼h (horaires) : '+(e.message||e)); }
             }
           }
         }
@@ -11457,9 +11493,11 @@ async function hrParsePDF(arrayBuffer){
   const pdf = await pdfjsLib.getDocument({data:arrayBuffer}).promise;
   let allText = '';
   const items = []; // {str, x, y, page}
+  let maxX = 0; // largeur réelle observée (utile si le PDF n'est pas en 1080 de large)
   for(let p=1;p<=pdf.numPages;p++){
     const page = await pdf.getPage(p);
     const vp = page.getViewport({scale:1});
+    if(vp.width > maxX) maxX = vp.width;
     const tc = await page.getTextContent();
     tc.items.forEach(it=>{
       const raw = (it.str||'').trim();
@@ -11486,18 +11524,50 @@ async function hrParsePDF(arrayBuffer){
   const md = allText.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2})/);
   if(md) date = '20'+md[3]+'-'+md[2]+'-'+md[1];
 
-  const W = 1080;
-  const ca = {};
-  const heures = items.filter(it=>/^\d{1,2}:\d{2}$/.test(it.str) && it.x<140);
-  // Montant HT total par tranche : décimal n.nn dans la colonne "Total HT" (~90% largeur)
-  const montants = items.filter(it=>/^\d+\.\d{2}$/.test(it.str) && it.x>0.87*W && it.x<0.93*W);
-  heures.forEach(h=>{
-    const cand = montants
-      .filter(m=>m.page===h.page && Math.abs(m.y-h.y)<18)
-      .map(m=>({d:Math.abs(m.y-h.y), v:parseFloat(m.str)}))
-      .sort((a,b)=>a.d-b.d);
-    if(cand.length) ca[h.str] = cand[0].v;
+  // Largeur de référence : la largeur réelle du PDF (sinon 1080 par défaut)
+  const W = maxX > 0 ? maxX : 1080;
+  // Heures : HH:MM avec HH plausible (5h à 30h pour gérer après minuit), en colonne gauche
+  const heures = items.filter(it=>{
+    const m = it.str.match(/^(\d{1,2}):(\d{2})$/);
+    if(!m) return false;
+    const hh = parseInt(m[1],10);
+    if(hh<0 || hh>29) return false;
+    return it.x < 0.20*W; // colonne gauche : élargie à 20% au lieu de 140px en dur
   });
+  // Tentative principale : fenêtre 86%-94% (colonne "Total HT")
+  let montants = items.filter(it=>/^\d+\.\d{2}$/.test(it.str) && it.x>0.86*W && it.x<0.94*W);
+  const ca = {};
+  const remplir = (montantsList) => {
+    const out = {};
+    heures.forEach(h=>{
+      const cand = montantsList
+        .filter(m=>m.page===h.page && Math.abs(m.y-h.y)<18)
+        .map(m=>({d:Math.abs(m.y-h.y), v:parseFloat(m.str)}))
+        .sort((a,b)=>a.d-b.d);
+      if(cand.length) out[h.str] = cand[0].v;
+    });
+    return out;
+  };
+  Object.assign(ca, remplir(montants));
+  // REPLI 1 : si trop peu de tranches récupérées, élargir la fenêtre à 80%-96%
+  if(Object.keys(ca).length < heures.length * 0.5){
+    montants = items.filter(it=>/^\d+\.\d{2}$/.test(it.str) && it.x>0.80*W && it.x<0.96*W);
+    const ca2 = remplir(montants);
+    if(Object.keys(ca2).length > Object.keys(ca).length){
+      for(const k in ca) delete ca[k];
+      Object.assign(ca, ca2);
+    }
+  }
+  // REPLI 2 : si toujours rien, prendre le MONTANT LE PLUS À DROITE sur la ligne de l'heure
+  if(Object.keys(ca).length === 0){
+    const tousMontants = items.filter(it=>/^\d+\.\d{2}$/.test(it.str));
+    heures.forEach(h=>{
+      const ligne = tousMontants
+        .filter(m=>m.page===h.page && Math.abs(m.y-h.y)<18)
+        .sort((a,b)=>b.x-a.x); // tri x décroissant : prendre celui le plus à droite
+      if(ligne.length) ca[h.str] = parseFloat(ligne[0].str);
+    });
+  }
   const total = Object.values(ca).reduce((a,b)=>a+b,0);
   return {resto, type, date, ca, total, nbTranches:Object.keys(ca).length};
 }
