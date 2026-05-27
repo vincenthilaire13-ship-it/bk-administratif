@@ -147,6 +147,69 @@ pre{font-size:10px;color:var(--muted2);overflow-x:auto;line-height:1.6;white-spa
 code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border-radius:4px;font-size:11px;color:var(--accent)}
 .sub-title{font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:16px 0 8px;font-weight:500}
 @media(max-width:900px){.sidebar{width:60px}.sidebar-logo .bk,.sidebar-logo .resto,.nav-item span,.nav-section,.sidebar-bottom{display:none}.chart-grid,.analyse-grid,.form-row,.form-row-4{grid-template-columns:1fr}}
+
+/* ─── MOBILE : Espace "Ma journée" (managers/directeurs) ─── */
+@media(max-width:680px){
+  /* Sidebar plus compacte */
+  .sidebar{width:54px}
+  .content{padding:14px 10px}
+  .topbar{padding:10px 14px}
+  .topbar-title{font-size:14px}
+  .topbar-right{gap:6px}
+  .topbar-right .btn{padding:6px 9px;font-size:10px}
+
+  /* Section manager (Ma journée) */
+  #sec-manager > div{max-width:100%!important}
+  #sec-manager .mgr-card{padding:14px 12px!important;border-radius:10px!important}
+  #sec-manager .mgr-title{font-size:14px!important;line-height:1.25}
+  #sec-manager .mgr-sub{font-size:11px!important;line-height:1.4}
+
+  /* Boutons d'accueil manager : plus grand pour le tactile */
+  #mgr-home .mgr-card{padding:18px 14px!important}
+  #mgr-home .mgr-card > div > div:first-child{font-size:32px!important}
+  #mgr-home .mgr-title{font-size:14px!important}
+
+  /* Drop zones : tactile-friendly */
+  #sec-manager .drop-zone{padding:18px 12px!important;min-height:120px!important}
+  #sec-manager .drop-zone-icon{font-size:32px!important}
+  #sec-manager .drop-zone-text{font-size:12px!important}
+
+  /* SECTION PDF : passe en 1 colonne (les 4 docs listés) */
+  #mgr-section-pdf [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important;gap:10px!important}
+
+  /* SECTION ANNULATION : les 3 tickets passent en 1 colonne */
+  #mgr-section-annulation [style*="grid-template-columns:1fr 1fr 1fr"]{grid-template-columns:1fr!important;gap:14px!important}
+  #mgr-section-annulation .drop-zone{min-height:140px!important}
+  #mgr-section-annulation [style*="font-size:28px"]{font-size:38px!important}
+
+  /* SECTION ERREUR DE CAISSE : grille 3 cols → 1 col, 2 cols → 1 col */
+  #mgr-section-erreurcaisse [style*="grid-template-columns:1fr 1fr 1fr"]{grid-template-columns:1fr!important;gap:10px!important}
+  #mgr-section-erreurcaisse [style*="grid-template-columns:1fr 1fr"]{grid-template-columns:1fr!important;gap:10px!important}
+
+  /* Formulaire (inputs/labels) */
+  #sec-manager .form-input,#sec-manager input[type=text],#sec-manager input[type=date],#sec-manager input[type=number],#sec-manager select,#sec-manager textarea{font-size:16px!important;padding:11px 12px!important}
+  #sec-manager .form-label{font-size:11px!important}
+
+  /* Boutons principaux (Enregistrer) plus gros et accessibles au pouce */
+  #sec-manager .btn-accent{padding:14px!important;font-size:14px!important;font-weight:600}
+  #sec-manager .btn{font-size:12px;padding:8px 12px}
+
+  /* Présence directeur (rush midi/soir) en 1 col */
+  #mgr-section-pdf [id^="lbl-dir"]{padding:12px 14px!important}
+
+  /* Historique tableau scrollable */
+  #sec-manager .table-card{overflow-x:auto}
+
+  /* Bonjour manager : titre lisible */
+  #mgr-home > div[style*="margin-bottom:20px"]{margin-bottom:14px!important}
+  #mgr-hello-name{font-size:inherit}
+  #mgr-home [style*="font-size:20px"]{font-size:18px!important}
+
+  /* Login screen mobile */
+  .login-box{padding:28px 22px!important}
+  .login-input{font-size:16px!important}
+  .login-btn{font-size:14px!important;padding:14px 16px!important}
+}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
@@ -190,6 +253,20 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
 .login-btn{width:100%;padding:12px;background:var(--accent);color:#000;border:none;border-radius:var(--radius-sm);font-family:var(--font-head);font-size:14px;font-weight:700;cursor:pointer;transition:background .15s;margin-top:4px}
 .login-btn:hover{background:#e8961a}
 .login-err{color:var(--red);font-size:11px;margin-top:10px;min-height:16px}
+
+/* ─── Pavé PIN numérique tactile ─── */
+.pin-keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px;margin-bottom:6px;user-select:none}
+.pin-key{background:var(--bg3);border:1px solid var(--border2);border-radius:12px;padding:14px 0;font-family:var(--font-head);font-size:22px;font-weight:600;color:var(--text);cursor:pointer;transition:all .12s;text-align:center;-webkit-tap-highlight-color:transparent}
+.pin-key:hover{background:var(--hover2);border-color:var(--accent)}
+.pin-key:active{transform:scale(.94);background:var(--accent);color:#000}
+.pin-key-action{background:transparent;border-color:transparent;font-size:18px;color:var(--muted2)}
+.pin-key-action:hover{background:var(--hover);border-color:var(--border)}
+.pin-key-clear{color:var(--red)}
+.pin-key-back{color:var(--accent)}
+@media(max-width:680px){
+  .pin-keypad{gap:10px}
+  .pin-key{padding:18px 0;font-size:24px;border-radius:14px}
+}
 .role-badge{font-size:9px;text-transform:uppercase;letter-spacing:.1em;padding:2px 8px;border-radius:99px;font-weight:600}
 .role-admin{background:rgba(248,113,113,.2);color:#f87171}
 .role-superviseur{background:rgba(96,165,250,.2);color:#60a5fa}
@@ -282,12 +359,29 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
         </select>
       </div>
       <label class="login-label" style="margin-top:10px">Code PIN</label>
-      <div style="display:flex;gap:6px;justify-content:center;margin-bottom:16px">
-        <input class="login-input" type="password" id="pin-1" maxlength="1" style="width:52px;text-align:center;font-size:20px;letter-spacing:0;padding:10px 4px;margin-bottom:0" oninput="pinNext(this,'pin-2')" onkeydown="pinBack(event,this,null)">
-        <input class="login-input" type="password" id="pin-2" maxlength="1" style="width:52px;text-align:center;font-size:20px;letter-spacing:0;padding:10px 4px;margin-bottom:0" oninput="pinNext(this,'pin-3')" onkeydown="pinBack(event,this,'pin-1')">
-        <input class="login-input" type="password" id="pin-3" maxlength="1" style="width:52px;text-align:center;font-size:20px;letter-spacing:0;padding:10px 4px;margin-bottom:0" oninput="pinNext(this,'pin-4')" onkeydown="pinBack(event,this,'pin-2')">
-        <input class="login-input" type="password" id="pin-4" maxlength="1" style="width:52px;text-align:center;font-size:20px;letter-spacing:0;padding:10px 4px;margin-bottom:0" oninput="pinNext(this,null)" onkeydown="pinBack(event,this,'pin-3')">
+      <div style="display:flex;gap:6px;justify-content:center;margin-bottom:14px">
+        <input class="login-input" type="password" inputmode="numeric" pattern="[0-9]*" id="pin-1" maxlength="1" style="width:52px;text-align:center;font-size:20px;letter-spacing:0;padding:10px 4px;margin-bottom:0" oninput="pinNext(this,'pin-2')" onkeydown="pinBack(event,this,null)">
+        <input class="login-input" type="password" inputmode="numeric" pattern="[0-9]*" id="pin-2" maxlength="1" style="width:52px;text-align:center;font-size:20px;letter-spacing:0;padding:10px 4px;margin-bottom:0" oninput="pinNext(this,'pin-3')" onkeydown="pinBack(event,this,'pin-1')">
+        <input class="login-input" type="password" inputmode="numeric" pattern="[0-9]*" id="pin-3" maxlength="1" style="width:52px;text-align:center;font-size:20px;letter-spacing:0;padding:10px 4px;margin-bottom:0" oninput="pinNext(this,'pin-4')" onkeydown="pinBack(event,this,'pin-2')">
+        <input class="login-input" type="password" inputmode="numeric" pattern="[0-9]*" id="pin-4" maxlength="1" style="width:52px;text-align:center;font-size:20px;letter-spacing:0;padding:10px 4px;margin-bottom:0" oninput="pinNext(this,null)" onkeydown="pinBack(event,this,'pin-3')">
       </div>
+
+      <!-- Pavé PIN numérique tactile -->
+      <div class="pin-keypad" id="pin-keypad">
+        <div class="pin-key" onclick="pinTypeDigit('1')">1</div>
+        <div class="pin-key" onclick="pinTypeDigit('2')">2</div>
+        <div class="pin-key" onclick="pinTypeDigit('3')">3</div>
+        <div class="pin-key" onclick="pinTypeDigit('4')">4</div>
+        <div class="pin-key" onclick="pinTypeDigit('5')">5</div>
+        <div class="pin-key" onclick="pinTypeDigit('6')">6</div>
+        <div class="pin-key" onclick="pinTypeDigit('7')">7</div>
+        <div class="pin-key" onclick="pinTypeDigit('8')">8</div>
+        <div class="pin-key" onclick="pinTypeDigit('9')">9</div>
+        <div class="pin-key pin-key-action pin-key-clear" onclick="pinClearAll()" title="Effacer tout">✕</div>
+        <div class="pin-key" onclick="pinTypeDigit('0')">0</div>
+        <div class="pin-key pin-key-action pin-key-back" onclick="pinDeleteOne()" title="Effacer un chiffre">⌫</div>
+      </div>
+
       <button class="login-btn" onclick="doLogin()">Connexion →</button>
       <button onclick="backToRole()" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;margin-top:10px;display:block;width:100%">← Retour</button>
     </div>
@@ -316,7 +410,7 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-full-only" style="display:none" onclick="nav('comparaison')"><span>🔄</span><span>Comparaison N-1</span></div>
     <div class="nav-section role-mgrspace" style="display:none">Ma journée</div>
     <div class="nav-item role-mgrspace" style="display:none" onclick="nav('manager')"><span>📤</span><span>Ma journée</span></div>
-    <div class="nav-item role-mgrspace" style="display:none" onclick="nav('controle-depots')"><span>🗂️</span><span>Contrôle des dépôts</span></div>
+    <div class="nav-item role-mgrspace role-not-mgr" style="display:none" onclick="nav('controle-depots')"><span>🗂️</span><span>Contrôle des dépôts</span></div>
     <div class="nav-section role-superadmin-only" style="display:none">Analyse</div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('analyses')"><span>📊</span><span>Analyses</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('equipiers')"><span>👥</span><span>Équipiers</span></div>
@@ -5092,6 +5186,49 @@ function getPin() {
 }
 function updatePinPlaceholder(){}
 
+// ── Pavé PIN tactile (clavier custom à l'écran) ──
+function pinTypeDigit(d){
+  // Trouve la première case PIN vide et y écrit le chiffre
+  const ids = ['pin-1','pin-2','pin-3','pin-4'];
+  for(const id of ids){
+    const el = document.getElementById(id);
+    if(el && el.value===''){
+      el.value = d;
+      // Si ce n'est pas la dernière case, on focus la suivante
+      const idx = ids.indexOf(id);
+      if(idx < 3){
+        document.getElementById(ids[idx+1])?.focus();
+      } else {
+        // 4ème case → déclenche le login auto
+        el.blur();
+        const pin = getPin();
+        if(pin.length===4) setTimeout(doLogin, 80);
+      }
+      return;
+    }
+  }
+}
+function pinDeleteOne(){
+  // Efface le dernier chiffre saisi
+  const ids = ['pin-1','pin-2','pin-3','pin-4'];
+  for(let i=ids.length-1; i>=0; i--){
+    const el = document.getElementById(ids[i]);
+    if(el && el.value!==''){
+      el.value = '';
+      el.focus();
+      return;
+    }
+  }
+}
+function pinClearAll(){
+  ['pin-1','pin-2','pin-3','pin-4'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  document.getElementById('pin-1')?.focus();
+  const errEl = document.getElementById('login-err');
+  if(errEl) errEl.textContent='';
+}
+
 // ── Connexion ──
 async function doLogin() {
   // Recharger les codes les plus récents depuis Supabase (multi-appareils) avant vérification
@@ -5220,6 +5357,10 @@ function applyRoleUI(role) {
   document.querySelectorAll('.role-superadmin-only').forEach(el=>el.style.display=isSuperOrAdmin?'':'none');
   // role-mgrspace : l'espace "Ma journée" — visible manager, directeur ET admin
   document.querySelectorAll('.role-mgrspace').forEach(el=>el.style.display=(isManager||isDirecteur||isAdmin)?'':'none');
+  // role-not-mgr : éléments accessibles à tous SAUF le manager (ex. Contrôle des dépôts)
+  if(isManager){
+    document.querySelectorAll('.role-not-mgr').forEach(el=>el.style.display='none');
+  }
 
   // Sélecteur resto dans topbar
   const sw = document.getElementById('resto-switcher');
