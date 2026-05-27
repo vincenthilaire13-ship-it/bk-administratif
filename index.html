@@ -321,7 +321,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('analyses')"><span>📊</span><span>Analyses</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('equipiers')"><span>👥</span><span>Équipiers</span></div>
     <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('annulations')"><span>🚫</span><span>Annulations</span></div>
-    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('erreurcaisse')"><span>💶</span><span>Erreur caisse</span></div>
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
     <div class="nav-section role-admin-only" style="display:none">Config</div>
@@ -676,6 +675,19 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
             </div>
           </div>
 
+          <!-- Bouton 3 : Erreur de caisse -->
+          <div class="mgr-card" style="cursor:pointer;border-color:rgba(245,166,35,.3);transition:border-color .2s" onclick="showMgrSection('erreurcaisse')"
+               onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='rgba(245,166,35,.3)'">
+            <div style="display:flex;align-items:center;gap:16px">
+              <div style="font-size:36px">💶</div>
+              <div>
+                <div class="mgr-title" style="margin-bottom:2px;color:var(--accent)">Déclarer une erreur de caisse</div>
+                <div class="mgr-sub" style="margin-bottom:0">Dépôt du PDF · date et heure lues automatiquement</div>
+              </div>
+              <div style="margin-left:auto;color:var(--muted);font-size:18px">›</div>
+            </div>
+          </div>
+
         </div>
 
         <!-- SECTION PDF -->
@@ -884,6 +896,78 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
           </div>
         </div>
 
+        <!-- SECTION ERREUR DE CAISSE -->
+        <div id="mgr-section-erreurcaisse" style="display:none">
+          <button class="btn" style="margin-bottom:14px;font-size:11px" onclick="showMgrSection('home')">← Retour</button>
+
+          <div class="mgr-card">
+            <div class="mgr-title">💶 Déclarer une erreur de caisse</div>
+            <div class="mgr-sub">Déposez le PDF de comptage. La date et l'heure sont lues automatiquement. Indiquez le manager responsable et l'équipier en caisse.</div>
+
+            <div class="drop-zone" id="ec-drop-zone"
+                 onclick="document.getElementById('ec-file-input').click()"
+                 ondragover="event.preventDefault();this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')"
+                 ondrop="handleErreurCaisseDrop(event)">
+              <div class="drop-zone-icon">📄</div>
+              <div class="drop-zone-text">Cliquez ou <span>glissez le PDF de caisse ici</span></div>
+              <div style="font-size:10px;color:var(--muted);margin-top:4px">Date, heure et montant détectés automatiquement</div>
+            </div>
+            <input type="file" id="ec-file-input" accept=".pdf" style="display:none" onchange="handleErreurCaisseFile(this.files[0])">
+            <div id="ec-file-name" style="font-size:11px;color:var(--muted2);margin-bottom:10px;display:none"></div>
+            <div id="ec-loading" style="display:none;text-align:center;padding:14px;color:var(--muted2);font-size:12px">
+              <div style="font-size:22px;margin-bottom:6px;animation:pulse 1.5s infinite">⏳</div>Lecture du PDF…
+            </div>
+
+            <!-- Données lues + saisie -->
+            <div id="ec-form" style="display:none">
+              <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:14px 0">
+                <div>
+                  <label class="form-label">Date (lue)</label>
+                  <input type="date" class="form-input" id="ec-date">
+                </div>
+                <div>
+                  <label class="form-label">Heure (lue)</label>
+                  <input type="text" class="form-input" id="ec-heure" placeholder="--:--">
+                </div>
+                <div>
+                  <label class="form-label">Écart (€, lu)</label>
+                  <input type="number" step="0.01" class="form-input" id="ec-montant" placeholder="ex : 12.50">
+                </div>
+              </div>
+              <div style="margin-bottom:12px">
+                <label class="form-label">Sens de l'écart</label>
+                <select class="form-input" id="ec-sens">
+                  <option value="manquant">Manquant (caisse en moins)</option>
+                  <option value="excedent">Excédent (caisse en plus)</option>
+                </select>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+                <div>
+                  <label class="form-label">Manager responsable du comptage</label>
+                  <select class="form-input" id="ec-manager"><option value="">— sélectionner —</option></select>
+                </div>
+                <div>
+                  <label class="form-label">Équipier en caisse</label>
+                  <input type="text" class="form-input" id="ec-equipier" placeholder="Nom de l'équipier">
+                </div>
+              </div>
+              <div style="margin-bottom:14px">
+                <label class="form-label">Commentaire (facultatif)</label>
+                <input type="text" class="form-input" id="ec-comment" placeholder="ex : erreur de rendu monnaie">
+              </div>
+              <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px" onclick="enregistrerErreurCaisse()">💾 Enregistrer l'erreur de caisse</button>
+            </div>
+            <div id="ec-msg" style="display:none;font-size:12px;text-align:center;margin-top:8px"></div>
+          </div>
+
+          <!-- Historique erreurs de caisse -->
+          <div class="table-card" style="margin-top:14px">
+            <div class="table-header"><span class="table-title">Erreurs de caisse enregistrées</span></div>
+            <div id="ec-historique-content" style="padding:12px"></div>
+          </div>
+        </div>
+
       </div>
     </section>
 
@@ -1062,58 +1146,6 @@ code{background:var(--bg3);border:1px solid var(--border);padding:1px 6px;border
       </div>
     </section>
 
-    <!-- ERREUR CAISSE -->
-    <section class="section" id="sec-erreurcaisse">
-      <div style="max-width:640px">
-        <div class="mgr-card">
-          <div class="mgr-title">💶 Déclarer une erreur de caisse</div>
-          <div class="mgr-sub">Renseignez le montant de l'écart, le manager et l'équipier concernés. Ces données alimentent l'analyse.</div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px;margin-bottom:12px">
-            <div>
-              <label class="form-label">Date</label>
-              <input type="date" class="form-input" id="ec-date">
-            </div>
-            <div>
-              <label class="form-label">Montant de l'écart (€)</label>
-              <input type="number" step="0.01" class="form-input" id="ec-montant" placeholder="ex : 12.50">
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div>
-              <label class="form-label">Sens de l'écart</label>
-              <select class="form-input" id="ec-sens">
-                <option value="manquant">Manquant (caisse en moins)</option>
-                <option value="excedent">Excédent (caisse en plus)</option>
-              </select>
-            </div>
-            <div>
-              <label class="form-label">Manager responsable</label>
-              <select class="form-input" id="ec-manager"><option value="">— sélectionner —</option></select>
-            </div>
-          </div>
-
-          <div style="margin-bottom:12px">
-            <label class="form-label">Équipier concerné</label>
-            <input type="text" class="form-input" id="ec-equipier" placeholder="Nom de l'équipier (caisse)">
-          </div>
-
-          <div style="margin-bottom:14px">
-            <label class="form-label">Commentaire (facultatif)</label>
-            <input type="text" class="form-input" id="ec-comment" placeholder="ex : erreur de rendu monnaie">
-          </div>
-
-          <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px" onclick="enregistrerErreurCaisse()">💾 Enregistrer l'erreur de caisse</button>
-          <div id="ec-msg" style="display:none;font-size:12px;text-align:center;margin-top:8px"></div>
-        </div>
-
-        <div class="table-card" style="margin-top:16px">
-          <div class="table-header"><span class="table-title">Erreurs de caisse enregistrées</span></div>
-          <div id="ec-historique-content" style="padding:12px"></div>
-        </div>
-      </div>
-    </section>
 
     <!-- HORAIRES / PLANNING -->
     <section class="section" id="sec-horaires">
@@ -3285,7 +3317,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T08:00', label: 'v27/05-08h00' };
+const APP_VERSION = { datetime: '2026-05-27T08:25', label: 'v27/05-08h25' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -3339,7 +3371,7 @@ alter table sos_drive add column if not exists ts_soir int;
 alter table sos_drive add column if not exists ts_nuit int;
 create table if not exists ventes_horaire (restaurant text not null, date date not null, tickets_total int, ht_total numeric, tranches jsonb, created_at timestamptz default now(), primary key(restaurant,date));
 create table if not exists annulations (id bigint generated by default as identity primary key, restaurant text not null, date date, heure text, montant numeric, manager text, equipier text, commentaire text, ticket_bad_manquant text, ticket_annul_manquant text, ticket_good_manquant text, created_at timestamptz default now());
-create table if not exists erreurs_caisse (id bigint generated by default as identity primary key, restaurant text not null, date date, montant numeric, sens text, manager text, equipier text, commentaire text, created_at timestamptz default now());
+create table if not exists erreurs_caisse (id bigint generated by default as identity primary key, restaurant text not null, date date, heure text, montant numeric, sens text, manager text, equipier text, commentaire text, created_at timestamptz default now());
 alter table annulations add column if not exists equipier text;
 alter table repas_employes enable row level security;
 alter table sos_drive enable row level security;
@@ -3393,6 +3425,8 @@ alter table journees add column if not exists commandes_ouvertes_pct numeric;`;
 const SQL_COLONNES_PDF = `-- Colonnes completes de la Synthese CA (PDF) - a coller dans Supabase SQL Editor puis Run
 -- Pour les courbes horaires (planning) alimentees par le PDF ventes 1/4h :
 alter table ventes_horaire add column if not exists tranches_ca jsonb;
+-- Pour l'heure des erreurs de caisse :
+alter table erreurs_caisse add column if not exists heure text;
 -- Sans risque : "if not exists" ne touche jamais une colonne deja creee.
 alter table journees add column if not exists ca_ttc numeric;
 alter table journees add column if not exists ca_prevu numeric;
@@ -5311,6 +5345,8 @@ function showMgrSection(section) {
   document.getElementById('mgr-home').style.display             = section==='home'       ? 'block' : 'none';
   document.getElementById('mgr-section-pdf').style.display      = section==='pdf'        ? 'block' : 'none';
   document.getElementById('mgr-section-annulation').style.display = section==='annulation' ? 'block' : 'none';
+  const ecSec = document.getElementById('mgr-section-erreurcaisse');
+  if(ecSec) ecSec.style.display = section==='erreurcaisse' ? 'block' : 'none';
   // Init date/heure pour annulation
   if(section==='annulation') {
     const now = new Date();
@@ -5320,6 +5356,10 @@ function showMgrSection(section) {
     if(h && !h.value) h.value = now.toTimeString().slice(0,5);
     renderAnnulationsHistorique();
     populateAnnManagerSelect();
+  }
+  if(section==='erreurcaisse'){
+    populateErreurCaisseSelect();
+    renderErreurCaisseHistorique();
   }
 }
 
@@ -5493,6 +5533,7 @@ async function enregistrerErreurCaisse(){
   const msg = document.getElementById('ec-msg');
   const show = (txt,col)=>{ if(msg){ msg.style.display='block'; msg.style.color=col; msg.textContent=txt; } };
   const date    = document.getElementById('ec-date')?.value || new Date().toISOString().slice(0,10);
+  const heure   = (document.getElementById('ec-heure')?.value||'').trim() || null;
   const montant = parseFloat(document.getElementById('ec-montant')?.value||'');
   const sens    = document.getElementById('ec-sens')?.value || 'manquant';
   const manager = document.getElementById('ec-manager')?.value || CURRENT_USER?.nom || null;
@@ -5503,20 +5544,82 @@ async function enregistrerErreurCaisse(){
   if(!SB){ show('Base non connectée.', 'var(--red)'); return; }
 
   const resto = restoReel();
-  const ligne = { restaurant:resto, date, montant:Math.abs(montant), sens, manager, equipier, commentaire:comment };
+  const ligne = { restaurant:resto, date, heure, montant:Math.abs(montant), sens, manager, equipier, commentaire:comment };
   try {
-    const { error } = await SB.from('erreurs_caisse').insert(ligne);
+    let { error } = await SB.from('erreurs_caisse').insert(ligne);
+    if(error){ // si la colonne heure n'existe pas encore, réessayer sans
+      const sansHeure = {...ligne}; delete sansHeure.heure;
+      const r2 = await SB.from('erreurs_caisse').insert(sansHeure); error = r2.error;
+    }
     if(error){ show('Erreur : '+(error.message||error), 'var(--red)'); return; }
     // Système vivant : créer manager et équipier dans la liste équipiers
     if(manager) enregistrerEquipier(resto, manager, null, date);
     if(equipier) enregistrerEquipier(resto, equipier, null, date);
     show('✓ Erreur de caisse enregistrée ('+fmt(Math.abs(montant))+' € '+(sens==='manquant'?'manquant':'excédent')+').', 'var(--green)');
-    // reset
-    document.getElementById('ec-montant').value='';
-    document.getElementById('ec-equipier').value='';
-    document.getElementById('ec-comment').value='';
+    // reset complet du formulaire PDF
+    ['ec-montant','ec-equipier','ec-comment','ec-heure'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+    EC_FILE = null;
+    const fn=document.getElementById('ec-file-name'); if(fn) fn.style.display='none';
+    const fm=document.getElementById('ec-form'); if(fm) fm.style.display='none';
+    const fi=document.getElementById('ec-file-input'); if(fi) fi.value='';
     renderErreurCaisseHistorique();
   } catch(e){ show('Erreur : '+(e.message||e), 'var(--red)'); }
+}
+
+// ── Lecture du PDF d'erreur de caisse (date, heure, montant automatiques) ──
+let EC_FILE = null;
+function handleErreurCaisseDrop(e){
+  e.preventDefault(); e.stopPropagation();
+  const z=document.getElementById('ec-drop-zone'); if(z) z.classList.remove('drag-over');
+  const f = e.dataTransfer?.files?.[0];
+  if(f && (f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf'))) handleErreurCaisseFile(f);
+}
+async function handleErreurCaisseFile(file){
+  if(!file) return;
+  EC_FILE = file;
+  const fn=document.getElementById('ec-file-name'); if(fn){ fn.style.display='block'; fn.textContent='📄 '+file.name; }
+  const loading=document.getElementById('ec-loading'); if(loading) loading.style.display='block';
+  try {
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const ab = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data:ab}).promise;
+    let txt='';
+    for(let p=1;p<=pdf.numPages;p++){ const page=await pdf.getPage(p); const tc=await page.getTextContent(); txt += tc.items.map(t=>t.str).join(' ')+' '; }
+    const parsed = parseErreurCaissePDF(txt);
+    // Pré-remplir
+    document.getElementById('ec-date').value   = parsed.date || new Date().toISOString().slice(0,10);
+    document.getElementById('ec-heure').value  = parsed.heure || '';
+    if(parsed.montant!=null) document.getElementById('ec-montant').value = Math.abs(parsed.montant);
+    if(parsed.sens) document.getElementById('ec-sens').value = parsed.sens;
+    document.getElementById('ec-form').style.display='block';
+    populateErreurCaisseSelect();
+  } catch(e){
+    console.warn('lecture PDF erreur caisse', e);
+    // En cas d'échec de lecture, on affiche quand même le formulaire pour saisie manuelle
+    document.getElementById('ec-date').value = new Date().toISOString().slice(0,10);
+    document.getElementById('ec-form').style.display='block';
+    populateErreurCaisseSelect();
+  } finally {
+    if(loading) loading.style.display='none';
+  }
+}
+// Extraction date / heure / montant depuis le texte du PDF de caisse
+function parseErreurCaissePDF(txt){
+  const res = { date:null, heure:null, montant:null, sens:null };
+  // Date : formats JJ/MM/AAAA ou AAAA-MM-JJ
+  let m = txt.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if(m) res.date = m[3]+'-'+m[2]+'-'+m[1];
+  else { m = txt.match(/(\d{4})-(\d{2})-(\d{2})/); if(m) res.date = m[1]+'-'+m[2]+'-'+m[3]; }
+  // Heure : HH:MM ou HHhMM
+  m = txt.match(/(\d{1,2})[:hH](\d{2})/);
+  if(m) res.heure = String(m[1]).padStart(2,'0')+':'+m[2];
+  // Montant d'écart : on cherche "écart", "differen", "manquant", "excédent" suivi d'un nombre
+  const mm = txt.match(/(?:[ée]cart|diff[ée]rence|manquant|exc[ée]dent)[^0-9\-]{0,12}(-?\d+[.,]\d{2})/i);
+  if(mm) res.montant = parseFloat(mm[1].replace(',','.'));
+  if(/exc[ée]dent|en\s*plus|\+/.test(txt.toLowerCase()) && res.montant>0) res.sens='excedent';
+  if(/manquant|en\s*moins/.test(txt.toLowerCase())) res.sens='manquant';
+  return res;
 }
 
 async function renderErreurCaisseHistorique(){
