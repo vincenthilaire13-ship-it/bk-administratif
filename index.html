@@ -3439,7 +3439,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T19:55', label: 'v27/05-19h55', affichage: 'mercredi 27 mai 2026 à 19:55' };
+const APP_VERSION = { datetime: '2026-05-27T20:30', label: 'v27/05-20h30', affichage: 'mercredi 27 mai 2026 à 20:30' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -11613,61 +11613,59 @@ async function hrParsePDF(arrayBuffer){
   const isMontant = s => /^\d+[.,]\d{2}$/.test(s);
   const toNum = s => parseFloat(s.replace(',', '.'));
 
-  // ── DÉTECTION DES HEURES (HH:MM) ──
-  // Les heures peuvent apparaître à différentes positions x selon la mise en page
-  // du PDF (parfois en 2 colonnes côte à côte). On garde TOUTES les positions,
-  // puis on dédoublonne par tranche horaire unique en gardant la 1ère occurrence
-  // (= la colonne "Heure" principale, à gauche).
-  const heuresBrutes = items.filter(it=>{
+  // ══════════════════════════════════════════════════════════════════════════
+  // STRUCTURE EFFECTIVE DU PDF (telle que vue par pdf.js, après analyse)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Bien que le PDF apparaisse à l'utilisateur sous forme classique (heures en
+  // colonne de gauche, canaux en colonnes), pdf.js extrait le contenu dans un
+  // repère TOURNÉ : chaque tranche horaire devient une COLONNE verticale.
+  //   • Les heures HH:MM sont retournées en haut de chaque page comme
+  //     "en-têtes de colonnes", à des x espacés de ~40 unités
+  //     (ex. 11:00 à x=287, 11:15 à x=327, 11:30 à x=367, ...)
+  //   • Les valeurs de cette tranche (Nbre, Mont HT par canal, % , Moyenne,
+  //     Total HT, Total TTC) sont alignées sous ces en-têtes, à x ≈ x_heure - 10
+  //     (donc x=277 pour la tranche 11:00, x=317 pour 11:15, etc.)
+  //   • Dans cette colonne, les ~12 nombres au format n.nn correspondent
+  //     (triés par y croissant) à : TOTAL TTC, TOTAL HT, puis Moyennes/Mont HT
+  //     par canal. Le TOTAL HT = élément à l'index 1 (juste après le TTC).
+  //
+  // C'est cohérent entre les PDF du 18/05 (53 tranches) et du 27/05 (29).
+  // Total calculé conforme au TOTAL affiché en bas du PDF (à 0,01 € près).
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── DÉTECTION DES HEURES (en-têtes de colonnes du tableau) ──
+  // Filtres : format HH:MM strict, minutes parmi {00,15,30,45}, x > 100 pour
+  // ignorer la colonne "Heure" de gauche s'il y a un libellé hors-tableau.
+  const heures = items.filter(it=>{
     const m = it.str.match(/^(\d{1,2}):(\d{2})$/);
     if(!m) return false;
     const hh = parseInt(m[1],10);
     const mm = parseInt(m[2],10);
     if(hh<0 || hh>29) return false;
-    if(mm!==0 && mm!==15 && mm!==30 && mm!==45) return false; // que les vrais quarts d'heure
-    return it.x < 0.30*W; // colonne gauche élargie : ≤ 30%
+    if(mm!==0 && mm!==15 && mm!==30 && mm!==45) return false;
+    return it.x > 100; // en-têtes de colonnes du tableau (pas la colonne libellé)
   });
-  // Dédoublonnage : pour chaque HH:MM unique sur une même page, on garde l'occurrence
-  // dont la coordonnée x est la plus petite (= la 1ère colonne "Heure").
-  const heuresMap = new Map();
-  heuresBrutes.forEach(h=>{
-    const cle = h.page+'|'+h.str;
-    const existant = heuresMap.get(cle);
-    if(!existant || h.x < existant.x) heuresMap.set(cle, h);
-  });
-  const heures = Array.from(heuresMap.values());
 
-  // ── EXTRACTION DES MONTANTS ──
-  // Le "Total HT" est par convention le DERNIER montant sur la ligne (le plus à droite).
-  // On prend donc tous les montants au format n.nn ou n,nn et on associe à chaque
-  // heure le montant le plus à droite sur la même ligne y (tolérance ±25px).
-  const tousMontants = items.filter(it=>isMontant(it.str));
-  const TOLERANCE_Y = 25; // tolérance verticale assouplie
+  // ── EXTRACTION DES TOTAUX HT ──
+  // Pour chaque heure trouvée comme en-tête de colonne, on lit la "colonne"
+  // verticale sous elle : tous les items n.nn à x ≈ x_heure - 10.
+  // Le TOTAL HT est l'index 1 (l'index 0 étant le TOTAL TTC, plus haut).
   const ca = {};
   heures.forEach(h=>{
-    const ligne = tousMontants
-      .filter(m=>m.page===h.page && Math.abs(m.y-h.y) < TOLERANCE_Y)
-      .sort((a,b)=>b.x-a.x); // tri x décroissant → le 1er est le plus à droite (= Total HT)
-    if(ligne.length){
-      // Le montant le plus à droite est le Total HT de la tranche
-      // (vrai dans tous les formats de rapport BK observés)
-      ca[h.str] = toNum(ligne[0].str);
+    const col = items.filter(it =>
+      it.page === h.page
+      && it.x >= h.x - 15
+      && it.x <= h.x - 5
+      && /^\d+\.\d{2}$/.test(it.str)
+    );
+    col.sort((a,b)=> a.y - b.y);
+    if(col.length >= 2){
+      ca[h.str] = parseFloat(col[1].str); // TOTAL HT
+    } else if(col.length === 1){
+      // Cas dégénéré : une seule valeur dans la colonne → on la prend
+      ca[h.str] = parseFloat(col[0].str);
     }
   });
-  // SANITY CHECK : si plusieurs valeurs sont identiques (genre toutes à 0.00),
-  // c'est qu'on a probablement lu un total de pourcentage. Dans ce cas, on
-  // retente en prenant le SECOND montant le plus à droite.
-  const valeurs = Object.values(ca);
-  if(valeurs.length>5 && valeurs.filter(v=>v===0).length > valeurs.length*0.7){
-    Object.keys(ca).forEach(k=>delete ca[k]);
-    heures.forEach(h=>{
-      const ligne = tousMontants
-        .filter(m=>m.page===h.page && Math.abs(m.y-h.y) < TOLERANCE_Y)
-        .sort((a,b)=>b.x-a.x);
-      if(ligne.length>=2) ca[h.str] = toNum(ligne[1].str);
-      else if(ligne.length) ca[h.str] = toNum(ligne[0].str);
-    });
-  }
   const total = Object.values(ca).reduce((a,b)=>a+b,0);
   // ── DIAGNOSTIC en cas d'échec : on remonte ce que le parseur a vraiment vu ──
   // pour pouvoir identifier le pattern manquant et adapter le parseur si besoin.
