@@ -3453,7 +3453,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T15:22', label: 'v30/05-15h22', affichage: 'samedi 30 mai 2026 à 15:22' };
+const APP_VERSION = { datetime: '2026-05-30T17:04', label: 'v30/05-17h04', affichage: 'samedi 30 mai 2026 à 17:04' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -10996,7 +10996,15 @@ window.__hrInit=function(){
             HR_ALL[rt][dt]=row.tranches_ca; n++;
           }
         });
-        if(n){ window.HR_ALL=HR_ALL; const r=(typeof HR_RESTO!=='undefined'&&HR_RESTO)?HR_RESTO:'BK526'; if(HR_ALL[r]){HR_DATA=HR_ALL[r];window.HR_DATA=HR_DATA;} try{hrFillDaySelect&&hrFillDaySelect();hrFillWeekSelect&&hrFillWeekSelect();}catch(e){} }
+        if(n){ window.HR_ALL=HR_ALL; const r=(typeof HR_RESTO!=='undefined'&&HR_RESTO)?HR_RESTO:'BK526'; if(HR_ALL[r]){HR_DATA=HR_ALL[r];window.HR_DATA=HR_DATA;} try{hrFillDaySelect&&hrFillDaySelect();hrFillWeekSelect&&hrFillWeekSelect();}catch(e){}
+          // Les données ¼h sont arrivées de Supabase APRÈS le 1er rendu : on re-affiche
+          // tout ce qui dépend de HR_DATA (pastilles ✓/✗ du dashboard, sélecteur de
+          // consultation, prévisionnel) sinon ça reste figé sur « aucun PDF ».
+          try{ renderDays&&renderDays(); }catch(e){}
+          try{ renderAll&&renderAll(); }catch(e){}
+          try{ hrFillConsultSelect&&hrFillConsultSelect(); }catch(e){}
+          try{ const vs=document.getElementById('hrx-ca-vue'); if((!vs||vs.value==='jour')){ const ds=document.getElementById('hrx-ca-day-sel'); if(ds&&ds.value&&/^\d{4}-\d{2}-\d{2}$/.test(ds.value)&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true); } }catch(e){}
+        }
       });
     }
     const resto = hrCurrentResto();
