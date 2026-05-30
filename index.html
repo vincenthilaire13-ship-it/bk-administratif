@@ -1308,7 +1308,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px;">
     <div>
       <div class="hr-stitle" style="margin:0">Grille de positionnement</div>
-      <div class="hr-ssub" style="margin:0">Cliquez sur n'importe quelle cellule pour modifier. L'effectif total est calculé automatiquement.</div>
+      <div class="hr-ssub" id="hrx-grille-sub" style="margin:0">Cliquez sur n'importe quelle cellule pour modifier. L'effectif total est calculé automatiquement.</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center;">
       <div class="hr-cc">
@@ -1320,6 +1320,8 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
         </select>
       </div>
       <button class="hr-btn hr-btn-ac" onclick="applyGrille()" style="margin-top:18px;">✓ Appliquer au planning</button>
+      <button class="hr-btn" onclick="protegerGrille()" style="margin-top:18px;" title="Verrouiller la grille validée de ce restaurant">🔒 Protéger</button>
+      <button class="hr-btn" onclick="restaurerGrilleProtegee()" style="margin-top:18px;" title="Recharger la grille protégée de ce restaurant">♻️ Restaurer protégée</button>
       <button class="hr-btn" onclick="resetGrille()" style="margin-top:18px;">↺ Réinitialiser</button>
     </div>
   </div>
@@ -3450,7 +3452,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T14:41', label: 'v30/05-14h41', affichage: 'samedi 30 mai 2026 à 14:41' };
+const APP_VERSION = { datetime: '2026-05-30T14:48', label: 'v30/05-14h48', affichage: 'samedi 30 mai 2026 à 14:48' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6582,39 +6584,45 @@ async function enregistrerJourneeMgr() {
       },{onConflict:'restaurant,date'});
       if(eV){ erreurs.push('Ventes : '+eV.message); console.error('ventes_horaire', eV); }
 
-      // 4bis) ALIMENTER LES HORAIRES / PLANNING : extraire le CA par quart d'heure et l'injecter dans HR_ALL
+      // 4bis) ALIMENTER LES HORAIRES / PLANNING + CA PRÉVISIONNEL
+      // On utilise EN PRIORITÉ le CA par quart d'heure déjà extrait à la lecture
+      // du PDF (MGR_JOUR.ventes.ca_15min), beaucoup plus fiable que de re-parser
+      // l'ArrayBuffer (souvent détaché par pdf.js). Repli sur le buffer sinon.
       try {
-        if(MGR_VENTES_AB && typeof hrParsePDF==='function'){
-          // Sécurité : si l'ArrayBuffer a été détaché par pdf.js dans un appel
-          // précédent, on l'esquive proprement plutôt que de planter.
-          let bufPourHr = null;
-          try { bufPourHr = MGR_VENTES_AB.slice(0); }
-          catch(eDetach){
-            console.warn('[ventes_horaire] MGR_VENTES_AB détaché, on saute l\'alimentation horaires', eDetach);
-          }
+        let ca15 = MGR_JOUR.ventes.ca_15min || null;
+        let rDate = MGR_JOUR.ventes.resto_detecte ? (MGR_JOUR.ventes.date||date) : (MGR_JOUR.ventes.date||date);
+        let rResto = (MGR_JOUR.ventes.resto_detecte && MGR_JOUR.ventes.resto_detecte!=='ALL')
+                     ? MGR_JOUR.ventes.resto_detecte : resto;
+
+        // Repli : si pas de ca_15min en mémoire, on retente via le buffer
+        if((!ca15 || !Object.keys(ca15).length) && MGR_VENTES_AB && typeof hrParsePDF==='function'){
+          let bufPourHr=null;
+          try { bufPourHr = MGR_VENTES_AB.slice(0); } catch(eDetach){ console.warn('[horaires] buffer détaché', eDetach); }
           if(bufPourHr){
             const res = await hrParsePDF(bufPourHr);
-            if(res && res.ca && Object.keys(res.ca).length && typeof HR_ALL!=='undefined'){
-              const rDate = res.date || date;
-              const rResto = (res.resto && res.resto!=='ALL') ? res.resto : resto;
-              if(!HR_ALL[rResto]) HR_ALL[rResto] = {};
-              HR_ALL[rResto][rDate] = res.ca;        // {HH:MM: montant} pour ce jour
-              window.HR_ALL = HR_ALL;
-              // Si on regarde ce resto, rafraîchir la vue active
-              if(typeof HR_RESTO!=='undefined' && HR_RESTO===rResto){ HR_DATA = HR_ALL[rResto]; window.HR_DATA = HR_DATA; }
-              // Persister la courbe horaire dans la table ventes_horaire (colonne tranches_ca)
-              try {
-                const { error: eUp } = await SB.from('ventes_horaire').upsert({restaurant:rResto, date:rDate, tranches_ca: res.ca},{onConflict:'restaurant,date'});
-                if(eUp){
-                  console.error('[upsert tranches_ca]', eUp);
-                  erreurs.push('Tranches ¼h (horaires) : '+(eUp.message||eUp));
-                }
-              } catch(eU){
-                console.error('[upsert tranches_ca exception]', eU);
-                erreurs.push('Tranches ¼h (horaires) : '+(eU.message||eU));
-              }
+            if(res && res.ca && Object.keys(res.ca).length){
+              ca15 = res.ca;
+              rDate = res.date || rDate;
+              if(res.resto && res.resto!=='ALL') rResto = res.resto;
             }
           }
+        }
+
+        if(ca15 && Object.keys(ca15).length && typeof HR_ALL!=='undefined'){
+          // 1) Mémoire (affichage immédiat dans Horaire)
+          if(!HR_ALL[rResto]) HR_ALL[rResto] = {};
+          HR_ALL[rResto][rDate] = ca15;     // {HH:MM: montant} pour ce jour
+          window.HR_ALL = HR_ALL;
+          if(typeof HR_RESTO!=='undefined' && HR_RESTO===rResto){ HR_DATA = HR_ALL[rResto]; window.HR_DATA = HR_DATA; }
+          // 2) Persistance Supabase (colonne tranches_ca) → réutilisé par Horaire ET CA prévisionnel
+          try {
+            const { error: eUp } = await SB.from('ventes_horaire').upsert({restaurant:rResto, date:rDate, tranches_ca: ca15},{onConflict:'restaurant,date'});
+            if(eUp){ console.error('[upsert tranches_ca]', eUp); erreurs.push('Tranches ¼h (horaires) : '+(eUp.message||eUp)); }
+          } catch(eU){ console.error('[upsert tranches_ca exception]', eU); erreurs.push('Tranches ¼h (horaires) : '+(eU.message||eU)); }
+          // 3) Rafraîchir les sélecteurs Horaire si la fonction existe
+          try { hrFillDaySelect && hrFillDaySelect(); hrFillWeekSelect && hrFillWeekSelect(); } catch(e){}
+        } else {
+          console.warn('[horaires] aucun CA ¼h à ranger pour', rResto, rDate);
         }
       } catch(e){ console.warn('alimentation horaires depuis ventes', e); }
     }
@@ -7434,6 +7442,76 @@ function sosPerfList(avgs){
 
 function sosSetMode(mode){ SOS_PERF_MODE = mode; anRender(); }
 
+// ── RÉPARATION : reconstruit ts_* et nc_* depuis la colonne `tranches` (jsonb) ──
+// Utile pour les journées importées avant l'ajout du détail par tranche.
+// Lit toutes les lignes sos_drive, et pour chacune dont les ts_* sont vides mais
+// qui possède un tableau `tranches`, recalcule les colonnes et les ré-upsert.
+async function sosBackfillTranches(){
+  if(typeof SB==='undefined' || !SB){ alert('Base non connectée.'); return; }
+  const btn = document.getElementById('sos-backfill-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Recalcul en cours…'; }
+  try {
+    let q = SB.from('sos_drive').select('*');
+    let resto = AN_RESTO || (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? ACTIVE_RESTO : (CURRENT_USER?.resto||null));
+    if(resto==='ALL' || resto==='Administration') resto=null;
+    if(resto) q = q.eq('restaurant', resto);
+    const { data, error } = await q;
+    if(error){ alert('Erreur lecture : '+error.message); if(btn){btn.disabled=false;btn.textContent='🔧 Recalculer les tranches';} return; }
+
+    const KEYS = {matinee:'matinee',dejeuner:'dejeuner',apresmidi:'apresmidi',diner:'diner',soir:'soir',nuit:'nuit'};
+    let traitees=0, maj=0, sansTranche=0;
+    for(const row of (data||[])){
+      traitees++;
+      // tranches peut être un tableau d'objets {key,total_sec,commandes,...} ou une string JSON
+      let tr = row.tranches;
+      if(typeof tr==='string'){ try{ tr=JSON.parse(tr); }catch(e){ tr=null; } }
+      if(!Array.isArray(tr) || !tr.length){ sansTranche++; continue; }
+      const byKey={}; tr.forEach(x=>{ if(x&&x.key) byKey[x.key]=x; });
+      const patch = { restaurant:row.restaurant, date:row.date,
+        ts_matinee:   byKey.matinee?.total_sec   ?? null,
+        ts_dejeuner:  byKey.dejeuner?.total_sec  ?? null,
+        ts_apresmidi: byKey.apresmidi?.total_sec ?? null,
+        ts_diner:     byKey.diner?.total_sec     ?? null,
+        ts_soir:      byKey.soir?.total_sec      ?? null,
+        ts_nuit:      byKey.nuit?.total_sec      ?? null,
+        nc_matinee:   byKey.matinee?.commandes   ?? null,
+        nc_dejeuner:  byKey.dejeuner?.commandes  ?? null,
+        nc_apresmidi: byKey.apresmidi?.commandes ?? null,
+        nc_diner:     byKey.diner?.commandes     ?? null,
+        nc_soir:      byKey.soir?.commandes      ?? null,
+        nc_nuit:      byKey.nuit?.commandes      ?? null,
+      };
+      // upsert robuste : retire les colonnes inexistantes une à une
+      let lj={...patch};
+      let colsManquantes=[];
+      let {error:e2} = await SB.from('sos_drive').upsert(lj,{onConflict:'restaurant,date'});
+      let essais=0;
+      while(e2 && essais<15){
+        const m=(e2.message||'').match(/'([^']+)' column/i)||(e2.message||'').match(/column \"([^\"]+)\"/i);
+        const col=m&&m[1];
+        if(col && col in lj){ colsManquantes.push(col); delete lj[col]; const r2=await SB.from('sos_drive').upsert(lj,{onConflict:'restaurant,date'}); e2=r2.error; essais++; }
+        else break;
+      }
+      if(colsManquantes.length) window._sosColsManquantes = colsManquantes;
+      if(e2){ console.warn('backfill upsert', row.date, e2); }
+      else maj++;
+    }
+    if(typeof loadAll==='function') await loadAll();
+    if(typeof anRefresh==='function') await anRefresh();
+    let msg = `✓ Recalcul terminé.\n${maj} journée(s) mise(s) à jour sur ${traitees}.\n${sansTranche} sans détail de tranches exploitable.`;
+    if(window._sosColsManquantes && window._sosColsManquantes.length){
+      msg += `\n\n⚠️ Colonnes absentes en base : ${[...new Set(window._sosColsManquantes)].join(', ')}.\nAllez dans Configuration → SQL et exécutez le script pour les créer, puis relancez ce recalcul.`;
+      window._sosColsManquantes = null;
+    }
+    alert(msg);
+  } catch(e){
+    console.error('sosBackfillTranches', e);
+    alert('Erreur : '+(e.message||e));
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent='🔧 Recalculer les tranches'; }
+  }
+}
+
 // Rendu d'un classement par shift (ouverture OU fermeture), avec :
 //  • le détail des 3 tranches de chaque personne (la tranche "rush" mise en avant)
 //  • la note = moyenne des tranches de la personne (jamais le total journée)
@@ -7713,9 +7791,12 @@ function anRenderSOS(){
   </div>`;
 
   // Toggle Managers / Leaders
-  const toggle = `<div style="display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:10px;margin-bottom:14px;max-width:320px">
-    <button onclick="sosSetMode('managers')" style="flex:1;padding:7px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;${isMgr?'background:var(--card);font-weight:600;color:var(--text)':'background:none;color:var(--muted2)'}">Managers</button>
-    <button onclick="sosSetMode('leaders')" style="flex:1;padding:7px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;${!isMgr?'background:var(--card);font-weight:600;color:var(--text)':'background:none;color:var(--muted2)'}">Leaders</button>
+  const toggle = `<div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+    <div style="display:flex;gap:4px;background:var(--bg3);padding:4px;border-radius:10px;max-width:320px">
+      <button onclick="sosSetMode('managers')" style="flex:1;padding:7px 14px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;${isMgr?'background:var(--card);font-weight:600;color:var(--text)':'background:none;color:var(--muted2)'}">Managers</button>
+      <button onclick="sosSetMode('leaders')" style="flex:1;padding:7px 14px;border-radius:7px;border:none;cursor:pointer;font-size:12.5px;${!isMgr?'background:var(--card);font-weight:600;color:var(--text)':'background:none;color:var(--muted2)'}">Leaders</button>
+    </div>
+    <button id="sos-backfill-btn" onclick="sosBackfillTranches()" title="Reconstruit le détail par tranche (temps + commandes) des journées déjà importées" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--card);color:var(--text);cursor:pointer;font-size:12px">🔧 Recalculer les tranches</button>
   </div>`;
 
   // Comparaison avec / sans directeur côte à côte
@@ -10392,13 +10473,88 @@ function applyGrille(){
 }
 
 function resetGrille(){
-  if(!confirm('Réinitialiser la grille aux valeurs par défaut ?')) return;
+  const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+  // Si une grille protégée existe pour ce resto, on prévient fortement.
+  if(grilleEstProtegee(resto)){
+    if(!confirm('⚠️ ATTENTION — '+nomResto(resto)+' possède une GRILLE PROTÉGÉE.\n\nRéinitialiser va remplacer la grille à l\'écran par les valeurs par défaut.\nVotre grille protégée NE sera PAS effacée (vous pourrez la restaurer avec ♻️ Restaurer protégée).\n\nContinuer la réinitialisation ?')) return;
+  } else {
+    if(!confirm('Réinitialiser la grille aux valeurs par défaut ?')) return;
+  }
   GRILLE_EDIT = GRILLE_DEFAULT.map(r=>[...r]);
-  grilleMode = 30;
-  const ms=document.getElementById('hrx-grille-mode'); if(ms) ms.value='30';
+  grilleMode = 15; // référence quart d'heure (et non 30)
+  const ms=document.getElementById('hrx-grille-mode'); if(ms) ms.value='15';
   renderGrille();
   hrAutoApply();
 }
+
+// ── PROTECTION DE GRILLE PAR RESTAURANT ──────────────────────────────────────
+// Une "grille protégée" = une copie de sécurité de la grille validée d'un resto,
+// stockée localement (et en base si possible). Sert de filet contre l'effacement
+// accidentel quand on retravaille le positionnement plusieurs fois.
+function _kGrilleProt(resto){ return 'bk_grille_protegee_'+resto; }
+function nomResto(resto){ try{ return (RESTAURANTS[resto]?.nom)||resto; }catch(e){ return resto; } }
+
+function grilleProtegee(resto){
+  try{ const raw=localStorage.getItem(_kGrilleProt(resto)); return raw?JSON.parse(raw):null; }catch(e){ return null; }
+}
+function grilleEstProtegee(resto){ const g=grilleProtegee(resto); return !!(g && g.grille && g.grille.length); }
+
+function protegerGrille(){
+  const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+  const dejaProt = grilleEstProtegee(resto);
+  const msg = dejaProt
+    ? '🔒 '+nomResto(resto)+' a déjà une grille protégée (du '+ (grilleProtegee(resto)?.le? new Date(grilleProtegee(resto).le).toLocaleString('fr-FR'):'?') +').\n\nVoulez-vous la REMPLACER par la grille actuellement affichée ?'
+    : '🔒 Protéger la grille de '+nomResto(resto)+' ?\n\nLa grille actuellement affichée sera enregistrée comme grille de sécurité. Elle ne pourra plus être effacée par une réinitialisation accidentelle (vous pourrez toujours la restaurer).';
+  if(!confirm(msg)) return;
+
+  const snap = {
+    resto,
+    grille: GRILLE_EDIT.map(r=>[...r]),
+    basemin: (typeof BASE_MIN!=='undefined' && BASE_MIN) ? BASE_MIN.map(b=>[...b]) : null,
+    mode: (typeof grilleMode==='number'?grilleMode:15),
+    le: new Date().toISOString()
+  };
+  try{ localStorage.setItem(_kGrilleProt(resto), JSON.stringify(snap)); }catch(e){ alert('Impossible d\'enregistrer localement la grille protégée.'); return; }
+
+  // Best-effort : persister aussi en base (colonne grille_protegee si elle existe)
+  if(window.SB){
+    (async()=>{
+      try{
+        await SB.from('planning_grilles').upsert({
+          resto,
+          grille_protegee: JSON.stringify(snap.grille),
+          basemin_protegee: snap.basemin?JSON.stringify(snap.basemin):null,
+          mode_protege: snap.mode,
+          protege_le: snap.le
+        },{onConflict:'resto'});
+      }catch(e){ /* colonnes absentes : la protection locale suffit */ }
+    })();
+  }
+  renderGrille();
+  alert('✅ Grille de '+nomResto(resto)+' protégée. Vous pouvez continuer à travailler ; en cas de fausse manip, cliquez « ♻️ Restaurer protégée ».');
+}
+
+function restaurerGrilleProtegee(){
+  const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+  const snap = grilleProtegee(resto);
+  if(!snap || !snap.grille || !snap.grille.length){
+    alert('Aucune grille protégée enregistrée pour '+nomResto(resto)+'.\n\nUtilisez d\'abord « 🔒 Protéger » pour en créer une.');
+    return;
+  }
+  if(!confirm('♻️ Restaurer la grille protégée de '+nomResto(resto)+' (du '+(snap.le?new Date(snap.le).toLocaleString('fr-FR'):'?')+') ?\n\nLa grille actuellement affichée sera remplacée.')) return;
+  GRILLE_EDIT = snap.grille.map(r=>[...r]);
+  if(snap.basemin && typeof BASE_MIN!=='undefined'){ BASE_MIN.length=0; snap.basemin.forEach(b=>BASE_MIN.push([...b])); }
+  grilleMode = (typeof snap.mode==='number'?snap.mode:15);
+  const ms=document.getElementById('hrx-grille-mode'); if(ms) ms.value=String(grilleMode);
+  GRILLE.length=0; GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
+  GRILLE_BY_RESTO[resto]=GRILLE_EDIT.map(r=>[...r]);
+  renderGrille();
+  hrAutoApply();
+  if(typeof hrSauverGrille==='function') hrSauverGrille();
+  alert('✅ Grille protégée de '+nomResto(resto)+' restaurée.');
+}
+window.protegerGrille = protegerGrille;
+window.restaurerGrilleProtegee = restaurerGrilleProtegee;
 
 function renderGrille(){
   const t=document.getElementById('hrx-gt');
@@ -10432,6 +10588,21 @@ function renderGrille(){
 
   html += `</tbody>`;
   t.innerHTML = html;
+
+  // Badge "grille protégée" dans le sous-titre
+  try{
+    const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+    const sub = document.getElementById('hrx-grille-sub');
+    if(sub){
+      if(grilleEstProtegee(resto)){
+        const g = grilleProtegee(resto);
+        const quand = g && g.le ? new Date(g.le).toLocaleDateString('fr-FR') : '';
+        sub.innerHTML = `<span style="background:rgba(62,207,142,.16);color:var(--green,#3ecf8e);padding:1px 8px;border-radius:4px;font-weight:600">🔒 Grille protégée${quand?' · '+quand:''}</span> &nbsp;Cliquez une cellule pour modifier. En cas de fausse manip, « ♻️ Restaurer protégée ».`;
+      } else {
+        sub.textContent = "Cliquez sur n'importe quelle cellule pour modifier. L'effectif total est calculé automatiquement.";
+      }
+    }
+  }catch(e){}
 
   // Bouton ajouter ligne
   const wrap = t.parentElement;
