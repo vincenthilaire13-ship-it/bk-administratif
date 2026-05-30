@@ -3495,7 +3495,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T22:59', label: 'v30/05-22h59', affichage: 'samedi 30 mai 2026 à 22:59' };
+const APP_VERSION = { datetime: '2026-05-30T23:03', label: 'v30/05-23h03', affichage: 'samedi 30 mai 2026 à 23:03' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6035,6 +6035,7 @@ async function lireTousPDFs(files) {
         MGR_JOUR.fichiers.ventes = file.name;
         MGR_VENTES_TXT = txt;
         MGR_VENTES_AB = freshAB(); // copie fraîche pour alimenter les horaires plus tard
+        MGR_VENTES_FILE = file;    // objet File original (relecture brute fiable)
         // Extraction du CA ¼h (sert UNIQUEMENT aux horaires/planning).
         // ── On procède EXACTEMENT comme l'import « ventes ¼h » sous Horaire :
         // on relit le fichier BRUT via file.arrayBuffer() et on passe ce buffer
@@ -6160,6 +6161,7 @@ async function lireTousPDFs(files) {
 
 let MGR_VENTES_TXT = null;
 let MGR_VENTES_AB = null;
+let MGR_VENTES_FILE = null; // objet File original du PDF ventes (relecture fiable à l'enregistrement)
 
 async function extrairePDFManager(file) {
   document.getElementById('mgr-loading').style.display = 'block';
@@ -6491,7 +6493,7 @@ function parserVentesHoraire(txt){
 
 
 function resetMgrFlow() {
-  MGR_EXTRACTED = null; MGR_VENTES_TXT = null; FILES_LIST = []; MGR_JOUR = null;
+  MGR_EXTRACTED = null; MGR_VENTES_TXT = null; MGR_VENTES_AB = null; MGR_VENTES_FILE = null; FILES_LIST = []; MGR_JOUR = null;
   document.getElementById('file-list').innerHTML = '';
   document.getElementById('file-input').value = '';
   document.getElementById('mgr-step2').style.display = 'none';
@@ -6664,19 +6666,17 @@ async function enregistrerJourneeMgr() {
         let rDate  = MGR_JOUR.ventes.date || date;
         let rResto = resto;
 
-        // Repli : si pas de ca_15min en mémoire, on retente via le buffer (la DATE
-        // peut être corrigée par le PDF, mais PAS le resto qui reste celui du dépôt)
-        if((!ca15 || !Object.keys(ca15).length) && MGR_VENTES_AB && typeof hrParsePDF==='function'){
-          let bufPourHr=null;
-          try { bufPourHr = MGR_VENTES_AB.slice(0); } catch(eDetach){ console.warn('[horaires] buffer détaché', eDetach); }
-          if(bufPourHr){
-            const res = await hrParsePDF(bufPourHr);
+        // Repli : si pas de ca_15min en mémoire, on relit le FICHIER ORIGINAL brut
+        // (même chemin que l'import Horaire qui fonctionne) plutôt qu'un buffer dérivé.
+        if((!ca15 || !Object.keys(ca15).length) && MGR_VENTES_FILE && typeof hrParsePDF==='function'){
+          try {
+            const abBrut = await MGR_VENTES_FILE.arrayBuffer();
+            const res = await hrParsePDF(abBrut);
             if(res && res.ca && Object.keys(res.ca).length){
               ca15 = res.ca;
               rDate = res.date || rDate;
-              // rResto reste = resto de dépôt (on ne le réécrit pas)
             }
-          }
+          } catch(eRe){ console.warn('[horaires] relecture fichier ventes', eRe); }
         }
 
         if(ca15 && Object.keys(ca15).length && typeof HR_ALL!=='undefined'){
@@ -6702,7 +6702,19 @@ async function enregistrerJourneeMgr() {
           try { const vs=document.getElementById('hrx-ca-vue'); if((!vs||vs.value==='jour')){ const ds=document.getElementById('hrx-ca-day-sel'); if(ds&&ds.value&&/^\d{4}-\d{2}-\d{2}$/.test(ds.value)&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true); } } catch(e){}
         } else {
           console.warn('[horaires] aucun CA ¼h à ranger pour', rResto, rDate);
-          erreurs.push('CA ¼h non extrait du PDF ventes : le détail au quart d\'heure n\'a pas pu être lu. La journée est enregistrée mais le CA ¼h (Horaire / prévisionnel) restera vide. Vérifiez que le PDF déposé est bien le « rapport des ventes au quart d\'heure ».');
+          // Message diagnostique : on relit une dernière fois pour rapporter ce que voit le parseur
+          let diagTxt = '';
+          try {
+            if(MGR_VENTES_FILE && typeof hrParsePDF==='function'){
+              const abD = await MGR_VENTES_FILE.arrayBuffer();
+              const rD = await hrParsePDF(abD);
+              const nb = rD && rD.ca ? Object.keys(rD.ca).length : 0;
+              diagTxt = ` [diag: fichier="${MGR_VENTES_FILE.name}", type détecté=${rD?rD.type:'?'}, resto=${rD?rD.resto:'?'}, date=${rD?rD.date:'?'}, tranches lues=${nb}]`;
+            } else {
+              diagTxt = ` [diag: aucun fichier ventes mémorisé — le PDF déposé n'a pas été reconnu comme "ventes ¼h"]`;
+            }
+          } catch(eD){ diagTxt = ` [diag: exception relecture = ${eD.message||eD}]`; }
+          erreurs.push('CA ¼h non extrait du PDF ventes.'+diagTxt+' La journée est enregistrée mais le CA ¼h restera vide.');
         }
       } catch(e){ console.warn('alimentation horaires depuis ventes', e); }
     }
