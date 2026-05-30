@@ -1235,6 +1235,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="hr-nt" onclick="hrShow('ca')">CA prévisionnel</div>
     <div class="hr-nt" onclick="hrShow('np')">Non productifs</div>
     <div class="hr-nt" onclick="hrShow('grille')">Grille CA</div>
+    <div class="hr-nt" onclick="hrReloadVentes(this)" title="Recharge les courbes ¼h déposées via Ma journée (toutes dates, tous restos)">🔧 Recharger ventes ¼h</div>
   </div>
 </div>
 
@@ -3452,7 +3453,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T14:48', label: 'v30/05-14h48', affichage: 'samedi 30 mai 2026 à 14:48' };
+const APP_VERSION = { datetime: '2026-05-30T15:08', label: 'v30/05-15h08', affichage: 'samedi 30 mai 2026 à 15:08' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -7746,9 +7747,12 @@ function sosNormaliser(rows){
 }
 
 function anRenderSOS(){
-  let rows = (AN_DATA.sosTout || AN_DATA.sos || []);
+  // Respecter la période choisie dans le filtre (un jour sélectionné = ce jour uniquement).
+  // AN_DATA.sos est déjà filtré par les dates from/to ; on garde sosTout en secours
+  // seulement si la période n'a rien chargé (ancienne donnée hors filtre).
+  let rows = (AN_DATA.sos && AN_DATA.sos.length) ? AN_DATA.sos : (AN_DATA.sos || []);
   rows = sosNormaliser(rows).filter(r=>r.total_sec!=null || SOS_TRANCHES.some(t=>r[t.id]!=null));
-  if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service','Importez un PDF SOS Drive dans « Ma journée » — il apparaîtra ici automatiquement.');
+  if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service sur la période','Choisissez une autre date/période, ou importez un PDF SOS Drive dans « Ma journée ».');
 
   const isMgr = SOS_PERF_MODE==='managers';
 
@@ -7782,12 +7786,29 @@ function anRenderSOS(){
   const plusRapide = tousPerf[0] || null;
   const plusLent   = tousPerf.length>1 ? tousPerf[tousPerf.length-1] : null;
   const totVoit = rows.reduce((a,b)=>a+(b.total_voitures||0),0);
+
+  // Si une seule journée est affichée (filtre "Un jour"), on met en avant le temps de service du jour.
+  const datesUniques = [...new Set(rows.map(r=>r.date).filter(Boolean))];
+  const jourUnique = datesUniques.length===1 ? datesUniques[0] : null;
+  let kpiJour = '';
+  if(jourUnique){
+    const r0 = rows.find(r=>r.date===jourUnique) || {};
+    const tJour = r0.total_sec!=null ? r0.total_sec : null;
+    const cmdJour = SOS_TRANCHES.reduce((a,t)=>a+(r0[t.nc]||0),0);
+    const voitJour = r0.total_voitures || null;
+    kpiJour = `<div class="kpi ${tJour==null?'neutral':tJour<=SOS_OBJ_ORANGE?'ok':tJour<=SOS_OBJ_ROUGE?'warn':'bad'}">
+      <div class="kpi-label">⏱ Temps de service du ${formatDate(jourUnique)}</div>
+      <div class="kpi-val">${tJour!=null?secToHMS(tJour):'—'}</div>
+      <div style="font-size:10px;color:var(--muted2)">${cmdJour?cmdJour+' commandes':''}${voitJour?' · '+voitJour+' voitures':''}</div></div>`;
+  }
+
   const kpis = `
   <div class="kpi-grid">
+    ${kpiJour}
     <div class="kpi ${plusRapide?'ok':'neutral'}"><div class="kpi-label">⚡ Le plus rapide</div><div class="kpi-val" style="font-size:18px">${plusRapide?plusRapide.nom:'—'}</div><div style="font-size:10px;color:var(--muted2)">${plusRapide?secToHMS(plusRapide.moy)+' de moyenne':'détail par tranche requis'}</div></div>
     <div class="kpi ${plusLent?'bad':'neutral'}"><div class="kpi-label">🐢 Le plus lent</div><div class="kpi-val" style="font-size:18px">${plusLent?plusLent.nom:'—'}</div><div style="font-size:10px;color:var(--muted2)">${plusLent?secToHMS(plusLent.moy)+' de moyenne':''}</div></div>
     <div class="kpi neutral"><div class="kpi-label">${isMgr?'Managers':'Leaders'} suivis</div><div class="kpi-val">${avgsAll.length}</div></div>
-    <div class="kpi neutral"><div class="kpi-label">Objectif / tranche</div><div class="kpi-val">${secToHMS(SOS_OBJ)}</div></div>
+    ${jourUnique?'':`<div class="kpi neutral"><div class="kpi-label">Objectif / tranche</div><div class="kpi-val">${secToHMS(SOS_OBJ)}</div></div>`}
   </div>`;
 
   // Toggle Managers / Leaders
@@ -10826,6 +10847,45 @@ window.renderNP=renderNP;
 window.renderGrille=typeof renderGrille==='function'?renderGrille:window.renderGrille;
 window.renderDays=typeof renderDays==='function'?renderDays:window.renderDays;
 window.calcHeures=calcHeures;
+
+// Recharge (await) les courbes ¼h déposées via "Ma journée" depuis ventes_horaire.tranches_ca,
+// pour TOUS les restos, met à jour HR_DATA du resto courant, et affiche un diagnostic.
+async function hrReloadVentes(el){
+  if(typeof SB==='undefined' || !SB){ alert('Base non connectée.'); return; }
+  if(el){ el.textContent='⏳ Rechargement…'; }
+  try {
+    const { data, error } = await SB.from('ventes_horaire').select('restaurant,date,tranches_ca,tranches');
+    if(error){ alert('Erreur lecture ventes_horaire : '+error.message); if(el) el.textContent='🔧 Recharger ventes ¼h'; return; }
+    if(typeof HR_ALL==='undefined') window.HR_ALL = HR_ALL = {};
+    let n=0, sansCa=0;
+    const parResto = {};
+    (data||[]).forEach(row=>{
+      let rt=row.restaurant; if(rt==='ALL'||rt==='Administration') rt='BK526';
+      const dt=(row.date||'').slice(0,10);
+      let ca = row.tranches_ca;
+      if(typeof ca==='string'){ try{ ca=JSON.parse(ca); }catch(e){ ca=null; } }
+      if(ca && typeof ca==='object' && Object.keys(ca).length){
+        if(!HR_ALL[rt]) HR_ALL[rt]={};
+        HR_ALL[rt][dt]=ca; n++;
+        parResto[rt]=(parResto[rt]||0)+1;
+      } else {
+        sansCa++;
+      }
+    });
+    window.HR_ALL = HR_ALL;
+    const r = (typeof HR_RESTO!=='undefined' && HR_RESTO) ? HR_RESTO : 'BK526';
+    if(HR_ALL[r]){ HR_DATA = HR_ALL[r]; window.HR_DATA = HR_DATA; }
+    try{ hrFillDaySelect && hrFillDaySelect(); hrFillWeekSelect && hrFillWeekSelect(); }catch(e){}
+    try{ if(typeof hrSetVue==='function'){ const v=document.getElementById('hrx-vue-sel'); hrSetVue(v?v.value:'semaine'); } }catch(e){}
+    const detail = Object.keys(parResto).map(k=>`${k}: ${parResto[k]} jour(s)`).join(' · ') || 'aucune courbe trouvée';
+    alert(`✓ Ventes ¼h rechargées.\n${n} courbe(s) charg\u00e9e(s) (${detail}).\n${sansCa} ligne(s) sans courbe ¼h exploitable.\n\nResto affich\u00e9 : ${r} → ${HR_ALL[r]?Object.keys(HR_ALL[r]).length:0} jour(s) disponibles.`);
+  } catch(e){
+    console.error('hrReloadVentes', e);
+    alert('Erreur : '+(e.message||e));
+  } finally {
+    if(el){ el.textContent='🔧 Recharger ventes ¼h'; }
+  }
+}
 
 function hrShow(id){
   document.querySelectorAll('#sec-horaires .hr-sec').forEach(s=>s.classList.remove('hr-on'));
