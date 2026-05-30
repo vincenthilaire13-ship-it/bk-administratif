@@ -3444,7 +3444,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T14:07', label: 'v30/05-14h07', affichage: 'samedi 30 mai 2026 à 14:07' };
+const APP_VERSION = { datetime: '2026-05-30T14:13', label: 'v30/05-14h13', affichage: 'samedi 30 mai 2026 à 14:13' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -7184,10 +7184,10 @@ const SOS_SEUIL_ROUGE  = 210;
 // Tranches du temps de service (mapping sos_drive → shift)
 const SOS_TRANCHES = [
   {id:'ts_matinee',   label:'Matinée',    sub:'7h→12h',  shift:'open'},
-  {id:'ts_dejeuner',  label:'Déjeuner',   sub:'12h→14h', shift:'open'},
+  {id:'ts_dejeuner',  label:'Déjeuner',   sub:'12h→14h', shift:'open',  rush:true},
   {id:'ts_apresmidi', label:'Après-midi', sub:'14h→19h', shift:'open'},
   {id:'ts_diner',     label:'Dîner',      sub:'19h→21h', shift:'close'},
-  {id:'ts_soir',      label:'Soir',       sub:'21h→23h', shift:'close'},
+  {id:'ts_soir',      label:'Soir',       sub:'21h→23h', shift:'close', rush:true},
   {id:'ts_nuit',      label:'Nuit',       sub:'23h→4h',  shift:'close'},
 ];
 const SOS_OBJ = 300, SOS_OBJ_ORANGE = 450, SOS_OBJ_ROUGE = 600; // 5min / 7:30 / 10min
@@ -7202,15 +7202,12 @@ function sosLabel(sec){ if(sec<=SOS_OBJ) return '✓ Objectif'; return '+'+secTo
 // Calcule les moyennes par responsable, en filtrant selon la présence directeur
 // avecDir: null = tous, true = tranches avec directeur présent, false = sans
 //
-// Logique métier :
-//  • Ouverture = jusqu'à 19h (matinée + déjeuner + après-midi),
-//    Fermeture = 19h → 4h du matin (dîner + soir + nuit). On analyse TOUT l'index.
-//  • Si le détail par tranche (ts_*) existe, on rattache chaque tranche au bon
-//    responsable (ouverture vs fermeture) selon son shift — frontière à 19h.
-//  • Sinon (la plupart des journées n'ont que total_sec), on rattache le temps
-//    de service TOTAL du jour AUX DEUX responsables (ouverture ET fermeture),
-//    car tous deux ont tenu le service ce jour-là. C'est ce qui faisait que les
-//    managers ne remontaient pas : sans ts_*, aucune ligne n'était produite.
+// IMPORTANT (demande métier) : on N'UTILISE JAMAIS le total moyen de la journée.
+// Chaque manager n'est évalué QUE sur SES tranches :
+//  • Ouverture (manager du jour)  : Matinée 7-12, Déjeuner 12-14, Après-midi 14-19
+//  • Fermeture (manager du soir)  : Dîner 19-21, Soir 21-23, Nuit 23-4
+// La note d'un manager = moyenne de SES tranches (uniquement celles renseignées).
+// Les journées sans détail par tranche (seulement total_sec) sont IGNORÉES ici.
 function sosComputeStats(rows, isMgr, avecDir){
   const stats = {};
   const add = (name, sec)=>{
@@ -7219,38 +7216,49 @@ function sosComputeStats(rows, isMgr, avecDir){
     stats[name].total += sec; stats[name].count++;
   };
   rows.forEach(d=>{
-    // Détail par tranche disponible ?
-    const aDetail = SOS_TRANCHES.some(t=>d[t.id]!=null);
-
-    if(aDetail){
-      SOS_TRANCHES.forEach(t=>{
-        const v = d[t.id];
-        if(v==null) return;
-        const dirPresent = t.shift==='open' ? !!d.directeur_midi : !!d.directeur_soir;
-        if(avecDir===true  && !dirPresent) return;
-        if(avecDir===false &&  dirPresent) return;
-        const name = (t.shift==='open')
-          ? (isMgr ? d.manager_ouverture : d.leader_ouverture)
-          : (isMgr ? d.manager_fermeture : d.leader_fermeture);
-        add(name, v);
-      });
-    } else if(d.total_sec!=null){
-      // Pas de détail : on rattache le total du jour aux DEUX responsables.
-      const nomOuv = isMgr ? d.manager_ouverture : d.leader_ouverture;
-      const nomFer = isMgr ? d.manager_fermeture : d.leader_fermeture;
-      // Filtre directeur : un responsable n'est compté "avec/sans dir" que sur sa propre plage.
-      const okOuv = avecDir==null ? true : (avecDir ? !!d.directeur_midi : !d.directeur_midi);
-      const okFer = avecDir==null ? true : (avecDir ? !!d.directeur_soir : !d.directeur_soir);
-      if(okOuv) add(nomOuv, d.total_sec);
-      // si ouverture et fermeture sont la même personne, ne pas compter 2x
-      if(okFer && nomFer && nomFer!==nomOuv) add(nomFer, d.total_sec);
-      else if(okFer && nomFer && nomFer===nomOuv && !okOuv) add(nomFer, d.total_sec);
-    }
+    SOS_TRANCHES.forEach(t=>{
+      const v = d[t.id];
+      if(v==null) return; // pas de détail pour cette tranche → on saute (jamais de fallback total)
+      const dirPresent = t.shift==='open' ? !!d.directeur_midi : !!d.directeur_soir;
+      if(avecDir===true  && !dirPresent) return;
+      if(avecDir===false &&  dirPresent) return;
+      const name = (t.shift==='open')
+        ? (isMgr ? d.manager_ouverture : d.leader_ouverture)
+        : (isMgr ? d.manager_fermeture : d.leader_fermeture);
+      add(name, v);
+    });
   });
   return Object.values(stats)
     .map(s=>({nom:s.nom, avg:s.count?Math.round(s.total/s.count):null, count:s.count}))
     .filter(s=>s.avg!=null)
     .sort((a,b)=>a.avg-b.avg);
+}
+
+// Détail par personne ET par tranche (pour le suivi des 3 chiffres séparés).
+// Retourne { open:[{nom, parTranche:{ts_matinee:{moy,n},...}, moy, n}], close:[...] }
+// avec mise en avant possible du rush (déjeuner pour l'ouverture, soir pour la fermeture).
+function sosComputeDetail(rows, isMgr){
+  const champ = (shift)=> shift==='open'
+    ? (isMgr ? 'manager_ouverture' : 'leader_ouverture')
+    : (isMgr ? 'manager_fermeture' : 'leader_fermeture');
+  const acc = { open:{}, close:{} };
+  rows.forEach(d=>{
+    SOS_TRANCHES.forEach(t=>{
+      const v = d[t.id]; if(v==null) return;
+      const nom = d[champ(t.shift)]; if(!nom) return;
+      const grp = acc[t.shift];
+      if(!grp[nom]) grp[nom] = {nom, parTranche:{}, totSum:0, totN:0};
+      if(!grp[nom].parTranche[t.id]) grp[nom].parTranche[t.id] = {sum:0, n:0};
+      grp[nom].parTranche[t.id].sum += v; grp[nom].parTranche[t.id].n++;
+      grp[nom].totSum += v; grp[nom].totN++;
+    });
+  });
+  const finalise = (grp)=> Object.values(grp).map(p=>{
+    const pt = {};
+    Object.keys(p.parTranche).forEach(id=>{ const c=p.parTranche[id]; pt[id]={moy:Math.round(c.sum/c.n), n:c.n}; });
+    return { nom:p.nom, parTranche:pt, moy: p.totN?Math.round(p.totSum/p.totN):null, n:p.totN };
+  }).filter(p=>p.moy!=null).sort((a,b)=>a.moy-b.moy);
+  return { open: finalise(acc.open), close: finalise(acc.close) };
 }
 
 function sosPerfList(avgs){
@@ -7276,6 +7284,54 @@ function sosPerfList(avgs){
 }
 
 function sosSetMode(mode){ SOS_PERF_MODE = mode; anRender(); }
+
+// Rendu d'un classement par shift (ouverture OU fermeture), avec :
+//  • le détail des 3 tranches de chaque personne (la tranche "rush" mise en avant)
+//  • la note = moyenne des tranches de la personne (jamais le total journée)
+//  • badges ⚡ le plus rapide / 🐢 le plus lent
+// list = sortie de sosComputeDetail()[shift] (déjà triée du + rapide au + lent)
+function sosShiftRanking(list, shift, isMgr){
+  const tranches = SOS_TRANCHES.filter(t=>t.shift===shift);
+  const rushT = tranches.find(t=>t.rush);
+  const titreShift = shift==='open'
+    ? `🔑 ${isMgr?'Managers':'Leaders'} d'ouverture — service midi (jusqu'à 19h)`
+    : `🔒 ${isMgr?'Managers':'Leaders'} de fermeture — service soir (19h→4h)`;
+  const rushNote = rushT ? `Tranche clé = <strong>${rushT.label} ${rushT.sub}</strong> (rush ${shift==='open'?'midi':'soir'}).` : '';
+
+  if(!list.length){
+    return `<div class="table-card" style="margin-bottom:16px"><div class="table-header"><span class="table-title">${titreShift}</span></div>
+      <div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune donnée détaillée par tranche pour ce service. Le suivi par manager nécessite l'import du PDF SOS détaillé (par tranche horaire) dans « Ma journée ».</div></div>`;
+  }
+
+  // En-têtes : une colonne par tranche du shift + moyenne
+  const th = tranches.map(t=>`<th class="num">${t.label}${t.rush?' ⭐':''}<div style="font-weight:400;color:var(--muted);font-size:9px">${t.sub}</div></th>`).join('');
+  const rapideNom = list[0]?.nom;            // 1er = plus rapide (liste triée asc)
+  const lentNom   = list[list.length-1]?.nom; // dernier = plus lent
+
+  const trRows = list.map((p,i)=>{
+    const cells = tranches.map(t=>{
+      const c = p.parTranche[t.id];
+      if(!c) return '<td class="num" style="color:var(--muted)">—</td>';
+      const bg = t.rush ? `background:${sosBg(c.moy)};` : '';
+      return `<td class="num" style="font-weight:${t.rush?'700':'500'};color:${sosColor(c.moy)};${bg}border-radius:5px">${secToHMS(c.moy)}<div style="font-size:9px;color:var(--muted);font-weight:400">${c.n}j</div></td>`;
+    }).join('');
+    let badge = '';
+    if(list.length>1 && p.nom===rapideNom) badge = ' <span style="font-size:10px;background:rgba(62,207,142,.16);color:var(--green);padding:1px 6px;border-radius:4px;font-weight:600">⚡ + rapide</span>';
+    else if(list.length>1 && p.nom===lentNom) badge = ' <span style="font-size:10px;background:rgba(248,113,113,.16);color:var(--red);padding:1px 6px;border-radius:4px;font-weight:600">🐢 + lent</span>';
+    return `<tr>
+      <td style="color:var(--muted);font-size:12px">${i+1}</td>
+      <td style="font-weight:600;white-space:nowrap">${p.nom}${badge}</td>
+      ${cells}
+      <td class="num" style="font-weight:700;color:${sosColor(p.moy)}">${secToHMS(p.moy)}<div style="font-size:9px;color:var(--muted);font-weight:400">moy.</div></td>
+    </tr>`;
+  }).join('');
+
+  return `<div class="table-card" style="margin-bottom:16px">
+    <div class="table-header"><span class="table-title">${titreShift}</span><span style="font-size:10px;color:var(--muted)">${list.length} ${isMgr?'manager':'leader'}${list.length>1?'s':''} · du + rapide au + lent</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Chaque ${isMgr?'manager':'leader'} est noté <strong>uniquement sur ses propres tranches</strong> (jamais sur le total de la journée). ${rushNote} La colonne « moy. » est la moyenne de ses tranches.</div>
+    <div class="table-wrap"><table><thead><tr><th class="num">#</th><th>${isMgr?'Manager':'Leader'}</th>${th}<th class="num">Moy.</th></tr></thead><tbody>${trRows}</tbody></table></div>
+  </div>`;
+}
 
 // Rapport de présence des directeurs — fidèle au modèle "Rapidité de Service"
 // 3 cartes colorées par resto/directeur + comparatif + historique
@@ -7373,16 +7429,19 @@ function anRenderSOS(){
   const avgsAvec = sosComputeStats(rows, isMgr, true);
   const avgsSans = sosComputeStats(rows, isMgr, false);
 
-  // KPI généraux
-  const joursAvecTotal = rows.filter(r=>r.total_sec!=null);
-  const moyJour = joursAvecTotal.length ? Math.round(joursAvecTotal.reduce((a,b)=>a+b.total_sec,0)/joursAvecTotal.length) : null;
+  // Détail par tranche et par personne (jamais le total journée)
+  const detail = sosComputeDetail(rows, isMgr);
+  // Tous shifts confondus pour repérer le plus rapide / le plus lent global
+  const tousPerf = [...detail.open, ...detail.close].sort((a,b)=>a.moy-b.moy);
+  const plusRapide = tousPerf[0] || null;
+  const plusLent   = tousPerf.length>1 ? tousPerf[tousPerf.length-1] : null;
   const totVoit = rows.reduce((a,b)=>a+(b.total_voitures||0),0);
   const kpis = `
   <div class="kpi-grid">
-    <div class="kpi ${moyJour==null?'neutral':moyJour<=SOS_OBJ_ORANGE?'ok':moyJour<=SOS_OBJ_ROUGE?'warn':'bad'}"><div class="kpi-label">Temps moyen / jour</div><div class="kpi-val">${moyJour==null?'—':secToHMS(moyJour)}</div><div style="font-size:10px;color:var(--muted2)">${joursAvecTotal.length} jours</div></div>
-    <div class="kpi neutral"><div class="kpi-label">Voitures (total)</div><div class="kpi-val">${totVoit.toLocaleString('fr-FR')}</div></div>
+    <div class="kpi ${plusRapide?'ok':'neutral'}"><div class="kpi-label">⚡ Le plus rapide</div><div class="kpi-val" style="font-size:18px">${plusRapide?plusRapide.nom:'—'}</div><div style="font-size:10px;color:var(--muted2)">${plusRapide?secToHMS(plusRapide.moy)+' de moyenne':'détail par tranche requis'}</div></div>
+    <div class="kpi ${plusLent?'bad':'neutral'}"><div class="kpi-label">🐢 Le plus lent</div><div class="kpi-val" style="font-size:18px">${plusLent?plusLent.nom:'—'}</div><div style="font-size:10px;color:var(--muted2)">${plusLent?secToHMS(plusLent.moy)+' de moyenne':''}</div></div>
     <div class="kpi neutral"><div class="kpi-label">${isMgr?'Managers':'Leaders'} suivis</div><div class="kpi-val">${avgsAll.length}</div></div>
-    <div class="kpi neutral"><div class="kpi-label">Objectif tranche</div><div class="kpi-val">${secToHMS(SOS_OBJ)}</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Objectif / tranche</div><div class="kpi-val">${secToHMS(SOS_OBJ)}</div></div>
   </div>`;
 
   // Toggle Managers / Leaders
@@ -7438,11 +7497,10 @@ function anRenderSOS(){
     <div class="table-wrap"><table><thead><tr><th>${isMgr?'Manager':'Leader'}</th><th class="num">❌ Sans dir.</th><th class="num">✅ Avec dir.</th><th class="num">Écart</th></tr></thead><tbody>${impactRows}</tbody></table></div>
   </div>` : '';
 
-  // Classement global
-  const classementGlobal = `<div class="table-card" style="margin-bottom:16px">
-    <div class="table-header"><span class="table-title">🏆 Classement global — ${isMgr?'managers':'leaders'} (meilleur → moins bon)</span></div>
-    <div style="padding:6px 14px 12px">${sosPerfList(avgsAll)}</div>
-  </div>`;
+  // Classements par service : ouverture (midi) et fermeture (soir), avec détail par tranche
+  const rankingMidi = sosShiftRanking(detail.open, 'open', isMgr);
+  const rankingSoir = sosShiftRanking(detail.close, 'close', isMgr);
+  const classementGlobal = rankingMidi + rankingSoir;
 
   // Moyenne par tranche
   const trAgg = {};
@@ -7464,7 +7522,7 @@ function anRenderSOS(){
   </div>`;
   const dirReport = dirPresets + sosRapportDirecteurs(dirRows);
 
-  return kpis + toggle + compare + impactCard + classementGlobal + trancheCard + dirReport;
+  return kpis + toggle + classementGlobal + compare + impactCard + trancheCard + dirReport;
 }
 
 // Période du rapport directeur (indépendante du reste)
