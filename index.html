@@ -3495,7 +3495,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T18:13', label: 'v30/05-18h13', affichage: 'samedi 30 mai 2026 à 18:13' };
+const APP_VERSION = { datetime: '2026-05-30T22:59', label: 'v30/05-22h59', affichage: 'samedi 30 mai 2026 à 22:59' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6035,21 +6035,28 @@ async function lireTousPDFs(files) {
         MGR_JOUR.fichiers.ventes = file.name;
         MGR_VENTES_TXT = txt;
         MGR_VENTES_AB = freshAB(); // copie fraîche pour alimenter les horaires plus tard
-        // Extraction du CA ¼h (sert UNIQUEMENT aux horaires/planning)
+        // Extraction du CA ¼h (sert UNIQUEMENT aux horaires/planning).
+        // ── On procède EXACTEMENT comme l'import « ventes ¼h » sous Horaire :
+        // on relit le fichier BRUT via file.arrayBuffer() et on passe ce buffer
+        // neuf à hrParsePDF. (Le buffer dérivé freshAB() pouvait échouer ; le buffer
+        // brut du fichier, lui, fonctionne — c'est le même chemin que hrDropFiles.)
         try {
           if(typeof hrParsePDF === 'function'){
-            const detail = detailVentes || await hrParsePDF(freshAB());
+            let detail = detailVentes;
+            if(!detail || !detail.ca || !Object.keys(detail.ca).length){
+              const abBrut = await file.arrayBuffer(); // buffer neuf, comme sous Horaire
+              detail = await hrParsePDF(abBrut);
+            }
             if(detail && detail.ca){
               MGR_JOUR.ventes.ca_15min = detail.ca; // {HH:MM: montant} par quart d'heure
               MGR_JOUR.ventes.resto_detecte = detail.resto;
-              // Évaluer la couverture pour le restaurant détecté (sinon resto utilisateur)
               const restoEval = detail.resto || CURRENT_USER?.resto || ACTIVE_RESTO;
               if(restoEval && restoEval!=='ALL' && typeof hrEvaluerCouverture==='function'){
                 MGR_JOUR.ventes.couverture = hrEvaluerCouverture(detail.ca, restoEval);
               }
             }
           }
-        } catch(e){ console.warn('analyse couverture PDF ventes', e); }
+        } catch(e){ console.warn('extraction CA ¼h PDF ventes', e); }
         summaries.push({key:'ventes', nom:file.name, label:'Ventes horaire ¼h', ok:true, date:MGR_JOUR.ventes?.date, info:`${MGR_JOUR.ventes.tickets||'?'} tickets`});
       } else if(typeFinal === 'sos'){
         MGR_JOUR.sos = parserSOS(txt);
