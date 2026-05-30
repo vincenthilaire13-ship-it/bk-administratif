@@ -3453,7 +3453,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T17:06', label: 'v30/05-17h06', affichage: 'samedi 30 mai 2026 à 17:06' };
+const APP_VERSION = { datetime: '2026-05-30T17:08', label: 'v30/05-17h08', affichage: 'samedi 30 mai 2026 à 17:08' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6629,8 +6629,16 @@ async function enregistrerJourneeMgr() {
             const { error: eUp } = await SB.from('ventes_horaire').upsert({restaurant:rResto, date:rDate, tranches_ca: ca15},{onConflict:'restaurant,date'});
             if(eUp){ console.error('[upsert tranches_ca]', eUp); erreurs.push('Tranches ¼h (horaires) : '+(eUp.message||eUp)); }
           } catch(eU){ console.error('[upsert tranches_ca exception]', eU); erreurs.push('Tranches ¼h (horaires) : '+(eU.message||eU)); }
-          // 3) Rafraîchir les sélecteurs Horaire si la fonction existe
+          // 3) Rafraîchir TOUT ce qui dépend de HR_DATA pour que le CA ¼h
+          //    apparaisse immédiatement partout : sélecteurs + pastilles ✓/✗ du
+          //    planning Horaire (renderDays), timeline (renderAll), sélecteur de
+          //    consultation, et CA prévisionnel du jour affiché. Sinon on continuait
+          //    à voir « aucun PDF » jusqu'à un rechargement de page.
           try { hrFillDaySelect && hrFillDaySelect(); hrFillWeekSelect && hrFillWeekSelect(); } catch(e){}
+          try { hrFillConsultSelect && hrFillConsultSelect(); } catch(e){}
+          try { renderDays && renderDays(); } catch(e){}
+          try { renderAll && renderAll(); } catch(e){}
+          try { const vs=document.getElementById('hrx-ca-vue'); if((!vs||vs.value==='jour')){ const ds=document.getElementById('hrx-ca-day-sel'); if(ds&&ds.value&&/^\d{4}-\d{2}-\d{2}$/.test(ds.value)&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true); } } catch(e){}
         } else {
           console.warn('[horaires] aucun CA ¼h à ranger pour', rResto, rDate);
         }
