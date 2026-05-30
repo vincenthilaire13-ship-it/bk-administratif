@@ -3455,7 +3455,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T17:35', label: 'v30/05-17h35', affichage: 'samedi 30 mai 2026 à 17:35' };
+const APP_VERSION = { datetime: '2026-05-30T17:45', label: 'v30/05-17h45', affichage: 'samedi 30 mai 2026 à 17:45' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6067,6 +6067,15 @@ async function lireTousPDFs(files) {
     bloque = true;
     const c = MGR_JOUR.ventes.couverture;
     alerte = `🚫 <strong>PDF des ventes ¼h incomplet.</strong><br>${c.raison}<br><span style="font-size:10px;color:var(--muted2)">Re-générez le PDF en fin de journée fiscale, puis redéposez-le.</span>`;
+  } else if(MGR_JOUR.ventes && MGR_JOUR.ventes.resto_detecte && MGR_JOUR.ventes.resto_detecte!=='ALL'
+            && typeof restoReel==='function' && MGR_JOUR.ventes.resto_detecte !== restoReel()){
+    // SÉCURITÉ ANTI-MÉLANGE : le PDF appartient à un AUTRE restaurant que celui
+    // sur lequel on dépose. On bloque pour ne jamais ranger un CA ¼h dans le
+    // mauvais resto (Horaire / prévisionnel / consultation).
+    bloque = true;
+    const nomDet = (typeof RESTAURANTS!=='undefined' && RESTAURANTS[MGR_JOUR.ventes.resto_detecte]?.nom) || MGR_JOUR.ventes.resto_detecte;
+    const nomCur = (typeof RESTAURANTS!=='undefined' && RESTAURANTS[restoReel()]?.nom) || restoReel();
+    alerte = `🚫 <strong>Mauvais restaurant !</strong><br>Le PDF des ventes ¼h est celui de <strong>${nomDet}</strong> (${MGR_JOUR.ventes.resto_detecte}), mais vous êtes connecté sur <strong>${nomCur}</strong> (${restoReel()}).<br><span style="font-size:10px;color:var(--muted2)">Connectez-vous au bon restaurant pour déposer ce PDF, ou vérifiez le fichier.</span>`;
   }
 
   // Aucun PDF reconnu du tout
@@ -6611,11 +6620,15 @@ async function enregistrerJourneeMgr() {
       // l'ArrayBuffer (souvent détaché par pdf.js). Repli sur le buffer sinon.
       try {
         let ca15 = MGR_JOUR.ventes.ca_15min || null;
-        let rDate = MGR_JOUR.ventes.resto_detecte ? (MGR_JOUR.ventes.date||date) : (MGR_JOUR.ventes.date||date);
-        let rResto = (MGR_JOUR.ventes.resto_detecte && MGR_JOUR.ventes.resto_detecte!=='ALL')
-                     ? MGR_JOUR.ventes.resto_detecte : resto;
+        // ANTI-MÉLANGE : le restaurant de rangement est TOUJOURS celui sur lequel on
+        // dépose (resto courant). La détection PDF sert seulement de garde-fou
+        // (vérifiée en amont au moment de la lecture : on bloque si elle diffère).
+        // On ne range donc JAMAIS sous un resto deviné qui contredirait le dépôt.
+        let rDate  = MGR_JOUR.ventes.date || date;
+        let rResto = resto;
 
-        // Repli : si pas de ca_15min en mémoire, on retente via le buffer
+        // Repli : si pas de ca_15min en mémoire, on retente via le buffer (la DATE
+        // peut être corrigée par le PDF, mais PAS le resto qui reste celui du dépôt)
         if((!ca15 || !Object.keys(ca15).length) && MGR_VENTES_AB && typeof hrParsePDF==='function'){
           let bufPourHr=null;
           try { bufPourHr = MGR_VENTES_AB.slice(0); } catch(eDetach){ console.warn('[horaires] buffer détaché', eDetach); }
@@ -6624,7 +6637,7 @@ async function enregistrerJourneeMgr() {
             if(res && res.ca && Object.keys(res.ca).length){
               ca15 = res.ca;
               rDate = res.date || rDate;
-              if(res.resto && res.resto!=='ALL') rResto = res.resto;
+              // rResto reste = resto de dépôt (on ne le réécrit pas)
             }
           }
         }
@@ -11034,9 +11047,14 @@ window.__hrInit=function(){
       SB.from('ventes_horaire').select('restaurant,date,tranches_ca').then(({data,error})=>{
         if(error||!data) return;
         let n=0;
+        const RESTOS_VALIDES = (typeof RESTAURANTS!=='undefined') ? Object.keys(RESTAURANTS) : ['BK500','BK509','BK526'];
         data.forEach(row=>{
           if(row.tranches_ca && typeof row.tranches_ca==='object'){
-            let rt=row.restaurant; if(rt==='ALL'||rt==='Administration') rt='BK526';
+            const rt=row.restaurant;
+            // ISOLATION STRICTE : on ne range que sous un vrai restaurant identifié.
+            // Les anciennes lignes ambiguës ('ALL'/'Administration') sont ignorées
+            // pour ne JAMAIS polluer un resto avec le CA d'un autre.
+            if(!rt || RESTOS_VALIDES.indexOf(rt)<0) return;
             const dt=(row.date||'').slice(0,10);
             if(!HR_ALL[rt]) HR_ALL[rt]={};
             HR_ALL[rt][dt]=row.tranches_ca; n++;
@@ -11266,19 +11284,18 @@ async function hrDiagJour(){
 }
 window.hrDiagJour = hrDiagJour;
 
-// Récupère le CA ¼h d'un jour : d'abord le resto courant (HR_DATA), sinon on
-// cherche dans TOUS les restos (HR_ALL). Une journée déposée par un autre poste
-// pour un autre resto doit rester consultable. Renvoie {ca, resto} ou null.
+// Récupère le CA ¼h d'un jour POUR LE RESTAURANT ACTUELLEMENT SÉLECTIONNÉ
+// UNIQUEMENT. Pas de fallback vers un autre resto : chaque restaurant est isolé
+// (Saint Clément/BK526, Saint Jean/BK509, Arènes/BK500 ne se mélangent jamais).
+// Renvoie {ca, resto} ou null.
 function hrCaJourTousRestos(iso){
-  if(typeof HR_DATA!=='undefined' && HR_DATA && HR_DATA[iso] && Object.keys(HR_DATA[iso]).length){
-    return { ca: HR_DATA[iso], resto: (typeof HR_RESTO!=='undefined'?HR_RESTO:null) };
+  const r = (typeof HR_RESTO!=='undefined' && HR_RESTO) ? HR_RESTO : null;
+  // Source = la vue active HR_DATA ; à défaut HR_ALL[resto courant]. Jamais un autre resto.
+  let ca = (typeof HR_DATA!=='undefined' && HR_DATA && HR_DATA[iso]) ? HR_DATA[iso] : null;
+  if((!ca || !Object.keys(ca).length) && r && typeof HR_ALL!=='undefined' && HR_ALL[r]){
+    ca = HR_ALL[r][iso] || null;
   }
-  if(typeof HR_ALL!=='undefined' && HR_ALL){
-    for(const r of Object.keys(HR_ALL)){
-      const j = HR_ALL[r] && HR_ALL[r][iso];
-      if(j && Object.keys(j).length) return { ca: j, resto: r };
-    }
-  }
+  if(ca && Object.keys(ca).length) return { ca, resto: r };
   return null;
 }
 window.hrCaJourTousRestos = hrCaJourTousRestos;
@@ -11329,10 +11346,12 @@ function hrFillConsultSelect(){
 
   // Sélection conservée si possible
   const ancien = sel.value;
-  // Jours disponibles = ceux du resto courant + ceux des autres restos (HR_ALL)
+  // Jours disponibles = UNIQUEMENT ceux du restaurant actuellement sélectionné
+  // (chaque resto est isolé ; on ne mélange pas les jours d'autres restos).
+  const rCur = (typeof HR_RESTO!=='undefined' && HR_RESTO) ? HR_RESTO : null;
   const setDates = new Set(Object.keys(HR_DATA||{}));
-  if(typeof HR_ALL!=='undefined' && HR_ALL){
-    Object.keys(HR_ALL).forEach(r=>{ Object.keys(HR_ALL[r]||{}).forEach(d=>setDates.add(d)); });
+  if(rCur && typeof HR_ALL!=='undefined' && HR_ALL[rCur]){
+    Object.keys(HR_ALL[rCur]).forEach(d=>setDates.add(d));
   }
   const datesAvecCA = [...setDates];
   let defaut = '';
