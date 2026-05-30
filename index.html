@@ -3439,7 +3439,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-27T21:43', label: 'v27/05-21h43', affichage: 'mercredi 27 mai 2026 à 21:43' };
+const APP_VERSION = { datetime: '2026-05-30T13:55', label: 'v30/05-13h55', affichage: 'samedi 30 mai 2026 à 13:55' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -7189,22 +7189,50 @@ function sosLabel(sec){ if(sec<=SOS_OBJ) return '✓ Objectif'; return '+'+secTo
 
 // Calcule les moyennes par responsable, en filtrant selon la présence directeur
 // avecDir: null = tous, true = tranches avec directeur présent, false = sans
+//
+// Logique métier (corrigée) :
+//  • Ouverture = 8h→17h, Fermeture = 17h→2h. On analyse TOUT l'index.
+//  • Si le détail par tranche (ts_*) existe, on rattache chaque tranche au bon
+//    responsable (ouverture vs fermeture) selon son shift.
+//  • Sinon (la plupart des journées n'ont que total_sec), on rattache le temps
+//    de service TOTAL du jour AUX DEUX responsables (ouverture ET fermeture),
+//    car tous deux ont tenu le service ce jour-là. C'est ce qui faisait que les
+//    managers ne remontaient pas : sans ts_*, aucune ligne n'était produite.
 function sosComputeStats(rows, isMgr, avecDir){
   const stats = {};
+  const add = (name, sec)=>{
+    if(!name || sec==null) return;
+    if(!stats[name]) stats[name] = {nom:name, total:0, count:0};
+    stats[name].total += sec; stats[name].count++;
+  };
   rows.forEach(d=>{
-    SOS_TRANCHES.forEach(t=>{
-      const v = d[t.id];
-      if(v==null) return;
-      const dirPresent = t.shift==='open' ? !!d.directeur_midi : !!d.directeur_soir;
-      if(avecDir===true  && !dirPresent) return;
-      if(avecDir===false &&  dirPresent) return;
-      let name;
-      if(t.shift==='open') name = isMgr ? d.manager_ouverture : d.leader_ouverture;
-      else                 name = isMgr ? d.manager_fermeture : d.leader_fermeture;
-      if(!name) return;
-      if(!stats[name]) stats[name] = {nom:name, total:0, count:0};
-      stats[name].total += v; stats[name].count++;
-    });
+    // Détail par tranche disponible ?
+    const aDetail = SOS_TRANCHES.some(t=>d[t.id]!=null);
+
+    if(aDetail){
+      SOS_TRANCHES.forEach(t=>{
+        const v = d[t.id];
+        if(v==null) return;
+        const dirPresent = t.shift==='open' ? !!d.directeur_midi : !!d.directeur_soir;
+        if(avecDir===true  && !dirPresent) return;
+        if(avecDir===false &&  dirPresent) return;
+        const name = (t.shift==='open')
+          ? (isMgr ? d.manager_ouverture : d.leader_ouverture)
+          : (isMgr ? d.manager_fermeture : d.leader_fermeture);
+        add(name, v);
+      });
+    } else if(d.total_sec!=null){
+      // Pas de détail : on rattache le total du jour aux DEUX responsables.
+      const nomOuv = isMgr ? d.manager_ouverture : d.leader_ouverture;
+      const nomFer = isMgr ? d.manager_fermeture : d.leader_fermeture;
+      // Filtre directeur : un responsable n'est compté "avec/sans dir" que sur sa propre plage.
+      const okOuv = avecDir==null ? true : (avecDir ? !!d.directeur_midi : !d.directeur_midi);
+      const okFer = avecDir==null ? true : (avecDir ? !!d.directeur_soir : !d.directeur_soir);
+      if(okOuv) add(nomOuv, d.total_sec);
+      // si ouverture et fermeture sont la même personne, ne pas compter 2x
+      if(okFer && nomFer && nomFer!==nomOuv) add(nomFer, d.total_sec);
+      else if(okFer && nomFer && nomFer===nomOuv && !okOuv) add(nomFer, d.total_sec);
+    }
   });
   return Object.values(stats)
     .map(s=>({nom:s.nom, avg:s.count?Math.round(s.total/s.count):null, count:s.count}))
@@ -7719,9 +7747,18 @@ function anRenderCorrections(){
   const avgPct = pctVals.length ? pctVals.reduce((a,b)=>a+b.corrections_pct,0)/pctVals.length : 0;
   const seuil = (typeof SEUILS!=='undefined' && SEUILS.corrections_max)||4;
 
-  // Classement managers (sur % corrections moyen)
+  // Classement managers (sur % corrections moyen).
+  // Une journée a un manager d'ouverture ET un manager de fermeture : on rattache
+  // la correction du jour aux DEUX (sans doublon s'ils sont identiques).
   const byMgr={};
-  rows.forEach(r=>{ const m=r.manager_ouverture; if(!m)return; if(!byMgr[m])byMgr[m]={nom:m,pctSum:0,pctN:0,montant:0,nb:0,jours:0}; if(r.corrections_pct){byMgr[m].pctSum+=r.corrections_pct;byMgr[m].pctN++;} byMgr[m].montant+=r.corrections_montant||0; byMgr[m].nb+=r.corrections_nb||0; byMgr[m].jours++; });
+  rows.forEach(r=>{
+    const noms=[...new Set([r.manager_ouverture, r.manager_fermeture].filter(Boolean))];
+    noms.forEach(m=>{
+      if(!byMgr[m])byMgr[m]={nom:m,pctSum:0,pctN:0,montant:0,nb:0,jours:0};
+      if(r.corrections_pct){byMgr[m].pctSum+=r.corrections_pct;byMgr[m].pctN++;}
+      byMgr[m].montant+=r.corrections_montant||0; byMgr[m].nb+=r.corrections_nb||0; byMgr[m].jours++;
+    });
+  });
   const classement=Object.values(byMgr).map(m=>({nom:m.nom, pct:m.pctN?m.pctSum/m.pctN:null, montant:m.montant, nb:m.nb, jours:m.jours})).sort((a,b)=>(b.pct||0)-(a.pct||0));
 
   const kpis = `
@@ -7743,14 +7780,14 @@ function anRenderCorrections(){
       {label:'Montant', num:true, render:l=>fmt(l.montant)+' €'},
       {label:'Nb', num:true, key:'nb'},
       {label:'Jours', num:true, key:'jours'},
-    ], classement) : `<div class="table-card"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun manager renseigné sur les journées de la période (les corrections sont rattachées au manager d'ouverture saisi lors du dépôt des PDF).</div></div>`;
+    ], classement) : `<div class="table-card"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun manager renseigné sur les journées de la période (les corrections sont rattachées aux managers d'ouverture ET de fermeture saisis dans « Ma journée »).</div></div>`;
 
   const detail = rows.slice().reverse().map(d=>`
     <tr><td style="color:var(--accent)">${formatDate(d.date)} ${jourSemaine(new Date(d.date))}</td>
       <td class="num">${d.corrections_nb||'—'}</td>
       <td class="num" style="font-weight:600">${d.corrections_montant?fmt(d.corrections_montant)+' €':'—'}</td>
       <td class="num">${d.corrections_pct!=null?(()=>{const f=anFeu(d.corrections_pct,seuil,seuil*1.5,'bas');return `<span style="color:${f.col}">${f.dot} ${d.corrections_pct.toFixed(2)}%</span>`;})():'—'}</td>
-      <td style="color:var(--muted2)">${d.manager_ouverture||'—'}</td></tr>`).join('');
+      <td style="color:var(--muted2)">${[d.manager_ouverture?'🔑 '+d.manager_ouverture:'', d.manager_fermeture?'🔒 '+d.manager_fermeture:''].filter(Boolean).join(' · ')||'—'}</td></tr>`).join('');
 
   return kpis + clt + `<div class="table-card" style="margin-top:16px"><div class="table-header"><span class="table-title">Détail par jour</span></div>
     <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb</th><th class="num">Montant</th><th class="num">% CA</th><th>Manager</th></tr></thead><tbody>${detail}</tbody></table></div></div>`;
@@ -7763,9 +7800,16 @@ function anRenderTables(){
   const totNb = rows.reduce((a,b)=>a+(b.commandes_ouvertes_nb||0),0);
   const totMontant = rows.reduce((a,b)=>a+(b.commandes_ouvertes_montant||0),0);
 
-  // Classement managers (manager de fermeture en priorité, sinon ouverture)
+  // Classement managers — une commande ouverte engage l'ouverture ET la fermeture.
+  // On rattache donc à chacun des deux managers du jour (sans doublon si identiques).
   const byMgr={};
-  rows.forEach(r=>{ const m=r.manager_fermeture||r.manager_ouverture; if(!m)return; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0,jours:0}; byMgr[m].nb+=r.commandes_ouvertes_nb||0; byMgr[m].montant+=r.commandes_ouvertes_montant||0; byMgr[m].jours++; });
+  rows.forEach(r=>{
+    const noms=[...new Set([r.manager_ouverture, r.manager_fermeture].filter(Boolean))];
+    noms.forEach(m=>{
+      if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0,jours:0};
+      byMgr[m].nb+=r.commandes_ouvertes_nb||0; byMgr[m].montant+=r.commandes_ouvertes_montant||0; byMgr[m].jours++;
+    });
+  });
   const classement=Object.values(byMgr).map(m=>({...m, parJour:m.nb/(m.jours||1)})).sort((a,b)=>b.parJour-a.parJour);
 
   const kpis = `
@@ -7793,7 +7837,7 @@ function anRenderTables(){
     <tr><td style="color:var(--accent)">${formatDate(d.date)} ${jourSemaine(new Date(d.date))}</td>
       <td class="num" style="font-weight:600">${d.commandes_ouvertes_nb||'—'}</td>
       <td class="num">${d.commandes_ouvertes_montant?fmt(d.commandes_ouvertes_montant)+' €':'—'}</td>
-      <td style="color:var(--muted2)">${d.manager_fermeture||d.manager_ouverture||'—'}</td></tr>`).join('');
+      <td style="color:var(--muted2)">${[d.manager_ouverture?'🔑 '+d.manager_ouverture:'', d.manager_fermeture?'🔒 '+d.manager_fermeture:''].filter(Boolean).join(' · ')||'—'}</td></tr>`).join('');
 
   return kpis + clt + `<div class="table-card" style="margin-top:16px"><div class="table-header"><span class="table-title">Détail par jour</span></div>
     <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb</th><th class="num">Montant</th><th>Manager</th></tr></thead><tbody>${detail}</tbody></table></div></div>`;
@@ -7822,10 +7866,11 @@ function anRenderParPersonne(type){
   const stat = {};
   const get = (nom)=>{ if(!stat[nom]) stat[nom]={nom, sosSum:0,sosN:0, jours:new Set(), corrPctSum:0,corrPctN:0, corrEur:0, tablesNb:0, tablesJ:0, annNb:0,annEur:0}; return stat[nom]; };
 
-  // Temps de service (sos_drive)
+  // Temps de service (sos_drive) — rattaché à l'ouverture ET la fermeture,
+  // sans doublon si c'est la même personne.
   sos.forEach(r=>{
     if(r.total_sec==null) return;
-    [r[champOuv], r[champFer]].filter(Boolean).forEach(nom=>{
+    [...new Set([r[champOuv], r[champFer]].filter(Boolean))].forEach(nom=>{
       const s=get(nom); s.sosSum+=r.total_sec; s.sosN++; s.jours.add(r.date);
     });
   });
@@ -7833,11 +7878,13 @@ function anRenderParPersonne(type){
   // Corrections & tables (journees) — seulement pour manager (le leader n'est pas dans journees)
   if(!estLeader){
     jours.forEach(d=>{
-      const nom=d.manager_ouverture; if(!nom) return;
-      const s=get(nom);
-      if(d.corrections_pct){ s.corrPctSum+=d.corrections_pct; s.corrPctN++; }
-      s.corrEur+=d.corrections_montant||0;
-      if(d.commandes_ouvertes_nb!=null){ s.tablesNb+=d.commandes_ouvertes_nb; s.tablesJ++; }
+      const noms=[...new Set([d.manager_ouverture, d.manager_fermeture].filter(Boolean))];
+      noms.forEach(nom=>{
+        const s=get(nom);
+        if(d.corrections_pct){ s.corrPctSum+=d.corrections_pct; s.corrPctN++; }
+        s.corrEur+=d.corrections_montant||0;
+        if(d.commandes_ouvertes_nb!=null){ s.tablesNb+=d.commandes_ouvertes_nb; s.tablesJ++; }
+      });
     });
     // Annulations par manager
     anns.forEach(a=>{ const nom=a.manager; if(!nom)return; const s=get(nom); s.annNb++; s.annEur+=Math.abs(a.montant||0); });
