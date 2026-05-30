@@ -3453,7 +3453,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T15:18', label: 'v30/05-15h18', affichage: 'samedi 30 mai 2026 à 15:18' };
+const APP_VERSION = { datetime: '2026-05-30T15:22', label: 'v30/05-15h22', affichage: 'samedi 30 mai 2026 à 15:22' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -5469,8 +5469,9 @@ function applyRoleUI(role) {
   const isDirecteur   = role==='directeur';
   const isSuperOrAdmin= ['superviseur','admin'].includes(role);
   const isFull        = ['directeur','superviseur','admin'].includes(role);
-  const isAdmin       = role==='admin';
-  const isDirOnly     = ['directeur','admin'].includes(role);
+  // Le superviseur a désormais TOUTES les fonctions de l'admin.
+  const isAdmin       = ['admin','superviseur'].includes(role);
+  const isDirOnly     = ['directeur','admin','superviseur'].includes(role);
   const isMulti       = ['superviseur','admin'].includes(role);
 
   // role-full-only : les 4 vues d'analyse + sections, visibles directeur/superviseur/admin
@@ -5480,7 +5481,7 @@ function applyRoleUI(role) {
   document.querySelectorAll('.role-admin-only').forEach(el=>el.style.display=isAdmin  ?'':'none');
   // role-superadmin-only : réservé superviseur+admin (PAS le directeur) — ex. Suivi managers, Ventes
   document.querySelectorAll('.role-superadmin-only').forEach(el=>el.style.display=isSuperOrAdmin?'':'none');
-  // role-mgrspace : l'espace "Ma journée" — visible manager, directeur ET admin
+  // role-mgrspace : l'espace "Ma journée" — visible manager, directeur, admin ET superviseur
   document.querySelectorAll('.role-mgrspace').forEach(el=>el.style.display=(isManager||isDirecteur||isAdmin)?'':'none');
   // role-not-mgr : éléments accessibles à tous SAUF le manager (ex. Contrôle des dépôts)
   if(isManager){
