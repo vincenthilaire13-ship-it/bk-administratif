@@ -1300,7 +1300,9 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
           <option value="">— chargement… —</option>
         </select>
       </div>
+      <button class="hr-btn" style="font-size:11px;padding:6px 12px;align-self:flex-end" onclick="hrDiagJour()">🔬 Diagnostic ce jour</button>
     </div>
+    <div id="hrx-consult-diag" style="margin-top:.6rem"></div>
     <div id="hrx-consult-content" style="margin-top:.8rem"></div>
   </div>
 </div>
@@ -3453,7 +3455,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T17:08', label: 'v30/05-17h08', affichage: 'samedi 30 mai 2026 à 17:08' };
+const APP_VERSION = { datetime: '2026-05-30T17:24', label: 'v30/05-17h24', affichage: 'samedi 30 mai 2026 à 17:24' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -5842,10 +5844,19 @@ function populateManagerSelect() {
   const resto = (CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') ? CURRENT_USER.resto : (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? ACTIVE_RESTO : null);
   const mgrs = resto ? codes.managers.filter(m=>!m.resto || m.resto===resto) : codes.managers;
   const ldrs = resto ? (codes.leaders||[]).filter(l=>!l.resto || l.resto===resto) : (codes.leaders||[]);
+  const dirs = resto ? (codes.directeurs||[]).filter(d=>!d.resto || d.resto===resto) : (codes.directeurs||[]);
   const mgrOpts = mgrs.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
   const ldrOpts = ldrs.map(l=>`<option value="${l.nom}">${l.nom}</option>`).join('');
-  // Manager ouverture/fermeture → liste managers ; Leader ouverture/fermeture → liste leaders
-  [['mgr-ouv',mgrOpts],['mgr-fer',mgrOpts],['mgr-leader-ouv',ldrOpts],['mgr-leader-fer',ldrOpts]].forEach(([id,opts])=>{
+  // Le directeur peut lui-même ouvrir ou fermer : on l'ajoute dans un groupe dédié
+  // sur les selects d'ouverture/fermeture managers.
+  const dirGroup = dirs.length
+    ? `<optgroup label="🎯 Directeur">${dirs.map(d=>`<option value="${d.nom}">${d.nom}</option>`).join('')}</optgroup>`
+    : '';
+  const mgrOptsFull = mgrs.length
+    ? `<optgroup label="👤 Managers">${mgrOpts}</optgroup>${dirGroup}`
+    : (mgrOpts + dirGroup);
+  // Manager ouverture/fermeture → managers + directeurs ; Leader ouverture/fermeture → leaders
+  [['mgr-ouv',mgrOptsFull],['mgr-fer',mgrOptsFull],['mgr-leader-ouv',ldrOpts],['mgr-leader-fer',ldrOpts]].forEach(([id,opts])=>{
     const el=document.getElementById(id);
     if(!el) return;
     el.innerHTML='<option value="">— Sélectionner —</option>'+opts;
@@ -6641,6 +6652,7 @@ async function enregistrerJourneeMgr() {
           try { const vs=document.getElementById('hrx-ca-vue'); if((!vs||vs.value==='jour')){ const ds=document.getElementById('hrx-ca-day-sel'); if(ds&&ds.value&&/^\d{4}-\d{2}-\d{2}$/.test(ds.value)&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true); } } catch(e){}
         } else {
           console.warn('[horaires] aucun CA ¼h à ranger pour', rResto, rDate);
+          erreurs.push('CA ¼h non extrait du PDF ventes : le détail au quart d\'heure n\'a pas pu être lu. La journée est enregistrée mais le CA ¼h (Horaire / prévisionnel) restera vide. Vérifiez que le PDF déposé est bien le « rapport des ventes au quart d\'heure ».');
         }
       } catch(e){ console.warn('alimentation horaires depuis ventes', e); }
     }
@@ -10265,9 +10277,27 @@ function calcHeures(dayIdx){
   return Math.round(totMin/60*10)/10;
 }
 
+// Sépare les heures d'un jour en productif (postes liés au CA) et improductif
+// (postes non productifs : ouverture, fermeture, prép, plonge, managers OUV/CLOSE…).
+// La distinction se fait via hrNpLabels() (libellés type 'np' de la grille du resto).
+function calcHeuresPI(dayIdx){
+  let prodMin=0, impMin=0;
+  const npSet = (typeof hrNpLabels==='function') ? hrNpLabels() : new Set();
+  (ROWS_BY_DAY[dayIdx]||[]).forEach(r=>r.bars.forEach(b=>{
+    const dur=(b.e||b.s+60)-b.s;
+    const lbl=((b.l||'')).toUpperCase();
+    if(npSet.has(lbl)) impMin+=dur; else prodMin+=dur;
+  }));
+  return { prod: Math.round(prodMin/60*10)/10, imp: Math.round(impMin/60*10)/10 };
+}
+
 function renderMetrics(){
   // Récap semaine
   const hSem = Math.round(DAY_LABELS.reduce((_,__,i)=>_+calcHeures(i),0)*10)/10;
+  // Décomposition productif / improductif sur la semaine
+  let hProd=0, hImp=0;
+  for(let i=0;i<7;i++){ const pi=calcHeuresPI(i); hProd+=pi.prod; hImp+=pi.imp; }
+  hProd=Math.round(hProd*10)/10; hImp=Math.round(hImp*10)/10;
   const semLbl = (typeof WEEK_LABEL!=='undefined' && WEEK_LABEL) ? WEEK_LABEL : (DAY_LABELS[0]+' → '+DAY_LABELS[6]);
   // CA affiché dans le planning (= ce qui sert de base aux traits)
   const caBase = DAY_TOTALS.reduce((a,b)=>a+b,0);
@@ -10321,7 +10351,7 @@ function renderMetrics(){
 
   document.getElementById('hrx-mrow').innerHTML=`
     <div class="hr-mc" style="border-color:var(--ac);flex:2"><div class="hr-mc-l" style="color:var(--ac);">💶 CA semaine HT · réf. ${an2025}</div><div class="hr-mc-v">${Math.round(ca2025||caBase).toLocaleString('fr')} €</div>${ligne2026}<div class="hr-mc-s" style="opacity:.6">semaine ${semLbl}</div></div>
-    <div class="hr-mc" style="border-color:#3ecf8e;flex:2"><div class="hr-mc-l" style="color:#3ecf8e;">⏱️ Heures semaine · prévues 2026</div><div class="hr-mc-v">${hSem} h</div><div class="hr-mc-s">Masse salariale : <b style="color:#fff">${Math.round(masse).toLocaleString('fr')} €</b> (à <input id="hrx-taux-input" type="number" min="1" step="0.5" value="${TAUX_HORAIRE}" onchange="hrSetTaux(this.value)" onfocus="this.select()" title="Taux horaire de ce restaurant — cliquer pour modifier" style="width:62px;background:var(--s2);border:1px solid var(--bd2);border-radius:5px;padding:2px 6px;font-size:11px;color:#3ecf8e;font-family:'DM Mono',monospace;text-align:center;font-weight:600;-moz-appearance:textfield;appearance:textfield"> €/h)</div><div class="hr-mc-s">Soit <b style="color:${pctMasse>30?'#f87171':(pctMasse>25?'#fbbf24':'#3ecf8e')}">${pctMasse.toFixed(1)} %</b> du CA</div></div>
+    <div class="hr-mc" style="border-color:#3ecf8e;flex:2"><div class="hr-mc-l" style="color:#3ecf8e;">⏱️ Heures semaine · prévues 2026</div><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px"><div class="hr-mc-v">${hSem} h</div><div style="text-align:right;font-family:'DM Mono',monospace;line-height:1.45;padding-top:4px"><div style="font-size:11px;color:#3ecf8e"><b style="color:#fff">${hProd} h</b> productif</div><div style="font-size:11px;color:#f5a623"><b style="color:#fff">${hImp} h</b> improductif</div></div></div><div class="hr-mc-s">Masse salariale : <b style="color:#fff">${Math.round(masse).toLocaleString('fr')} €</b> (à <input id="hrx-taux-input" type="number" min="1" step="0.5" value="${TAUX_HORAIRE}" onchange="hrSetTaux(this.value)" onfocus="this.select()" title="Taux horaire de ce restaurant — cliquer pour modifier" style="width:62px;background:var(--s2);border:1px solid var(--bd2);border-radius:5px;padding:2px 6px;font-size:11px;color:#3ecf8e;font-family:'DM Mono',monospace;text-align:center;font-weight:600;-moz-appearance:textfield;appearance:textfield"> €/h)</div><div class="hr-mc-s">Soit <b style="color:${pctMasse>30?'#f87171':(pctMasse>25?'#fbbf24':'#3ecf8e')}">${pctMasse.toFixed(1)} %</b> du CA</div></div>
     <div class="hr-mc" style="border-color:#60a5fa;flex:2"><div class="hr-mc-l" style="color:#60a5fa;">👤 Personnes · ${labelJourCur}</div><div class="hr-mc-v">${persJourCur}</div><div class="hr-mc-s">Pic simultané : <b style="color:#fff">${picJourCur} pers.</b></div><div class="hr-mc-s">Semaine : <b style="color:#fff">${persSem}</b> shifts</div></div>
   `;
 }
@@ -11176,6 +11206,83 @@ function hrFillDaySelect(){
   if(typeof hrFillConsultSelect==='function') try{ hrFillConsultSelect(); }catch(e){}
 }
 
+// Diagnostic : pour le jour sélectionné, interroge Supabase (tous restos) et
+// compare avec ce qu'on a en mémoire. Permet de savoir exactement pourquoi un
+// jour n'affiche pas son CA ¼h (ligne absente ? tranches_ca vide ? mauvais resto ?).
+async function hrDiagJour(){
+  const sel = document.getElementById('hrx-consult-day-sel');
+  const box = document.getElementById('hrx-consult-diag');
+  if(!box) return;
+  const iso = sel && sel.value;
+  if(!iso){ box.innerHTML = '<div style="font-size:11px;color:var(--mu)">Choisissez d\'abord un jour.</div>'; return; }
+  box.innerHTML = '<div style="font-size:11px;color:var(--mu)">🔬 Analyse en cours…</div>';
+  // 1) Mémoire locale (HR_ALL, tous restos)
+  const memLignes = [];
+  if(typeof HR_ALL!=='undefined' && HR_ALL){
+    Object.keys(HR_ALL).forEach(r=>{
+      const j = HR_ALL[r] && HR_ALL[r][iso];
+      if(j && Object.keys(j).length){
+        const tot = Object.values(j).reduce((a,b)=>a+(+b||0),0);
+        memLignes.push(`${(typeof RESTAURANTS!=='undefined'&&RESTAURANTS[r]?.nom)||r} : ${Object.keys(j).length} créneaux · ${Math.round(tot).toLocaleString('fr')} € HT`);
+      }
+    });
+  }
+  // 2) Supabase (source de vérité partagée)
+  let sbHtml = '';
+  try {
+    if(typeof SB!=='undefined' && SB){
+      const { data, error } = await SB.from('ventes_horaire')
+        .select('restaurant,date,tranches_ca,ht_total,tickets_total')
+        .gte('date', iso).lte('date', iso+'T23:59:59');
+      if(error){
+        sbHtml = `<div style="color:var(--red)">Supabase : erreur — ${error.message||error}</div>`;
+      } else if(!data || !data.length){
+        sbHtml = `<div style="color:var(--red)">Supabase : <strong>aucune ligne</strong> pour ce jour. Le dépôt « Ma journée » n\'a rien enregistré (ou pour un autre jour).</div>`;
+      } else {
+        sbHtml = data.map(row=>{
+          const nb = (row.tranches_ca && typeof row.tranches_ca==='object') ? Object.keys(row.tranches_ca).length : 0;
+          const nom = (typeof RESTAURANTS!=='undefined'&&RESTAURANTS[row.restaurant]?.nom)||row.restaurant;
+          if(nb>0){
+            const tot = Object.values(row.tranches_ca).reduce((a,b)=>a+(+b||0),0);
+            return `<div style="color:var(--green)">Supabase · ${nom} : ✓ <strong>${nb} créneaux ¼h</strong> · ${Math.round(tot).toLocaleString('fr')} € HT</div>`;
+          }
+          return `<div style="color:#e8a020">Supabase · ${nom} : ligne présente mais <strong>tranches_ca VIDE</strong> (HT total ${row.ht_total!=null?Math.round(row.ht_total).toLocaleString('fr')+' €':'?'}) — le PDF ventes ¼h n\'a pas été extrait au dépôt.</div>`;
+        }).join('');
+      }
+    } else {
+      sbHtml = '<div style="color:var(--mu)">Supabase non connecté sur cet appareil.</div>';
+    }
+  } catch(e){ sbHtml = `<div style="color:var(--red)">Supabase : exception — ${e.message||e}</div>`; }
+
+  const memHtml = memLignes.length
+    ? memLignes.map(l=>`<div style="color:var(--tx)">Mémoire : ${l}</div>`).join('')
+    : '<div style="color:var(--mu)">Mémoire : rien chargé pour ce jour (sera comblé par Supabase).</div>';
+
+  box.innerHTML = `<div style="background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:10px 14px;font-size:11px;line-height:1.7;font-family:'DM Mono',monospace">
+    <div style="font-weight:600;color:var(--tx);margin-bottom:4px">🔬 ${iso}</div>
+    ${sbHtml}
+    ${memHtml}
+  </div>`;
+}
+window.hrDiagJour = hrDiagJour;
+
+// Récupère le CA ¼h d'un jour : d'abord le resto courant (HR_DATA), sinon on
+// cherche dans TOUS les restos (HR_ALL). Une journée déposée par un autre poste
+// pour un autre resto doit rester consultable. Renvoie {ca, resto} ou null.
+function hrCaJourTousRestos(iso){
+  if(typeof HR_DATA!=='undefined' && HR_DATA && HR_DATA[iso] && Object.keys(HR_DATA[iso]).length){
+    return { ca: HR_DATA[iso], resto: (typeof HR_RESTO!=='undefined'?HR_RESTO:null) };
+  }
+  if(typeof HR_ALL!=='undefined' && HR_ALL){
+    for(const r of Object.keys(HR_ALL)){
+      const j = HR_ALL[r] && HR_ALL[r][iso];
+      if(j && Object.keys(j).length) return { ca: j, resto: r };
+    }
+  }
+  return null;
+}
+window.hrCaJourTousRestos = hrCaJourTousRestos;
+
 // ── CONSULTATION D'UN JOUR PRÉCIS (sélecteur séparé sous le prévisionnel) ──
 // Remplit la liste avec TOUS les jours de l'année + un statut visuel par jour.
 function hrFillConsultSelect(){
@@ -11203,7 +11310,8 @@ function hrFillConsultSelect(){
     ? hrAmplitudeReference((typeof HR_RESTO!=='undefined')?HR_RESTO:'BK526') : null;
 
   const statut = (iso) => {
-    const ca = HR_DATA[iso];
+    const found = hrCaJourTousRestos(iso);
+    const ca = found ? found.ca : null;
     if(!ca || !Object.keys(ca).length){
       return iso > aujourdHui ? '—' : '✗';
     }
@@ -11221,13 +11329,19 @@ function hrFillConsultSelect(){
 
   // Sélection conservée si possible
   const ancien = sel.value;
-  const datesAvecCA = Object.keys(HR_DATA);
+  // Jours disponibles = ceux du resto courant + ceux des autres restos (HR_ALL)
+  const setDates = new Set(Object.keys(HR_DATA||{}));
+  if(typeof HR_ALL!=='undefined' && HR_ALL){
+    Object.keys(HR_ALL).forEach(r=>{ Object.keys(HR_ALL[r]||{}).forEach(d=>setDates.add(d)); });
+  }
+  const datesAvecCA = [...setDates];
   let defaut = '';
   if(datesAvecCA.length){ defaut = [...datesAvecCA].sort().pop(); }
 
   sel.innerHTML = '<option value="">— Choisir un jour —</option>' + tous.map(iso=>{
     const st = statut(iso);
-    const ca = HR_DATA[iso];
+    const found = hrCaJourTousRestos(iso);
+    const ca = found ? found.ca : null;
     const tot = ca ? Math.round(Object.values(ca).reduce((a,b)=>a+b,0)) : null;
     const suffix = (st==='✓' || st==='⚠') && tot!=null ? ` — ${tot.toLocaleString('fr')} €` : (st==='✗' ? ' — aucun PDF' : (st==='—' ? ' — à venir' : ''));
     return `<option value="${iso}">${st}  ${fdate(iso)}${suffix}</option>`;
@@ -11252,7 +11366,9 @@ function hrShowConsultDay(iso){
   const el = document.getElementById('hrx-consult-content');
   if(!el) return;
   if(!iso){ el.innerHTML=''; return; }
-  const ca = HR_DATA[iso] || {};
+  const found = hrCaJourTousRestos(iso);
+  const ca = found ? found.ca : {};
+  const restoSrc = found ? found.resto : null;
   const heuresPresentes = Object.keys(ca).sort();
   const joursLong=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
   const moisL=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -11341,7 +11457,7 @@ function hrShowConsultDay(iso){
         <div>
           <div style="font-size:14px;font-weight:600;color:var(--tx)">${dateTxt}</div>
           <div style="font-size:10px;color:var(--mu);font-family:'DM Mono',monospace;margin-top:2px">
-            ${heuresPresentes[0]} → ${heuresPresentes[heuresPresentes.length-1]} · ${heuresPresentes.length} créneaux ¼h
+            ${heuresPresentes[0]} → ${heuresPresentes[heuresPresentes.length-1]} · ${heuresPresentes.length} créneaux ¼h${restoSrc&&typeof HR_RESTO!=='undefined'&&restoSrc!==HR_RESTO?(' · '+((typeof RESTAURANTS!=='undefined'&&RESTAURANTS[restoSrc]?.nom)||restoSrc)):''}
           </div>
         </div>
         <div style="text-align:right">
