@@ -3495,7 +3495,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T23:03', label: 'v30/05-23h03', affichage: 'samedi 30 mai 2026 à 23:03' };
+const APP_VERSION = { datetime: '2026-05-30T23:06', label: 'v30/05-23h06', affichage: 'samedi 30 mai 2026 à 23:06' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6679,22 +6679,26 @@ async function enregistrerJourneeMgr() {
           } catch(eRe){ console.warn('[horaires] relecture fichier ventes', eRe); }
         }
 
-        if(ca15 && Object.keys(ca15).length && typeof HR_ALL!=='undefined'){
+        if(ca15 && Object.keys(ca15).length){
+          // 0) Garantir que les structures mémoire existent même si la section
+          //    Horaire n'a jamais été ouverte dans cette session (sinon HR_ALL
+          //    pouvait être 'undefined' et on tombait à tort dans le message d'erreur
+          //    alors que les tranches étaient bien lues).
+          if(typeof window.HR_ALL === 'undefined' || !window.HR_ALL){ window.HR_ALL = {}; }
+          try { HR_ALL; } catch(_e){ /* HR_ALL non déclaré en portée : on s'appuie sur window.HR_ALL */ }
+          const HRALL = window.HR_ALL;
           // 1) Mémoire (affichage immédiat dans Horaire)
-          if(!HR_ALL[rResto]) HR_ALL[rResto] = {};
-          HR_ALL[rResto][rDate] = ca15;     // {HH:MM: montant} pour ce jour
-          window.HR_ALL = HR_ALL;
-          if(typeof HR_RESTO!=='undefined' && HR_RESTO===rResto){ HR_DATA = HR_ALL[rResto]; window.HR_DATA = HR_DATA; }
+          if(!HRALL[rResto]) HRALL[rResto] = {};
+          HRALL[rResto][rDate] = ca15;     // {HH:MM: montant} pour ce jour
+          window.HR_ALL = HRALL;
+          try { if(typeof HR_ALL!=='undefined'){ HR_ALL[rResto] = HRALL[rResto]; } } catch(_e){}
+          if(typeof HR_RESTO!=='undefined' && HR_RESTO===rResto){ try{ HR_DATA = HRALL[rResto]; window.HR_DATA = HR_DATA; }catch(_e){ window.HR_DATA = HRALL[rResto]; } }
           // 2) Persistance Supabase (colonne tranches_ca) → réutilisé par Horaire ET CA prévisionnel
           try {
             const { error: eUp } = await SB.from('ventes_horaire').upsert({restaurant:rResto, date:rDate, tranches_ca: ca15},{onConflict:'restaurant,date'});
             if(eUp){ console.error('[upsert tranches_ca]', eUp); erreurs.push('Tranches ¼h (horaires) : '+(eUp.message||eUp)); }
           } catch(eU){ console.error('[upsert tranches_ca exception]', eU); erreurs.push('Tranches ¼h (horaires) : '+(eU.message||eU)); }
-          // 3) Rafraîchir TOUT ce qui dépend de HR_DATA pour que le CA ¼h
-          //    apparaisse immédiatement partout : sélecteurs + pastilles ✓/✗ du
-          //    planning Horaire (renderDays), timeline (renderAll), sélecteur de
-          //    consultation, et CA prévisionnel du jour affiché. Sinon on continuait
-          //    à voir « aucun PDF » jusqu'à un rechargement de page.
+          // 3) Rafraîchir les affichages dépendant de HR_DATA (si la section existe)
           try { hrFillDaySelect && hrFillDaySelect(); hrFillWeekSelect && hrFillWeekSelect(); } catch(e){}
           try { hrFillConsultSelect && hrFillConsultSelect(); } catch(e){}
           try { renderDays && renderDays(); } catch(e){}
