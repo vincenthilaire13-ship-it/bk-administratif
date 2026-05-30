@@ -341,6 +341,11 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="login-logo">BK</div>
     <div class="login-sub" id="login-step-label">Choisissez votre restaurant</div>
 
+    <!-- Badge date de mise à jour (visible uniquement à l'étape choix restaurant) -->
+    <div id="login-maj" style="text-align:center;margin:-4px 0 14px;font-size:11px;color:var(--muted)">
+      🔄 Mise à jour : <span id="login-maj-date" style="color:var(--accent);font-weight:600"></span>
+    </div>
+
     <!-- ÉTAPE 1 : choix restaurant -->
     <div id="step-resto">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px">
@@ -3439,7 +3444,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T13:55', label: 'v30/05-13h55', affichage: 'samedi 30 mai 2026 à 13:55' };
+const APP_VERSION = { datetime: '2026-05-30T14:00', label: 'v30/05-14h00', affichage: 'samedi 30 mai 2026 à 14:00' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -5222,6 +5227,13 @@ function showLoginStep(step) {
   });
   const el = document.getElementById(step);
   if(el) el.style.display = 'block';
+  // Badge "Mise à jour" : visible uniquement à l'étape choix restaurant
+  const maj = document.getElementById('login-maj');
+  if(maj){
+    maj.style.display = (step==='step-resto') ? 'block' : 'none';
+    const d = document.getElementById('login-maj-date');
+    if(d && typeof APP_VERSION!=='undefined') d.textContent = APP_VERSION.affichage || APP_VERSION.label || '';
+  }
 }
 
 function selectResto(id, label) {
