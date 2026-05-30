@@ -3444,7 +3444,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T14:00', label: 'v30/05-14h00', affichage: 'samedi 30 mai 2026 à 14:00' };
+const APP_VERSION = { datetime: '2026-05-30T14:07', label: 'v30/05-14h07', affichage: 'samedi 30 mai 2026 à 14:07' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -7202,10 +7202,11 @@ function sosLabel(sec){ if(sec<=SOS_OBJ) return '✓ Objectif'; return '+'+secTo
 // Calcule les moyennes par responsable, en filtrant selon la présence directeur
 // avecDir: null = tous, true = tranches avec directeur présent, false = sans
 //
-// Logique métier (corrigée) :
-//  • Ouverture = 8h→17h, Fermeture = 17h→2h. On analyse TOUT l'index.
+// Logique métier :
+//  • Ouverture = jusqu'à 19h (matinée + déjeuner + après-midi),
+//    Fermeture = 19h → 4h du matin (dîner + soir + nuit). On analyse TOUT l'index.
 //  • Si le détail par tranche (ts_*) existe, on rattache chaque tranche au bon
-//    responsable (ouverture vs fermeture) selon son shift.
+//    responsable (ouverture vs fermeture) selon son shift — frontière à 19h.
 //  • Sinon (la plupart des journées n'ont que total_sec), on rattache le temps
 //    de service TOTAL du jour AUX DEUX responsables (ouverture ET fermeture),
 //    car tous deux ont tenu le service ce jour-là. C'est ce qui faisait que les
@@ -7402,6 +7403,41 @@ function anRenderSOS(){
     </div>
   </div>`;
 
+  // ── IMPACT DU DIRECTEUR PAR PERSONNE ──
+  // Pour chaque manager/leader : temps sans directeur vs avec directeur, et l'écart.
+  // Écart négatif (plus rapide avec le dir) = vert ; positif (plus lent) = rouge.
+  const mapSans = {}; avgsSans.forEach(x=>mapSans[x.nom]=x);
+  const mapAvec = {}; avgsAvec.forEach(x=>mapAvec[x.nom]=x);
+  const tousNoms = [...new Set([...avgsSans.map(x=>x.nom), ...avgsAvec.map(x=>x.nom)])];
+  const impactLignes = tousNoms.map(nom=>{
+    const s = mapSans[nom]?.avg ?? null;
+    const a = mapAvec[nom]?.avg ?? null;
+    const ecart = (s!=null && a!=null) ? (a - s) : null; // a-s : négatif = mieux avec dir
+    return {nom, sans:s, avec:a, ecart};
+  }).sort((x,y)=>{
+    // trier par écart : les plus améliorés par le directeur en haut
+    if(x.ecart==null) return 1; if(y.ecart==null) return -1; return x.ecart - y.ecart;
+  });
+  const impactRows = impactLignes.map(l=>{
+    const ec = l.ecart;
+    let ecCell;
+    if(ec==null) ecCell = '<span style="color:var(--muted)">—</span>';
+    else if(ec<0) ecCell = `<span style="color:var(--green);font-weight:600">▼ ${secToHMS(Math.abs(ec))} plus rapide</span>`;
+    else if(ec>0) ecCell = `<span style="color:var(--red);font-weight:600">▲ ${secToHMS(ec)} plus lent</span>`;
+    else ecCell = '<span style="color:var(--muted2)">= identique</span>';
+    return `<tr>
+      <td style="font-weight:500">${l.nom}</td>
+      <td class="num" style="color:${l.sans!=null?sosColor(l.sans):'var(--muted)'}">${l.sans!=null?secToHMS(l.sans):'—'}</td>
+      <td class="num" style="color:${l.avec!=null?sosColor(l.avec):'var(--muted)'}">${l.avec!=null?secToHMS(l.avec):'—'}</td>
+      <td class="num">${ecCell}</td>
+    </tr>`;
+  }).join('');
+  const impactCard = impactLignes.length ? `<div class="table-card" style="margin-bottom:16px">
+    <div class="table-header"><span class="table-title">📊 Impact du directeur — ${isMgr?'managers':'leaders'}</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Compare le temps de service de chacun selon que le directeur est présent ou non. ▼ vert = plus rapide avec le directeur · ▲ rouge = plus lent.</div>
+    <div class="table-wrap"><table><thead><tr><th>${isMgr?'Manager':'Leader'}</th><th class="num">❌ Sans dir.</th><th class="num">✅ Avec dir.</th><th class="num">Écart</th></tr></thead><tbody>${impactRows}</tbody></table></div>
+  </div>` : '';
+
   // Classement global
   const classementGlobal = `<div class="table-card" style="margin-bottom:16px">
     <div class="table-header"><span class="table-title">🏆 Classement global — ${isMgr?'managers':'leaders'} (meilleur → moins bon)</span></div>
@@ -7428,7 +7464,7 @@ function anRenderSOS(){
   </div>`;
   const dirReport = dirPresets + sosRapportDirecteurs(dirRows);
 
-  return kpis + toggle + compare + classementGlobal + trancheCard + dirReport;
+  return kpis + toggle + compare + impactCard + classementGlobal + trancheCard + dirReport;
 }
 
 // Période du rapport directeur (indépendante du reste)
