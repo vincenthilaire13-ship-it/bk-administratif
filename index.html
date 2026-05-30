@@ -1157,6 +1157,12 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
           <input type="date" id="an-date-from" onchange="anRefresh()">
           <input type="date" id="an-date-to" onchange="anRefresh()">
         </div>
+        <div class="an-jour" id="an-jour" style="display:none;align-items:center;gap:8px;margin-bottom:10px">
+          <button class="an-preset" style="padding:6px 10px" onclick="anJourStep(-1)" title="Jour précédent">◀</button>
+          <input type="date" id="an-jour-date" onchange="anJourChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--card);color:var(--text);font-size:13px;font-family:var(--font-mono)">
+          <button class="an-preset" style="padding:6px 10px" onclick="anJourStep(1)" title="Jour suivant">▶</button>
+          <span id="an-jour-label" style="font-size:12px;color:var(--muted2)"></span>
+        </div>
         <div class="an-restos" id="an-restos">
           <span class="lbl">Restaurant :</span>
           <button class="an-resto-btn active" data-r="" onclick="anSetResto('',this)">Tous</button>
@@ -3444,7 +3450,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T14:13', label: 'v30/05-14h13', affichage: 'samedi 30 mai 2026 à 14:13' };
+const APP_VERSION = { datetime: '2026-05-30T14:18', label: 'v30/05-14h18', affichage: 'samedi 30 mai 2026 à 14:18' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6513,13 +6519,23 @@ async function enregistrerJourneeMgr() {
     // 3) SOS DRIVE (temps de service)
     if(MGR_JOUR.sos && SB){
       const t = MGR_JOUR.sos.totalJour||{};
+      // Indexer les tranches par clé pour en extraire le temps de service de chacune
+      const trArr = MGR_JOUR.sos.tranches||[];
+      const trByKey = {}; trArr.forEach(x=>{ if(x&&x.key) trByKey[x.key]=x; });
       const baseSos = {
         restaurant:resto, date,
         total_sec: t.total_sec||null,
         total_voitures: t.voitures||null,
         total_commandes: t.commandes||null,
         total_ca: t.ca||null,
-        tranches: MGR_JOUR.sos.tranches||[],
+        tranches: trArr,
+        // Détail par tranche (indispensable pour l'analyse par manager/leader)
+        ts_matinee:   trByKey.matinee?.total_sec   ?? null,
+        ts_dejeuner:  trByKey.dejeuner?.total_sec  ?? null,
+        ts_apresmidi: trByKey.apresmidi?.total_sec ?? null,
+        ts_diner:     trByKey.diner?.total_sec     ?? null,
+        ts_soir:      trByKey.soir?.total_sec      ?? null,
+        ts_nuit:      trByKey.nuit?.total_sec      ?? null,
         manager_ouverture: equipe.manager_ouverture,
         manager_fermeture: equipe.manager_fermeture
       };
@@ -6529,12 +6545,18 @@ async function enregistrerJourneeMgr() {
         directeur_midi: equipe.directeur_midi,
         directeur_soir: equipe.directeur_soir
       };
-      const {error:eSos} = await SB.from('sos_drive').upsert(fullSos,{onConflict:'restaurant,date'});
-      if(eSos){ // colonnes leaders/directeur pas encore créées → retry sans elles
-        console.warn('sos_drive full upsert', eSos);
-        const {error:eSos2} = await SB.from('sos_drive').upsert(baseSos,{onConflict:'restaurant,date'});
-        if(eSos2){ erreurs.push('SOS Drive : '+eSos2.message); console.error('sos_drive base', eSos2); }
+      // Upsert robuste : on tente avec tous les champs, et si une colonne n'existe
+      // pas encore en base, on la retire et on réessaie (sans tout perdre).
+      let lj = {...fullSos};
+      let {error:eSos} = await SB.from('sos_drive').upsert(lj,{onConflict:'restaurant,date'});
+      let essaisSos=0;
+      while(eSos && essaisSos<15){
+        const m=(eSos.message||'').match(/'([^']+)' column/i)||(eSos.message||'').match(/column \"([^\"]+)\"/i);
+        const col=m&&m[1];
+        if(col && col in lj){ delete lj[col]; const r2=await SB.from('sos_drive').upsert(lj,{onConflict:'restaurant,date'}); eSos=r2.error; essaisSos++; }
+        else break;
       }
+      if(eSos){ erreurs.push('SOS Drive : '+eSos.message); console.error('sos_drive upsert', eSos); }
     }
 
     // 4) VENTES HORAIRE ¼h
@@ -6997,19 +7019,60 @@ function anSetPreset(p, btn){
   AN_PRESET = p;
   document.querySelectorAll('#an-presets .an-preset').forEach(b=>b.classList.toggle('active', b===btn));
   const dates = document.getElementById('an-dates');
-  if(p==='custom'){ dates.classList.add('show'); return; } // attend que l'utilisateur choisisse les dates
+  const jour  = document.getElementById('an-jour');
+  // masquer les deux zones par défaut
   dates.classList.remove('show');
+  if(jour) jour.style.display = 'none';
+
+  if(p==='custom'){ dates.classList.add('show'); return; } // attend que l'utilisateur choisisse les dates
+
+  const pad=n=>String(n).padStart(2,'0');
+  const iso=d=>d?d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()):'';
+
+  if(p==='jour'){
+    // Afficher le sélecteur de jour (pré-rempli sur aujourd'hui s'il est vide)
+    if(jour) jour.style.display = 'flex';
+    const jd = document.getElementById('an-jour-date');
+    if(jd && !jd.value) jd.value = iso(new Date());
+    anJourChange(); // applique le jour choisi (from=to=ce jour)
+    return;
+  }
+
   // calculer from/to selon le preset
   const to = new Date();
   let from = null;
-  if(p==='jour'){ from=new Date(); }                                  // aujourd'hui seulement
-  else if(p==='semaine'){ from=new Date(); from.setDate(from.getDate()-6); }   // 7 derniers jours
+  if(p==='semaine'){ from=new Date(); from.setDate(from.getDate()-6); }   // 7 derniers jours
   else if(p==='mois'){ from=new Date(); from.setDate(from.getDate()-29); }     // 30 derniers jours
-  const pad=n=>String(n).padStart(2,'0');
-  const iso=d=>d?d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()):'';
   document.getElementById('an-date-from').value = from?iso(from):'';
   document.getElementById('an-date-to').value   = iso(to);
   anRefresh();
+}
+
+// ── Sélecteur "Un jour" : applique le jour choisi (plage from=to=ce jour) ──
+function anJourChange(){
+  const jd = document.getElementById('an-jour-date');
+  if(!jd || !jd.value) return;
+  const d = jd.value;
+  document.getElementById('an-date-from').value = d;
+  document.getElementById('an-date-to').value   = d;
+  // libellé lisible (jour de la semaine + date)
+  const lbl = document.getElementById('an-jour-label');
+  if(lbl){
+    try { const dt=new Date(d+'T00:00:00'); lbl.textContent = (typeof jourSemaine==='function'?jourSemaine(dt)+' ':'') + (typeof formatDate==='function'?formatDate(d):d); }
+    catch(e){ lbl.textContent = d; }
+  }
+  anRefresh();
+}
+
+// ── Flèches précédent / suivant pour changer de jour ──
+function anJourStep(delta){
+  const jd = document.getElementById('an-jour-date');
+  if(!jd) return;
+  const base = jd.value ? new Date(jd.value+'T00:00:00') : new Date();
+  base.setDate(base.getDate()+delta);
+  const pad=n=>String(n).padStart(2,'0');
+  jd.value = base.getFullYear()+'-'+pad(base.getMonth()+1)+'-'+pad(base.getDate());
+  anJourChange();
 }
 
 function anSetResto(r, btn){
