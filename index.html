@@ -3453,7 +3453,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T15:08', label: 'v30/05-15h08', affichage: 'samedi 30 mai 2026 à 15:08' };
+const APP_VERSION = { datetime: '2026-05-30T15:13', label: 'v30/05-15h13', affichage: 'samedi 30 mai 2026 à 15:13' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -9803,6 +9803,59 @@ const C={
 };
 function col(l){const u=(l||'').toUpperCase(),k=Object.keys(C).find(k=>u.includes(k));return k?C[k]:{bg:'#555',tx:'#eee'};}
 
+// ── COULEURS DES NON PRODUCTIFS (managers inclus) ──────────────────────────────
+// Demande métier : TOUS les non productifs (et les postes managers OUVERTURE/CLOSE MANA)
+// sont ORANGE par défaut. On peut surcharger la couleur d'un NP précis (par resto).
+const NP_ORANGE = {bg:'#f5a623', tx:'#000'};
+// Override par resto : { 'BK526': { 'PLONGE': {bg:'#xxxxxx',tx:'#fff'}, ... }, ... }
+let HR_NP_COLORS = {};
+try { HR_NP_COLORS = JSON.parse(localStorage.getItem('hr_np_colors')||'{}'); } catch(e){ HR_NP_COLORS = {}; }
+
+// Ensemble des libellés non productifs (déduit de BASE_MIN type 'np'), en MAJUSCULES
+function hrNpLabels(){
+  const s = new Set();
+  try { (BASE_MIN||[]).filter(b=>b[3]==='np').forEach(b=>s.add((b[0]||'').toUpperCase())); } catch(e){}
+  return s;
+}
+
+// Couleur effective d'un libellé : override perso > orange si NP > table C
+function colFor(label){
+  const u = (label||'').toUpperCase();
+  const resto = (typeof HR_GRILLE_RESTO!=='undefined' && HR_GRILLE_RESTO) ? HR_GRILLE_RESTO : 'BK526';
+  // 1) override personnalisé pour ce resto
+  const ov = HR_NP_COLORS[resto] && HR_NP_COLORS[resto][u];
+  if(ov && ov.bg) return ov;
+  // 2) si c'est un non productif → orange par défaut
+  if(hrNpLabels().has(u)) return NP_ORANGE;
+  // 3) sinon couleur standard du poste
+  return col(label);
+}
+
+// Choisir/persister la couleur d'un NP
+function hrSetNpColor(label, hex){
+  const u = (label||'').toUpperCase();
+  const resto = (typeof HR_GRILLE_RESTO!=='undefined' && HR_GRILLE_RESTO) ? HR_GRILLE_RESTO : 'BK526';
+  if(!HR_NP_COLORS[resto]) HR_NP_COLORS[resto] = {};
+  // texte lisible selon clair/foncé
+  const tx = _hrTxtFor(hex);
+  HR_NP_COLORS[resto][u] = {bg:hex, tx};
+  try { localStorage.setItem('hr_np_colors', JSON.stringify(HR_NP_COLORS)); } catch(e){}
+  // persister aussi dans Supabase (app_config) si dispo
+  try {
+    if(typeof SB!=='undefined' && SB){
+      SB.from('app_config').upsert({cle:'hr_np_colors', valeur:HR_NP_COLORS},{onConflict:'cle'}).then(()=>{}).catch(()=>{});
+    }
+  } catch(e){}
+  if(typeof renderNP==='function') renderNP();
+  if(typeof renderTimeline==='function'){ try{ renderTimeline(); }catch(e){} }
+  if(typeof renderAll==='function'){ try{ renderAll(); }catch(e){} }
+}
+// Couleur de texte lisible (noir sur clair, blanc sur foncé)
+function _hrTxtFor(hex){
+  try{ const c=hex.replace('#',''); const r=parseInt(c.substr(0,2),16),g=parseInt(c.substr(2,2),16),b=parseInt(c.substr(4,2),16);
+    return (0.299*r+0.587*g+0.114*b) > 150 ? '#000' : '#fff'; }catch(e){ return '#fff'; }
+}
+
 // ── BASE MINIMUM (PDF lundi 15 juin) ─────────────────────────────────────────
 // [poste, debut_min, fin_min, type]
 function hm(h,m=0){const hh=h<5?h+24:h;return hh*60+m;}
@@ -10171,7 +10224,7 @@ function renderTimeline(){
       const s=b.s,e=b.e||s+60;
       if(e<=DS||s>=DE)return;
       const cs=Math.max(s,DS),ce=Math.min(e,DE);
-      const c=col(b.l);
+      const c=colFor(b.l);
       const bar=document.createElement('div');bar.className='hr-bar';
       // Base minimum = opacité pleine, extra = légèrement plus clair
       const opacity=row.type==='extra'?'CC':'FF';
@@ -10185,7 +10238,7 @@ function renderTimeline(){
   });
   const seen=new Set();const leg=document.getElementById('hrx-leg');leg.innerHTML='';
   rows.forEach(r=>r.bars.forEach(b=>{
-    if(!seen.has(b.l)){seen.add(b.l);const c=col(b.l);const it=document.createElement('div');it.className='hr-li';it.innerHTML=`<div class="hr-ld" style="background:${c.bg}"></div>${b.l}`;leg.appendChild(it);}
+    if(!seen.has(b.l)){seen.add(b.l);const c=colFor(b.l);const it=document.createElement('div');it.className='hr-li';it.innerHTML=`<div class="hr-ld" style="background:${c.bg}"></div>${b.l}`;leg.appendChild(it);}
   }));
 }
 
@@ -10664,14 +10717,19 @@ function renderNP(){
     return;
   }
   liste.forEach(np=>{
-    const c=col(np.name);
+    const c=colFor(np.name);
+    const nomEsc = np.name.replace(/'/g,"\\'");
     const card=document.createElement('div');card.className='hr-np-card';
     card.innerHTML=`
       <div class="hr-np-top"><span class="hr-np-nm">${np.name}</span><span class="hr-np-bg">Non productif</span></div>
       <div class="hr-np-ft"><div class="hr-np-dt" style="background:${c.bg}"></div><span class="hr-np-tm">${np.slots.join(' · ')}</span></div>
-      <div style="display:flex;gap:6px;margin-top:4px">
-        <button class="hr-btn" style="padding:4px 10px;font-size:11px" onclick="hrNpEdit('${np.name.replace(/'/g,"\\'")}')">✎ Modifier</button>
-        <button class="hr-btn" style="padding:4px 10px;font-size:11px;color:#f87171;border-color:rgba(248,113,113,.4)" onclick="hrNpDelete('${np.name.replace(/'/g,"\\'")}')">✕ Supprimer</button>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:center;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mu);cursor:pointer">
+          <input type="color" value="${c.bg}" onchange="hrSetNpColor('${nomEsc}', this.value)" style="width:26px;height:26px;border:none;background:none;cursor:pointer;padding:0">
+          Couleur
+        </label>
+        <button class="hr-btn" style="padding:4px 10px;font-size:11px" onclick="hrNpEdit('${nomEsc}')">✎ Modifier</button>
+        <button class="hr-btn" style="padding:4px 10px;font-size:11px;color:#f87171;border-color:rgba(248,113,113,.4)" onclick="hrNpDelete('${nomEsc}')">✕ Supprimer</button>
       </div>
     `;
     g.appendChild(card);
@@ -10844,6 +10902,7 @@ window.hrNpDelete=hrNpDelete;
 window.hrNpAddSlot=hrNpAddSlot;
 window.hrNpRemoveSlot=hrNpRemoveSlot;
 window.renderNP=renderNP;
+window.hrSetNpColor=hrSetNpColor;
 window.renderGrille=typeof renderGrille==='function'?renderGrille:window.renderGrille;
 window.renderDays=typeof renderDays==='function'?renderDays:window.renderDays;
 window.calcHeures=calcHeures;
@@ -10917,6 +10976,14 @@ window.__hrInit=function(){
     window.HR_ALL=HR_ALL;
     // Charger les courbes horaires déposées via "Ma journée" (table ventes_horaire.tranches_ca)
     if(typeof SB!=='undefined' && SB){
+      // Couleurs NP personnalisées (multi-appareils)
+      SB.from('app_config').select('valeur').eq('cle','hr_np_colors').maybeSingle().then(({data})=>{
+        if(data && data.valeur && typeof data.valeur==='object'){
+          HR_NP_COLORS = data.valeur;
+          try{ localStorage.setItem('hr_np_colors', JSON.stringify(HR_NP_COLORS)); }catch(e){}
+          try{ renderNP&&renderNP(); renderAll&&renderAll(); }catch(e){}
+        }
+      }).catch(()=>{});
       SB.from('ventes_horaire').select('restaurant,date,tranches_ca').then(({data,error})=>{
         if(error||!data) return;
         let n=0;
