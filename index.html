@@ -3495,7 +3495,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T18:09', label: 'v30/05-18h09', affichage: 'samedi 30 mai 2026 à 18:09' };
+const APP_VERSION = { datetime: '2026-05-30T18:13', label: 'v30/05-18h13', affichage: 'samedi 30 mai 2026 à 18:13' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6102,21 +6102,11 @@ async function lireTousPDFs(files) {
   } else if(datesDistinctes.length > 1){
     bloque = true;
     alerte = `🚫 <strong>Les dates ne correspondent pas !</strong> Dates trouvées : ${datesDistinctes.map(d=>formatDate(d)).join(' · ')}. Vérifiez que les 4 PDF sont bien du même jour.`;
-  } else if(MGR_JOUR.ventes && MGR_JOUR.ventes.couverture && MGR_JOUR.ventes.couverture.partiel){
-    // PDF des ventes ¼h incomplet (journée non finie ou mauvais fichier)
-    bloque = true;
-    const c = MGR_JOUR.ventes.couverture;
-    alerte = `🚫 <strong>PDF des ventes ¼h incomplet.</strong><br>${c.raison}<br><span style="font-size:10px;color:var(--muted2)">Re-générez le PDF en fin de journée fiscale, puis redéposez-le.</span>`;
-  } else if(MGR_JOUR.ventes && MGR_JOUR.ventes.resto_detecte && MGR_JOUR.ventes.resto_detecte!=='ALL'
-            && typeof restoReel==='function' && MGR_JOUR.ventes.resto_detecte !== restoReel()){
-    // SÉCURITÉ ANTI-MÉLANGE : le PDF appartient à un AUTRE restaurant que celui
-    // sur lequel on dépose. On bloque pour ne jamais ranger un CA ¼h dans le
-    // mauvais resto (Horaire / prévisionnel / consultation).
-    bloque = true;
-    const nomDet = (typeof RESTAURANTS!=='undefined' && RESTAURANTS[MGR_JOUR.ventes.resto_detecte]?.nom) || MGR_JOUR.ventes.resto_detecte;
-    const nomCur = (typeof RESTAURANTS!=='undefined' && RESTAURANTS[restoReel()]?.nom) || restoReel();
-    alerte = `🚫 <strong>Mauvais restaurant !</strong><br>Le PDF des ventes ¼h est celui de <strong>${nomDet}</strong> (${MGR_JOUR.ventes.resto_detecte}), mais vous êtes connecté sur <strong>${nomCur}</strong> (${restoReel()}).<br><span style="font-size:10px;color:var(--muted2)">Connectez-vous au bon restaurant pour déposer ce PDF, ou vérifiez le fichier.</span>`;
   }
+  // NB : le CA ¼h est rangé sous le restaurant de la journée déposée (resto courant),
+  // exactement comme l'import « ventes ¼h » sous Horaire. On NE bloque PAS sur le
+  // restaurant détecté ni sur une couverture partielle : ces contrôles bloquaient
+  // le 4e PDF à tort. La validation ne dépend donc que des 4 PDF + même date.
 
   // Aucun PDF reconnu du tout
   if(presents.length === 0){
