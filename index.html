@@ -3455,7 +3455,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T17:24', label: 'v30/05-17h24', affichage: 'samedi 30 mai 2026 à 17:24' };
+const APP_VERSION = { datetime: '2026-05-30T17:35', label: 'v30/05-17h35', affichage: 'samedi 30 mai 2026 à 17:35' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -12553,6 +12553,68 @@ async function hrParsePDF(arrayBuffer){
       ca[h.str] = parseFloat(col[0].str);
     }
   });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // REPLI — FORMAT "LIGNES" (mise en page classique)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Certains exports BK ont les heures en COLONNE DE GAUCHE (x≈24), une ligne par
+  // tranche, et NON en en-têtes de colonnes. Dans ce cas le parsing par colonnes
+  // ci-dessus ne trouve rien. Structure observée (validée sur SAINT CLEMENT 29/05) :
+  //   • Les items se regroupent en 3 lignes par tranche (y proches) :
+  //       L_data  : "0 0.00 0 0.00 2 12.27 0 0.00 3 29.68 … <TOTAL_HT> <TVA>"
+  //       L_heure : "11:00 7"   (l'heure + Nbre total)
+  //       L_pct   : "0,00 % 0.00 …"
+  //   • Le TOTAL HT de la tranche = AVANT-DERNIER nombre n.nn de la ligne data,
+  //     juste au-dessus de la ligne de l'heure (somme des Montant HT des canaux).
+  if(Object.keys(ca).length === 0){
+    // 1) Regrouper les items en lignes par (page, y arrondi)
+    const byPageLine = {};
+    items.forEach(it=>{
+      const key = it.page+'|'+Math.round(it.y/4); // tolérance ~4px
+      (byPageLine[key] = byPageLine[key] || []).push(it);
+    });
+    // Construire une liste de lignes {page, y, text, xFirst}
+    const lignes = Object.keys(byPageLine).map(k=>{
+      const arr = byPageLine[k].slice().sort((a,b)=>a.x-b.x);
+      return {
+        page: arr[0].page,
+        y: arr.reduce((s,o)=>s+o.y,0)/arr.length,
+        xFirst: arr[0].x,
+        text: arr.map(o=>o.str).join(' ')
+      };
+    }).sort((a,b)=> a.page-b.page || a.y-b.y);
+
+    // 2) Pour chaque ligne qui COMMENCE par une heure ¼h, lire la ligne data
+    //    située juste au-dessus (même page, y le plus proche au-dessus).
+    const vu = new Set();
+    for(let i=0;i<lignes.length;i++){
+      const L = lignes[i];
+      const m = L.text.match(/^(\d{1,2}):(\d{2})\b/);
+      if(!m) continue;
+      const hh = parseInt(m[1],10), mm = parseInt(m[2],10);
+      if(hh<0 || hh>29) continue;
+      if(mm!==0 && mm!==15 && mm!==30 && mm!==45) continue;
+      // ignorer les heures d'édition ("Edité le … à 00:40 par manager")
+      if(/dit[ée]|manager|vendeur/i.test(L.text)) continue;
+      const heureStr = m[1].padStart(2,'0')+':'+m[2];
+      if(vu.has(heureStr)) continue;
+      // chercher la ligne data : la précédente sur la même page (i-1) si elle
+      // contient assez de nombres ; sinon la plus proche au-dessus.
+      let data = null;
+      for(let j=i-1;j>=0 && j>=i-3;j--){
+        if(lignes[j].page!==L.page) break;
+        const nums = lignes[j].text.match(/\d+[.,]\d{2}/g);
+        if(nums && nums.length>=2 && /^\d+(\s|$)/.test(lignes[j].text)){ data = lignes[j]; break; }
+      }
+      if(!data) continue;
+      const nums = data.text.match(/\d+[.,]\d{2}/g);
+      if(!nums || nums.length<2) continue;
+      // avant-dernier = TOTAL HT de la tranche (le dernier = TVA)
+      const totHT = parseFloat(nums[nums.length-2].replace(',','.'));
+      if(!isNaN(totHT) && totHT>=0){ ca[heureStr] = totHT; vu.add(heureStr); }
+    }
+  }
+
   const total = Object.values(ca).reduce((a,b)=>a+b,0);
   // ── DIAGNOSTIC en cas d'échec : on remonte ce que le parseur a vraiment vu ──
   // pour pouvoir identifier le pattern manquant et adapter le parseur si besoin.
