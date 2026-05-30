@@ -1345,45 +1345,45 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div id="hrx-np-slots" style="display:flex;flex-direction:column;gap:8px;margin-bottom:.7rem"></div>
     <button type="button" class="hr-btn" onclick="hrNpAddSlot()" style="padding:6px 14px;font-size:12px">+ Ajouter un créneau</button>
     <div class="hr-ssub" style="margin:10px 0 0;font-size:11px">Ajoute autant de créneaux que nécessaire (ex : un avant la pause, un après). Pour une tâche de nuit (après minuit), mets une fin comme 01:30 ou 02:00.</div>
-    <div class="hr-cc" style="margin:14px 0 .4rem"><label>Jours d'application</label></div>
-    <div id="hrx-np-jours" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-      <button type="button" class="hr-np-jour" data-j="0" onclick="hrNpToggleJour(this)">Lun</button>
-      <button type="button" class="hr-np-jour" data-j="1" onclick="hrNpToggleJour(this)">Mar</button>
-      <button type="button" class="hr-np-jour" data-j="2" onclick="hrNpToggleJour(this)">Mer</button>
-      <button type="button" class="hr-np-jour" data-j="3" onclick="hrNpToggleJour(this)">Jeu</button>
-      <button type="button" class="hr-np-jour" data-j="4" onclick="hrNpToggleJour(this)">Ven</button>
-      <button type="button" class="hr-np-jour" data-j="5" onclick="hrNpToggleJour(this)">Sam</button>
-      <button type="button" class="hr-np-jour" data-j="6" onclick="hrNpToggleJour(this)">Dim</button>
-      <button type="button" class="hr-btn" onclick="hrNpJoursSemaine()" style="padding:6px 12px;font-size:11px;margin-left:6px">Toute la semaine</button>
-    </div>
-    <div class="hr-ssub" style="margin:8px 0 0;font-size:11px">Sélectionne les jours concernés (ex : OPEN CAISSE seulement le lundi). « Toute la semaine » = tous les jours.</div>
-
     <div class="hr-cc" style="margin:14px 0 .4rem"><label>Fréquence</label></div>
     <div id="hrx-np-freq" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
       <button type="button" class="hr-np-freq hr-f-on" data-f="hebdo1" onclick="hrNpSetFreq(this)">Toutes les semaines</button>
-      <button type="button" class="hr-np-freq" data-f="hebdo2" onclick="hrNpSetFreq(this)">1 semaine sur 2</button>
-      <button type="button" class="hr-np-freq" data-f="hebdo3" onclick="hrNpSetFreq(this)">1 semaine sur 3</button>
-      <button type="button" class="hr-np-freq" data-f="hebdo4" onclick="hrNpSetFreq(this)">1 semaine sur 4</button>
-      <button type="button" class="hr-np-freq" data-f="mensuel" onclick="hrNpSetFreq(this)">1 fois par mois</button>
+      <button type="button" class="hr-np-freq" data-f="hebdo2" onclick="hrNpSetFreq(this)">Toutes les 2 semaines</button>
+      <button type="button" class="hr-np-freq" data-f="mensuel" onclick="hrNpSetFreq(this)">Tous les mois</button>
     </div>
-    <!-- Option semaine sur N : à partir de quelle semaine -->
-    <div id="hrx-np-freq-ref" style="display:none;margin-top:8px;align-items:center;gap:8px">
-      <label style="font-size:11px;color:var(--mu);font-family:'DM Mono',monospace">À partir de la semaine du</label>
-      <input id="hrx-np-freq-ref-date" type="date" style="background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--tx);font-family:'DM Mono',monospace">
-      <span style="font-size:10px;color:var(--mu)">(le poste tombera cette semaine-là, puis toutes les N semaines)</span>
+
+    <!-- Cas "toutes les semaines" et "toutes les 2 semaines" : on choisit les jours -->
+    <div id="hrx-np-jours-wrap">
+      <div class="hr-cc" style="margin:12px 0 .4rem"><label>Jours d'application</label></div>
+      <div id="hrx-np-jours" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <button type="button" class="hr-np-jour" data-j="0" onclick="hrNpToggleJour(this)">Lun</button>
+        <button type="button" class="hr-np-jour" data-j="1" onclick="hrNpToggleJour(this)">Mar</button>
+        <button type="button" class="hr-np-jour" data-j="2" onclick="hrNpToggleJour(this)">Mer</button>
+        <button type="button" class="hr-np-jour" data-j="3" onclick="hrNpToggleJour(this)">Jeu</button>
+        <button type="button" class="hr-np-jour" data-j="4" onclick="hrNpToggleJour(this)">Ven</button>
+        <button type="button" class="hr-np-jour" data-j="5" onclick="hrNpToggleJour(this)">Sam</button>
+        <button type="button" class="hr-np-jour" data-j="6" onclick="hrNpToggleJour(this)">Dim</button>
+        <button type="button" class="hr-btn" onclick="hrNpJoursSemaine()" style="padding:6px 12px;font-size:11px;margin-left:6px">Toute la semaine</button>
+      </div>
+      <!-- Pour "toutes les 2 semaines" : à partir de quelle semaine -->
+      <div id="hrx-np-freq-ref" style="display:none;margin-top:10px;align-items:center;gap:8px;flex-wrap:wrap">
+        <label style="font-size:11px;color:var(--mu);font-family:'DM Mono',monospace">À partir de la semaine du</label>
+        <input id="hrx-np-freq-ref-date" type="date" style="background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--tx);font-family:'DM Mono',monospace">
+      </div>
     </div>
-    <!-- Option mensuel : quelle occurrence du mois -->
-    <div id="hrx-np-freq-mois" style="display:none;margin-top:8px;align-items:center;gap:8px">
-      <label style="font-size:11px;color:var(--mu);font-family:'DM Mono',monospace">Quelle occurrence dans le mois</label>
-      <select id="hrx-np-freq-mois-sem" style="background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--tx)">
-        <option value="1">Le 1er du jour choisi</option>
-        <option value="2">Le 2e</option>
-        <option value="3">Le 3e</option>
-        <option value="4">Le 4e</option>
-        <option value="5">Le dernier</option>
-      </select>
+
+    <!-- Cas "tous les mois" : on choisit une date précise du mois -->
+    <div id="hrx-np-mois-wrap" style="display:none">
+      <div class="hr-cc" style="margin:12px 0 .4rem"><label>Date dans le mois</label></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--mu)">Le</span>
+        <select id="hrx-np-mois-jour" style="background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--tx);font-family:'DM Mono',monospace"></select>
+        <span style="font-size:12px;color:var(--mu)">de chaque mois</span>
+      </div>
+      <div class="hr-ssub" style="margin:6px 0 0;font-size:11px">Ex : inventaire le 15 de chaque mois. Si le mois n'a pas ce jour (ex. 31), il tombe le dernier jour du mois.</div>
     </div>
-    <div class="hr-ssub" style="margin:8px 0 0;font-size:11px">Ex : « machine à gaz » le mercredi, 1 semaine sur 2. Ou « inventaire » le 1er lundi de chaque mois. La fréquence se combine avec les jours choisis.</div>
+
+    <div class="hr-ssub" style="margin:8px 0 0;font-size:11px">Ex : « machine à gaz » → toutes les 2 semaines, le mercredi. « Inventaire » → tous les mois, le 15.</div>
 
     <div style="display:flex;gap:10px;margin-top:1rem">
       <button class="hr-btn hr-btn-ac" onclick="hrNpSave()" style="padding:8px 18px">Enregistrer</button>
@@ -3495,7 +3495,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T18:02', label: 'v30/05-18h02', affichage: 'samedi 30 mai 2026 à 18:02' };
+const APP_VERSION = { datetime: '2026-05-30T18:09', label: 'v30/05-18h09', affichage: 'samedi 30 mai 2026 à 18:09' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -10085,9 +10085,9 @@ function splitProd(runs){
 }
 
 // Décide si un poste non productif s'applique à une DATE donnée selon sa fréquence.
-// freq = undefined/null            → toutes les semaines (par défaut)
-//      = {type:'hebdo', n:2, ref}  → une semaine sur n, calée sur la semaine 'ref' (lundi ISO)
-//      = {type:'mensuel', sem:k}   → la k-ième occurrence du jour dans le mois (k=1..5 ; 5='dernier')
+// freq = undefined/null               → toutes les semaines (par défaut)
+//      = {type:'hebdo', n:2, ref}     → une semaine sur n, calée sur la semaine 'ref'
+//      = {type:'mensuel', jourMois:N} → le N du mois (si le mois est plus court, le dernier jour)
 function hrNpFreqActive(freq, isoDate){
   if(!freq || !freq.type || freq.type==='hebdo1') return true; // chaque semaine
   if(!isoDate) return true; // pas de date connue → on n'exclut pas
@@ -10103,14 +10103,12 @@ function hrNpFreqActive(freq, isoDate){
     return (((semCur - semRef) % n) + n) % n === 0;
   }
   if(freq.type==='mensuel'){
-    const k = freq.sem||1;            // k-ième occurrence du même jour de semaine dans le mois
+    const cible = freq.jourMois || 1;            // le N du mois souhaité
     const jour = d.getDate();
-    const occ = Math.floor((jour-1)/7)+1; // 1..5
-    if(k>=5){ // "dernier" : pas d'occurrence suivante le même jour de semaine
-      const suiv = new Date(d); suiv.setDate(jour+7);
-      return suiv.getMonth() !== d.getMonth();
-    }
-    return occ === k;
+    // dernier jour de CE mois (pour gérer le 31 dans un mois de 30, le 30 février, etc.)
+    const dernierJourMois = new Date(d.getFullYear(), d.getMonth()+1, 0).getDate();
+    const cibleEff = Math.min(cible, dernierJourMois);
+    return jour === cibleEff;
   }
   return true;
 }
@@ -10857,15 +10855,18 @@ function renderNP(){
     const c=colFor(np.name);
     const nomEsc = np.name.replace(/'/g,"\\'");
     const JL=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+    const estMensuel = np.freq && np.freq.type==='mensuel';
     const joursTxt = (Array.isArray(np.jours) && np.jours.length && np.jours.length<7)
       ? np.jours.slice().sort((a,b)=>a-b).map(j=>JL[j]).join(' · ')
       : 'Toute la semaine';
     const freqTxt = hrNpFreqLabel(np.freq);
+    // En mensuel : on affiche juste la fréquence (la date du mois). Sinon : jours + fréquence.
+    const planTxt = estMensuel ? freqTxt : (joursTxt + (freqTxt ? ' · '+freqTxt : ''));
     const card=document.createElement('div');card.className='hr-np-card';
     card.innerHTML=`
       <div class="hr-np-top"><span class="hr-np-nm">${np.name}</span><span class="hr-np-bg">Non productif</span></div>
       <div class="hr-np-ft"><div class="hr-np-dt" style="background:${c.bg}"></div><span class="hr-np-tm">${np.slots.join(' · ')}</span></div>
-      <div style="font-size:10px;color:var(--ac);font-family:'DM Mono',monospace;margin-top:2px">📅 ${joursTxt}${freqTxt?' · '+freqTxt:''}</div>
+      <div style="font-size:10px;color:var(--ac);font-family:'DM Mono',monospace;margin-top:2px">📅 ${planTxt}</div>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:center;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--mu);cursor:pointer">
           <input type="color" value="${c.bg}" onchange="hrSetNpColor('${nomEsc}', this.value)" style="width:26px;height:26px;border:none;background:none;cursor:pointer;padding:0">
@@ -10904,15 +10905,25 @@ window.hrNpToggleJour=hrNpToggleJour;
 window.hrNpJoursSemaine=hrNpJoursSemaine;
 
 // ── Sélecteur de fréquence d'un poste non productif ──
-// Sélectionne un bouton fréquence et affiche les sous-options (date de réf / occurrence).
+// Sélectionne un bouton fréquence et bascule l'affichage : jours (hebdo) ou date du mois (mensuel).
 function hrNpSetFreq(btn){
   document.querySelectorAll('#hrx-np-freq .hr-np-freq').forEach(b=>b.classList.remove('hr-f-on'));
   btn.classList.add('hr-f-on');
   const f = btn.getAttribute('data-f');
-  const ref = document.getElementById('hrx-np-freq-ref');
-  const mois = document.getElementById('hrx-np-freq-mois');
-  if(ref) ref.style.display = (f==='hebdo2'||f==='hebdo3'||f==='hebdo4') ? 'flex' : 'none';
-  if(mois) mois.style.display = (f==='mensuel') ? 'flex' : 'none';
+  const joursWrap = document.getElementById('hrx-np-jours-wrap');
+  const moisWrap  = document.getElementById('hrx-np-mois-wrap');
+  const ref       = document.getElementById('hrx-np-freq-ref');
+  // hebdo1 / hebdo2 → on choisit les jours ; mensuel → on choisit la date du mois
+  if(joursWrap) joursWrap.style.display = (f==='mensuel') ? 'none' : '';
+  if(moisWrap)  moisWrap.style.display  = (f==='mensuel') ? '' : 'none';
+  // "à partir de la semaine du" : visible seulement pour "toutes les 2 semaines"
+  if(ref) ref.style.display = (f==='hebdo2') ? 'flex' : 'none';
+  // remplir le select des jours du mois (1..31) si pas déjà fait
+  const sel=document.getElementById('hrx-np-mois-jour');
+  if(sel && !sel.options.length){
+    let html=''; for(let i=1;i<=31;i++) html+=`<option value="${i}">${i}</option>`;
+    sel.innerHTML=html;
+  }
 }
 window.hrNpSetFreq=hrNpSetFreq;
 
@@ -10922,13 +10933,12 @@ function _hrNpReadFreq(){
   const f = btn ? btn.getAttribute('data-f') : 'hebdo1';
   if(f==='hebdo1' || !f) return null; // toutes les semaines
   if(f==='mensuel'){
-    const sem = parseInt(document.getElementById('hrx-np-freq-mois-sem')?.value||'1',10);
-    return {type:'mensuel', sem};
+    const jourMois = parseInt(document.getElementById('hrx-np-mois-jour')?.value||'1',10);
+    return {type:'mensuel', jourMois};
   }
-  // hebdo2 / hebdo3 / hebdo4 → une semaine sur N
-  const n = parseInt(f.replace('hebdo',''),10) || 2;
+  // hebdo2 → toutes les 2 semaines
   const ref = document.getElementById('hrx-np-freq-ref-date')?.value || null;
-  const o = {type:'hebdo', n};
+  const o = {type:'hebdo', n:2};
   if(ref) o.ref = ref;
   return o;
 }
@@ -10936,18 +10946,18 @@ function _hrNpReadFreq(){
 function _hrNpSetFreq(freq){
   let f='hebdo1';
   if(freq && freq.type==='mensuel') f='mensuel';
-  else if(freq && freq.type==='hebdo') f='hebdo'+(freq.n||2);
+  else if(freq && freq.type==='hebdo') f='hebdo2';
   const btn = document.querySelector(`#hrx-np-freq .hr-np-freq[data-f="${f}"]`)
            || document.querySelector('#hrx-np-freq .hr-np-freq[data-f="hebdo1"]');
   if(btn) hrNpSetFreq(btn);
   if(freq && freq.type==='hebdo' && freq.ref){ const d=document.getElementById('hrx-np-freq-ref-date'); if(d) d.value=freq.ref; }
-  if(freq && freq.type==='mensuel'){ const s=document.getElementById('hrx-np-freq-mois-sem'); if(s) s.value=String(freq.sem||1); }
+  if(freq && freq.type==='mensuel'){ const s=document.getElementById('hrx-np-mois-jour'); if(s) s.value=String(freq.jourMois||1); }
 }
 // Texte lisible d'une fréquence (pour les cartes)
 function hrNpFreqLabel(freq){
   if(!freq || !freq.type || freq.type==='hebdo1') return '';
-  if(freq.type==='hebdo'){ return '1 semaine sur '+(freq.n||2); }
-  if(freq.type==='mensuel'){ const k=freq.sem||1; return k>=5?'le dernier du mois':('le '+k+(k===1?'er':'e')+' du mois'); }
+  if(freq.type==='hebdo'){ return 'toutes les 2 semaines'; }
+  if(freq.type==='mensuel'){ return 'le '+(freq.jourMois||1)+' de chaque mois'; }
   return '';
 }
 window.hrNpFreqLabel=hrNpFreqLabel;
@@ -11051,11 +11061,17 @@ function hrNpSave(){
   if(!nom){ alert('Indique un nom de poste.'); return; }
   const slots=_hrNpReadSlots();
   if(!slots.length){ alert('Indique au moins un créneau (début + fin).'); return; }
-  let jours=_hrNpReadJours();
-  if(!jours.length){ alert('Sélectionne au moins un jour (ou « Toute la semaine »).'); return; }
-  // Si tous les jours sont cochés → on stocke [] (= toute la semaine, plus léger)
-  if(jours.length>=7) jours=[];
-  const freq=_hrNpReadFreq(); // null = toutes les semaines
+  const freq=_hrNpReadFreq(); // null = toutes les semaines ; {type:'mensuel',...} ; {type:'hebdo',n:2,...}
+  let jours;
+  if(freq && freq.type==='mensuel'){
+    // En mode "tous les mois", c'est la date du mois qui décide, pas le jour de semaine.
+    // On stocke [] (= tous les jours) pour ne pas bloquer le filtre par jour.
+    jours = [];
+  } else {
+    jours=_hrNpReadJours();
+    if(!jours.length){ alert('Sélectionne au moins un jour (ou « Toute la semaine »).'); return; }
+    if(jours.length>=7) jours=[]; // tous cochés = toute la semaine (plus léger)
+  }
   // Si on édite, on retire d'abord toutes les lignes np de ce nom
   if(HR_NP_EDIT_NOM){
     BASE_MIN = BASE_MIN.filter(b=>!(b[3]==='np' && b[0]===HR_NP_EDIT_NOM));
