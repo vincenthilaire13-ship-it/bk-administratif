@@ -3450,7 +3450,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T14:29', label: 'v30/05-14h29', affichage: 'samedi 30 mai 2026 à 14:29' };
+const APP_VERSION = { datetime: '2026-05-30T14:41', label: 'v30/05-14h41', affichage: 'samedi 30 mai 2026 à 14:41' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -7639,11 +7639,60 @@ function sosRapportDirecteurs(rows){
   return `<div class="table-header" style="border:none;padding:0 0 10px"><span class="table-title">👔 Rapport de présence — Directeurs</span></div>` + cards + comparatif + histoCard;
 }
 
+// Garantit que chaque ligne SOS possède ts_* et nc_* même si seules les
+// colonnes jsonb "tranches" sont remplies (anciens imports, ou colonnes
+// ts_/nc_ absentes en base). On reconstruit le détail depuis le jsonb.
+function sosNormaliser(rows){
+  const keyToCols = {
+    matinee:  {ts:'ts_matinee',  nc:'nc_matinee'},
+    dejeuner: {ts:'ts_dejeuner', nc:'nc_dejeuner'},
+    apresmidi:{ts:'ts_apresmidi',nc:'nc_apresmidi'},
+    diner:    {ts:'ts_diner',    nc:'nc_diner'},
+    soir:     {ts:'ts_soir',     nc:'nc_soir'},
+    nuit:     {ts:'ts_nuit',     nc:'nc_nuit'},
+  };
+  return (rows||[]).map(r=>{
+    const o = {...r};
+    // tranches peut être un tableau d'objets, ou une string JSON
+    let tr = o.tranches;
+    if(typeof tr === 'string'){ try{ tr = JSON.parse(tr); }catch(e){ tr=null; } }
+    if(Array.isArray(tr)){
+      tr.forEach(t=>{
+        const m = keyToCols[t.key]; if(!m) return;
+        if(o[m.ts]==null && t.total_sec!=null) o[m.ts] = t.total_sec;
+        if(o[m.nc]==null && t.commandes!=null) o[m.nc] = t.commandes;
+      });
+    }
+    return o;
+  });
+}
+
 function anRenderSOS(){
-  const rows = (AN_DATA.sosTout || AN_DATA.sos || []).filter(r=>r.total_sec!=null || SOS_TRANCHES.some(t=>r[t.id]!=null));
+  let rows = (AN_DATA.sosTout || AN_DATA.sos || []);
+  rows = sosNormaliser(rows).filter(r=>r.total_sec!=null || SOS_TRANCHES.some(t=>r[t.id]!=null));
   if(!rows.length) return _anEmpty('🚗','Aucune donnée de temps de service','Importez un PDF SOS Drive dans « Ma journée » — il apparaîtra ici automatiquement.');
 
   const isMgr = SOS_PERF_MODE==='managers';
+
+  // ── DIAGNOSTIC : pourquoi l'analyse pourrait être vide ? ──
+  const avecDetail = rows.filter(r=>SOS_TRANCHES.some(t=>r[t.id]!=null));
+  const champOuv = isMgr?'manager_ouverture':'leader_ouverture';
+  const champFer = isMgr?'manager_fermeture':'leader_fermeture';
+  const avecResp = avecDetail.filter(r=>r[champOuv]||r[champFer]);
+  let diagBanner = '';
+  if(avecDetail.length===0){
+    diagBanner = `<div class="table-card" style="margin-bottom:14px;border-left:3px solid var(--yellow)"><div style="padding:12px 14px;font-size:12px">
+      ⚠️ <strong>${rows.length} journée(s) SOS trouvée(s) mais sans détail par tranche.</strong><br>
+      Le total du jour est là, mais pas le découpage matinée/déjeuner/… nécessaire à l'analyse par ${isMgr?'manager':'leader'}.<br>
+      <span style="color:var(--muted2)">→ Ré-enregistre la journée via « Ma journée » (redépose le PDF SOS) avec la version actuelle pour ranger le détail.</span>
+    </div></div>`;
+  } else if(avecResp.length===0){
+    diagBanner = `<div class="table-card" style="margin-bottom:14px;border-left:3px solid var(--yellow)"><div style="padding:12px 14px;font-size:12px">
+      ⚠️ <strong>Le détail par tranche est présent, mais aucun ${isMgr?'manager':'leader'} d'ouverture/fermeture n'est renseigné</strong> sur ces journées.<br>
+      <span style="color:var(--muted2)">→ Dans « Ma journée », renseigne le ${isMgr?'manager':'leader'} d'ouverture et de fermeture, puis valide. Sans nom, impossible de classer qui que ce soit.</span>
+    </div></div>`;
+  }
+
   const avgsAll  = sosComputeStats(rows, isMgr, null);
   const avgsAvec = sosComputeStats(rows, isMgr, true);
   const avgsSans = sosComputeStats(rows, isMgr, false);
@@ -7760,7 +7809,7 @@ function anRenderSOS(){
   </div>`;
   const dirReport = dirPresets + sosRapportDirecteurs(dirRows);
 
-  return kpis + toggle + bilanCard + classementGlobal + parJourBloc + compare + impactCard + trancheCard + dirReport;
+  return diagBanner + kpis + toggle + bilanCard + classementGlobal + parJourBloc + compare + impactCard + trancheCard + dirReport;
 }
 
 // Période du rapport directeur (indépendante du reste)
