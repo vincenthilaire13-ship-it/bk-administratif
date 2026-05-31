@@ -3386,6 +3386,13 @@ const ALL_SEED26 = null;
 function switchResto(restoId) {
   ACTIVE_RESTO = restoId;
   window.ACTIVE_RESTO = restoId; // synchro pour la section Horaires (script séparé)
+  // Synchroniser IMMÉDIATEMENT les variables resto de la section Horaires,
+  // même si cette section n'est pas affichée. Évite que le planning reste
+  // "coincé" sur l'ancien resto (ex. BK500 affichant la grille de BK526).
+  if(restoId && restoId!=='ALL'){
+    try { if(typeof HR_GRILLE_RESTO!=='undefined') HR_GRILLE_RESTO = restoId; } catch(e){}
+    try { window.HR_RESTO = restoId; } catch(e){}
+  }
   // Persister le choix pour qu'il survive aux re-renders et au refresh
   try { localStorage.setItem('bk_active_resto', restoId); } catch(e){}
   // Mettre à jour les boutons actifs
@@ -3495,7 +3502,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-31T18:55', label: 'v31/05-18h55', affichage: 'dimanche 31 mai 2026 à 18:55' };
+const APP_VERSION = { datetime: '2026-05-31T22:06', label: 'v31/05-22h06', affichage: 'dimanche 31 mai 2026 à 22:06' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -3622,7 +3629,22 @@ alter table journees add column if not exists ts_drive_soir int;
 alter table journees add column if not exists pertes_brutes numeric;
 alter table journees add column if not exists pertes_finies numeric;
 alter table journees add column if not exists annulations_pct numeric;
-alter table journees add column if not exists commandes_ouvertes_pct numeric;`;
+alter table journees add column if not exists commandes_ouvertes_pct numeric;
+
+-- ══ SYNCHRONISATION TEMPS RÉEL (multi-appareils) ══
+-- À exécuter UNE FOIS pour que les changements se propagent en direct entre PC.
+-- (Ajoute chaque table à la publication Realtime de Supabase.)
+do $$
+declare t text;
+begin
+  foreach t in array array['journees','sos_drive','ventes_horaire','repas_employes','erreurs_caisse','annulations','equipiers','planning_grilles','planning_validations','app_config']
+  loop
+    begin
+      execute format('alter publication supabase_realtime add table %I', t);
+    exception when duplicate_object then null; when undefined_table then null;
+    end;
+  end loop;
+end $$;`;
 
 const SQL_COLONNES_PDF = `-- Colonnes completes de la Synthese CA (PDF) - a coller dans Supabase SQL Editor puis Run
 -- Pour les courbes horaires (planning) alimentees par le PDF ventes 1/4h :
@@ -3843,6 +3865,7 @@ function initSupabase(url, key) {
       }
     });
     loadAll();
+    try { initRealtime(); } catch(e){ console.warn('initRealtime', e); }
   } catch(e) {
     DATA = SEED; renderDashboard();
     document.getElementById('db-status').textContent = 'Erreur connexion';
@@ -3863,6 +3886,7 @@ async function saveConfig() {
     showAlert('setup-ok'); hideAlert('setup-err');
     document.getElementById('db-status').textContent = 'Connecté';
     loadAll();
+    try { initRealtime(); } catch(e){ console.warn('initRealtime', e); }
   } catch(e) {
     showAlert('setup-err'); hideAlert('setup-ok');
     SB = null; window.SB = null; document.getElementById('db-status').textContent = 'Erreur';
@@ -3927,6 +3951,55 @@ async function loadAll() {
   // Rafraîchir le suivi des dépôts s'il est affiché
   try { if(document.getElementById('imports-content') && typeof renderImports==='function') renderImports(); } catch(e){}
 }
+
+// ══ SYNCHRONISATION TEMPS RÉEL (multi-appareils) ═══════════════════════════
+// Sans ça, un dépôt fait sur le PC A n'apparaît sur le PC B qu'après un clic
+// "↺ Actualiser" ou un rechargement. On s'abonne aux changements Supabase des
+// tables partagées : dès qu'une ligne bouge, on relance loadAll() (débounced
+// pour éviter les rafales quand un import écrit plusieurs lignes d'affilée).
+let _rtChannel = null;
+let _rtTimer = null;
+let _rtLastReload = 0;
+
+function _rtReloadDebounced(){
+  if(_rtTimer) clearTimeout(_rtTimer);
+  _rtTimer = setTimeout(async ()=>{
+    _rtTimer = null;
+    _rtLastReload = Date.now();
+    try {
+      if(typeof loadAll==='function') await loadAll();
+      const ind = document.getElementById('db-status');
+      if(ind){ const old=ind.textContent; ind.textContent='↻ Synchronisé'; setTimeout(()=>{ if(ind.textContent==='↻ Synchronisé') ind.textContent=old||'Connecté'; },1500); }
+    } catch(e){ console.warn('[realtime] reload', e); }
+  }, 1200); // fenêtre anti-rafale
+}
+
+function initRealtime(){
+  if(!SB || !SB.channel) return;          // client trop ancien → pas de realtime
+  if(_rtChannel) { try{ SB.removeChannel(_rtChannel); }catch(e){} _rtChannel=null; }
+  const tables = ['journees','sos_drive','ventes_horaire','repas_employes',
+                  'erreurs_caisse','annulations','equipiers',
+                  'planning_grilles','planning_validations','app_config'];
+  let ch = SB.channel('bk-admin-sync');
+  tables.forEach(t=>{
+    ch = ch.on('postgres_changes', { event:'*', schema:'public', table:t }, ()=>{
+      _rtReloadDebounced();
+    });
+  });
+  ch.subscribe(status=>{
+    if(status==='SUBSCRIBED') console.log('[realtime] abonné aux changements Supabase');
+    else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT') console.warn('[realtime] statut canal:', status);
+  });
+  _rtChannel = ch;
+}
+
+// Filet de sécurité : si le navigateur a coupé le websocket (onglet en arrière-plan,
+// veille…), on resynchronise au retour de focus si la dernière sync date d'un moment.
+window.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='visible' && SB){
+    if(Date.now() - _rtLastReload > 30000) _rtReloadDebounced();
+  }
+});
 
 // ══ DASHBOARD ══
 // ══════════════════════════════════════════════════════════════
@@ -5520,6 +5593,26 @@ function setSession(user) {
     restoEl.textContent = 'Multi-restos';
   }
 
+  // ── Initialiser ACTIVE_RESTO AVANT loadConfig() ──────────────────────────
+  // loadConfig() déclenche loadAll() qui filtre les données par ACTIVE_RESTO.
+  // Si ACTIVE_RESTO n'est pas posé ici, le tout premier chargement filtre avec
+  // une valeur nulle/ancienne → instabilité au login et après refresh.
+  const _isMultiBoot = ['superviseur','admin'].includes(user.role);
+  if(_isMultiBoot){
+    let savedResto = null;
+    try { savedResto = localStorage.getItem('bk_active_resto'); } catch(e){}
+    const restoInitial = (savedResto && RESTAURANTS[savedResto] && savedResto!=='ALL') ? savedResto : 'BK526';
+    ACTIVE_RESTO = restoInitial;
+    window.ACTIVE_RESTO = restoInitial;
+    try { if(typeof HR_GRILLE_RESTO!=='undefined') HR_GRILLE_RESTO = restoInitial; } catch(e){}
+    try { window.HR_RESTO = restoInitial; } catch(e){}
+  } else if(user.resto && user.resto!=='ALL'){
+    ACTIVE_RESTO = user.resto;
+    window.ACTIVE_RESTO = user.resto;
+    try { if(typeof HR_GRILLE_RESTO!=='undefined') HR_GRILLE_RESTO = user.resto; } catch(e){}
+    try { window.HR_RESTO = user.resto; } catch(e){}
+  }
+
   loadConfig();
   applyRoleUI(user.role);
 }
@@ -5552,14 +5645,11 @@ function applyRoleUI(role) {
   const sw = document.getElementById('resto-switcher');
   if(sw) sw.style.display = isMulti ? 'flex' : 'none';
 
-  // Initialiser ACTIVE_RESTO selon le rôle (sans render — loadConfig s'en charge)
+  // Initialiser l'UI resto selon le rôle.
+  // ACTIVE_RESTO / window.ACTIVE_RESTO sont DÉJÀ posés dans setSession()
+  // (avant loadConfig) — ici on ne touche QUE l'affichage (boutons, couleur, sidebar).
   if(isMulti) {
-    // Restaurer le dernier resto utilisé (admin/superviseur), sinon BK526 par défaut
-    let savedResto = null;
-    try { savedResto = localStorage.getItem('bk_active_resto'); } catch(e){}
-    const restoInitial = (savedResto && RESTAURANTS[savedResto] && savedResto!=='ALL') ? savedResto : 'BK526';
-    ACTIVE_RESTO = restoInitial;
-    window.ACTIVE_RESTO = restoInitial;
+    const restoInitial = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL') ? ACTIVE_RESTO : 'BK526';
     setTimeout(()=>{
       ['BK500','BK509','BK526'].forEach(id=>{
         const btn=document.getElementById('sw-'+id);
@@ -5571,8 +5661,6 @@ function applyRoleUI(role) {
       applyRestoColor(restoInitial);
     },50);
   } else if(CURRENT_USER?.resto) {
-    ACTIVE_RESTO = CURRENT_USER.resto;
-    window.ACTIVE_RESTO = CURRENT_USER.resto;
     setTimeout(()=>applyRestoColor(CURRENT_USER.resto), 50);
   }
 
@@ -10711,7 +10799,7 @@ function applyGrille(){
 }
 
 function resetGrille(){
-  const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+  const resto = (typeof hrCurrentResto==='function' ? hrCurrentResto() : (HR_GRILLE_RESTO || HR_RESTO || 'BK526'));
   // Si une grille protégée existe pour ce resto, on prévient fortement.
   if(grilleEstProtegee(resto)){
     if(!confirm('⚠️ ATTENTION — '+nomResto(resto)+' possède une GRILLE PROTÉGÉE.\n\nRéinitialiser va remplacer la grille à l\'écran par les valeurs par défaut.\nVotre grille protégée NE sera PAS effacée (vous pourrez la restaurer avec ♻️ Restaurer protégée).\n\nContinuer la réinitialisation ?')) return;
@@ -10738,7 +10826,7 @@ function grilleProtegee(resto){
 function grilleEstProtegee(resto){ const g=grilleProtegee(resto); return !!(g && g.grille && g.grille.length); }
 
 function protegerGrille(){
-  const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+  const resto = (typeof hrCurrentResto==='function' ? hrCurrentResto() : (HR_GRILLE_RESTO || HR_RESTO || 'BK526'));
   const dejaProt = grilleEstProtegee(resto);
   const msg = dejaProt
     ? '🔒 '+nomResto(resto)+' a déjà une grille protégée (du '+ (grilleProtegee(resto)?.le? new Date(grilleProtegee(resto).le).toLocaleString('fr-FR'):'?') +').\n\nVoulez-vous la REMPLACER par la grille actuellement affichée ?'
@@ -10773,7 +10861,7 @@ function protegerGrille(){
 }
 
 function restaurerGrilleProtegee(){
-  const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+  const resto = (typeof hrCurrentResto==='function' ? hrCurrentResto() : (HR_GRILLE_RESTO || HR_RESTO || 'BK526'));
   const snap = grilleProtegee(resto);
   if(!snap || !snap.grille || !snap.grille.length){
     alert('Aucune grille protégée enregistrée pour '+nomResto(resto)+'.\n\nUtilisez d\'abord « 🔒 Protéger » pour en créer une.');
@@ -10829,7 +10917,7 @@ function renderGrille(){
 
   // Badge "grille protégée" dans le sous-titre
   try{
-    const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+    const resto = (typeof hrCurrentResto==='function' ? hrCurrentResto() : (HR_GRILLE_RESTO || HR_RESTO || 'BK526'));
     const sub = document.getElementById('hrx-grille-sub');
     if(sub){
       if(grilleEstProtegee(resto)){
@@ -11952,7 +12040,7 @@ window.hrChargerGrilles = hrChargerGrilles;
 
 // Sauvegarde la grille + base-min du resto actif dans Supabase
 async function hrSauverGrille(){
-  const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
+  const resto = (typeof hrCurrentResto==='function' ? hrCurrentResto() : (HR_GRILLE_RESTO || HR_RESTO || 'BK526'));
   // maj cache mémoire
   GRILLE_BY_RESTO[resto]  = GRILLE_EDIT.map(r=>[...r]);
   BASEMIN_BY_RESTO[resto] = BASE_MIN.map(b=>[...b]);
@@ -11985,7 +12073,7 @@ window.hrSauverGrille = hrSauverGrille;
 
 // Change le taux horaire du resto actif, recalcule et persiste
 function hrSetTaux(val){
-  const resto = HR_GRILLE_RESTO || 'BK526';
+  const resto = (typeof hrCurrentResto==='function' ? hrCurrentResto() : (HR_GRILLE_RESTO || 'BK526'));
   let v = parseFloat(String(val).replace(',','.'));
   if(!isFinite(v) || v<=0){ alert('Indique un taux horaire valide (en €).'); if(typeof renderMetrics==='function') renderMetrics(); return; }
   v = Math.round(v*100)/100; // 2 décimales max
@@ -12038,7 +12126,7 @@ window.hrChargerValidations = hrChargerValidations;
 
 // Enregistre la validation de la semaine `lundi` avec la signature de grille courante
 async function hrEnregistrerValidation(lundi){
-  const resto = HR_RESTO || 'BK526';
+  const resto = (typeof hrCurrentResto==='function' ? hrCurrentResto() : (HR_RESTO || 'BK526'));
   const sig = hrSignatureGrille();
   HR_VALIDATIONS[hrCleVal(resto, lundi)] = sig; // maj cache immédiate
   if(!window.SB){ hrSetValidStatus('● local (validations non partagées)', '#9d9daa'); return; }
