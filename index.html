@@ -3504,7 +3504,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-31T22:16', label: 'v31/05-22h16', affichage: 'dimanche 31 mai 2026 à 22:16' };
+const APP_VERSION = { datetime: '2026-05-31T22:21', label: 'v31/05-22h21', affichage: 'dimanche 31 mai 2026 à 22:21' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6815,7 +6815,17 @@ async function enregistrerJourneeMgr() {
           try { hrFillConsultSelect && hrFillConsultSelect(); } catch(e){}
           try { renderDays && renderDays(); } catch(e){}
           try { renderAll && renderAll(); } catch(e){}
-          try { const vs=document.getElementById('hrx-ca-vue'); if((!vs||vs.value==='jour')){ const ds=document.getElementById('hrx-ca-day-sel'); if(ds&&ds.value&&/^\d{4}-\d{2}-\d{2}$/.test(ds.value)&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true); } } catch(e){}
+          try {
+            const vs=document.getElementById('hrx-vue-sel');
+            const vue = vs ? vs.value : 'semaine';
+            if(vue==='jour'){
+              const ds=document.getElementById('hrx-ca-day-sel');
+              if(ds&&ds.value&&/^\d{4}-\d{2}-\d{2}$/.test(ds.value)&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true);
+            } else {
+              const ws=document.getElementById('hrx-sem-sel')||document.getElementById('hrx-sem-sel2');
+              if(ws&&ws.value&&typeof hrGenFromWeek==='function') hrGenFromWeek(ws.value,true);
+            }
+          } catch(e){}
         } else {
           console.warn('[horaires] aucun CA ¼h à ranger pour', rResto, rDate);
           // Message diagnostique : on relit une dernière fois pour rapporter ce que voit le parseur
@@ -9936,17 +9946,34 @@ function hrCurrentResto(){
 }
 // Charge la grille + base du resto donné (ou défaut si jamais personnalisé)
 function hrSwitchRestoGrille(resto){
-  // Sauver l'état courant pour l'ancien resto
-  if(HR_GRILLE_RESTO){
-    GRILLE_BY_RESTO[HR_GRILLE_RESTO] = GRILLE_EDIT.map(r=>[...r]);
-    BASEMIN_BY_RESTO[HR_GRILLE_RESTO] = BASE_MIN.map(b=>[...b]);
+  // Sauver l'état courant pour l'ancien resto — MAIS seulement si ce qu'on a en
+  // mémoire est une vraie grille éditée pour CE resto, pas la grille par défaut
+  // posée pendant que les grilles Supabase n'étaient pas encore chargées.
+  // Sinon on écrasait la vraie grille (course async) → calcul de masse faux au
+  // 1er affichage (ex. 167 %), corrigé seulement en changeant de resto.
+  if(HR_GRILLE_RESTO && HR_GRILLE_RESTO===resto){
+    // Même resto : ne rien écraser. Mais si la vraie grille de ce resto est
+    // désormais disponible (chargée depuis Supabase), on l'applique pour que le
+    // calcul utilise la bonne référence.
+    if(GRILLE_BY_RESTO[resto]){
+      GRILLE_EDIT = GRILLE_BY_RESTO[resto].map(r=>[...r]);
+      GRILLE.length = 0; GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
+    }
+    if(BASEMIN_BY_RESTO[resto]){
+      BASE_MIN = BASEMIN_BY_RESTO[resto].map(b=>[...b]);
+    }
+  } else {
+    if(HR_GRILLE_RESTO && typeof HR_GRILLES_CHARGEES!=='undefined' && HR_GRILLES_CHARGEES){
+      GRILLE_BY_RESTO[HR_GRILLE_RESTO] = GRILLE_EDIT.map(r=>[...r]);
+      BASEMIN_BY_RESTO[HR_GRILLE_RESTO] = BASE_MIN.map(b=>[...b]);
+    }
+    HR_GRILLE_RESTO = resto;
+    // Charger l'état du nouveau resto (ou défaut si jamais personnalisé)
+    GRILLE_EDIT = (GRILLE_BY_RESTO[resto] || GRILLE_DEFAULT).map(r=>[...r]);
+    BASE_MIN    = (BASEMIN_BY_RESTO[resto] || BASEMIN_DEFAULT).map(b=>[...b]);
+    // Mettre GRILLE (utilisée par getEff) à jour
+    GRILLE.length = 0; GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
   }
-  HR_GRILLE_RESTO = resto;
-  // Charger l'état du nouveau resto (ou défaut)
-  GRILLE_EDIT = (GRILLE_BY_RESTO[resto] || GRILLE_DEFAULT).map(r=>[...r]);
-  BASE_MIN    = (BASEMIN_BY_RESTO[resto] || BASEMIN_DEFAULT).map(b=>[...b]);
-  // Mettre GRILLE (utilisée par getEff) à jour
-  GRILLE.length = 0; GRILLE_EDIT.forEach(r=>GRILLE.push([...r]));
 }
 window.hrSwitchRestoGrille = hrSwitchRestoGrille;
 
@@ -11369,7 +11396,21 @@ window.__hrInit=function(){
           try{ renderDays&&renderDays(); }catch(e){}
           try{ renderAll&&renderAll(); }catch(e){}
           try{ hrFillConsultSelect&&hrFillConsultSelect(); }catch(e){}
-          try{ const vs=document.getElementById('hrx-ca-vue'); if((!vs||vs.value==='jour')){ const ds=document.getElementById('hrx-ca-day-sel'); if(ds&&ds.value&&/^\d{4}-\d{2}-\d{2}$/.test(ds.value)&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true); } }catch(e){}
+          // Régénérer la vue COURANTE avec les vraies données fraîchement arrivées.
+          // ⚠ Le sélecteur de vue est 'hrx-vue-sel' (pas 'hrx-ca-vue', qui n'existe
+          // pas) : l'ancien code lisait null → forçait la vue JOUR sur la dernière
+          // date dispo (vendredi/samedi) et cassait le démarrage en semaine.
+          try{
+            const vs=document.getElementById('hrx-vue-sel');
+            const vue = vs ? vs.value : 'semaine';
+            if(vue==='jour'){
+              const ds=document.getElementById('hrx-ca-day-sel');
+              if(ds&&ds.value&&/^\d{4}-\d{2}-\d{2}$/.test(ds.value)&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true);
+            } else {
+              const ws=document.getElementById('hrx-sem-sel')||document.getElementById('hrx-sem-sel2');
+              if(ws&&ws.value&&typeof hrGenFromWeek==='function') hrGenFromWeek(ws.value,true);
+            }
+          }catch(e){}
         }
       });
     }
@@ -11401,6 +11442,22 @@ window.__hrInit=function(){
   //  on ne rappelle donc PAS hrSwitchRestoGrille ici pour ne pas écraser.)
   hrChargerGrilles().then(()=>{
     renderGrille(); renderNP();
+    // ⚠ Les grilles arrivent en ASYNCHRONE, APRÈS le 1er calcul de la semaine.
+    // Le % de masse salariale dépend de la grille du resto : tant qu'elle n'est
+    // pas chargée, le calcul est faux (ex. 167 %). On RE-génère donc la semaine
+    // ici avec la bonne grille pour que masse/effectifs/% soient corrects sans
+    // avoir à changer de resto puis revenir.
+    try{
+      const vs=document.getElementById('hrx-vue-sel');
+      const vue = vs ? vs.value : 'semaine';
+      if(vue==='jour'){
+        const ds=document.getElementById('hrx-ca-day-sel');
+        if(ds&&ds.value&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true);
+      } else {
+        const ws=document.getElementById('hrx-sem-sel')||document.getElementById('hrx-sem-sel2');
+        if(ws&&ws.value&&typeof hrGenFromWeek==='function') hrGenFromWeek(ws.value,true);
+      }
+    }catch(e){}
     return hrChargerValidations();
   }).then(()=>{
     if(document.getElementById('hrx-days')) renderDays();
