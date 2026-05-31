@@ -3495,7 +3495,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T23:38', label: 'v30/05-23h38', affichage: 'samedi 30 mai 2026 à 23:38' };
+const APP_VERSION = { datetime: '2026-05-31T18:55', label: 'v31/05-18h55', affichage: 'dimanche 31 mai 2026 à 18:55' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -3522,6 +3522,24 @@ setInterval(checkNouvelleVersion, 5*60*1000);
 // ══ SUPABASE CONFIG ══
 const SB_URL_DEFAULT = 'https://qywucwvcnijkbdcdczch.supabase.co';
 const SB_KEY_DEFAULT = 'sb_publishable_OjZ_TMHBKogqLzhay1JNJw_mUo5Zru0';
+
+// ── Lecture PAGINÉE d'une table Supabase ──────────────────────────────────────
+// Supabase plafonne chaque requête à 1000 lignes. Cette fonction enchaîne les
+// pages (.range) jusqu'à tout récupérer. Indispensable pour ventes_horaire qui
+// dépasse 1000 lignes (sinon un resto entier — ex. BK500 — est tronqué).
+async function sbReadAll(table, columns){
+  const PAGE = 1000;
+  let from = 0, tout = [];
+  for(;;){
+    const { data, error } = await SB.from(table).select(columns).range(from, from + PAGE - 1);
+    if(error) return { data: tout.length ? tout : null, error };
+    if(!data || !data.length) break;
+    tout = tout.concat(data);
+    if(data.length < PAGE) break;   // dernière page
+    from += PAGE;
+  }
+  return { data: tout, error: null };
+}
 
 // ── Vérificateur de tables (évite d'ouvrir le dashboard Supabase) ──
 const SQL_COMPLET = `-- Tables d'analyse BK — à coller dans Supabase SQL Editor
@@ -11163,7 +11181,7 @@ async function hrReloadVentes(el){
   if(typeof SB==='undefined' || !SB){ alert('Base non connectée.'); return; }
   if(el){ el.textContent='⏳ Rechargement…'; }
   try {
-    const { data, error } = await SB.from('ventes_horaire').select('restaurant,date,tranches_ca,tranches');
+    const { data, error } = await sbReadAll('ventes_horaire','restaurant,date,tranches_ca,tranches');
     if(error){ alert('Erreur lecture ventes_horaire : '+error.message); if(el) el.textContent='🔧 Recharger ventes ¼h'; return; }
     if(typeof HR_ALL==='undefined') window.HR_ALL = HR_ALL = {};
     let n=0, sansCa=0;
@@ -11234,7 +11252,7 @@ window.__hrInit=function(){
           try{ renderNP&&renderNP(); renderAll&&renderAll(); }catch(e){}
         }
       }).catch(()=>{});
-      SB.from('ventes_horaire').select('restaurant,date,tranches_ca').then(({data,error})=>{
+      sbReadAll('ventes_horaire','restaurant,date,tranches_ca').then(({data,error})=>{
         if(error||!data) return;
         let n=0;
         const RESTOS_VALIDES = (typeof RESTAURANTS!=='undefined') ? Object.keys(RESTAURANTS) : ['BK500','BK509','BK526'];
