@@ -3371,8 +3371,10 @@ function nav(id) {
   if(id==='erreurcaisse'){populateErreurCaisseSelect();renderErreurCaisseHistorique();}
   if(id==='horaires'){
     if(window.__hrInit) try{window.__hrInit();}catch(e){console.warn('init horaires',e);}
-    // Basculer sur le resto actif si différent
-    if(window.__hrSwitchTo) try{window.__hrSwitchTo();}catch(e){}
+    // Forcer le resto actif (force=true) : au tout premier affichage, __hrInit
+    // vient de poser HR_RESTO, donc un __hrSwitchTo() non forcé croirait être
+    // déjà sur le bon resto et n'appliquerait rien → on verrait BK526 par défaut.
+    if(window.__hrSwitchTo) try{window.__hrSwitchTo(true);}catch(e){}
   }
   if(id==='horaires-import'){ if(window.hrInitDropZone) try{window.hrInitDropZone();window.hrRefreshLoadedState&&window.hrRefreshLoadedState();}catch(e){console.warn('init import',e);} }
 }
@@ -3502,7 +3504,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-31T22:06', label: 'v31/05-22h06', affichage: 'dimanche 31 mai 2026 à 22:06' };
+const APP_VERSION = { datetime: '2026-05-31T22:12', label: 'v31/05-22h12', affichage: 'dimanche 31 mai 2026 à 22:12' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -3943,6 +3945,10 @@ async function loadAll() {
       window.hrChargerGrilles().then(()=>{
         if(typeof window.hrChargerValidations==='function') return window.hrChargerValidations();
       }).then(()=>{
+        // Réappliquer le resto actif + régénérer la semaine. Sans ça, après un
+        // « ↺ Actualiser » la section Horaires pouvait rester sur BK526 / une
+        // mauvaise semaine tant qu'on ne changeait pas manuellement de resto.
+        if(typeof window.__hrSwitchTo==='function'){ try{ window.__hrSwitchTo(true); }catch(e){} }
         if(typeof window.renderGrille==='function') try{window.renderGrille();}catch(e){}
         if(document.getElementById('hrx-days') && typeof window.renderDays==='function') try{window.renderDays();}catch(e){}
       });
@@ -11356,7 +11362,7 @@ window.__hrInit=function(){
             HR_ALL[rt][dt]=row.tranches_ca; n++;
           }
         });
-        if(n){ window.HR_ALL=HR_ALL; const r=(typeof HR_RESTO!=='undefined'&&HR_RESTO)?HR_RESTO:'BK526'; if(HR_ALL[r]){HR_DATA=HR_ALL[r];window.HR_DATA=HR_DATA;} try{hrFillDaySelect&&hrFillDaySelect();hrFillWeekSelect&&hrFillWeekSelect();}catch(e){}
+        if(n){ window.HR_ALL=HR_ALL; const r=(typeof hrCurrentResto==='function'?hrCurrentResto():((typeof HR_RESTO!=='undefined'&&HR_RESTO)?HR_RESTO:'BK526')); if(HR_ALL[r]){HR_DATA=HR_ALL[r];HR_RESTO=r;window.HR_DATA=HR_DATA;} try{hrFillDaySelect&&hrFillDaySelect();hrFillWeekSelect&&hrFillWeekSelect();}catch(e){}
           // Les données ¼h sont arrivées de Supabase APRÈS le 1er rendu : on re-affiche
           // tout ce qui dépend de HR_DATA (pastilles ✓/✗ du dashboard, sélecteur de
           // consultation, prévisionnel) sinon ça reste figé sur « aucun PDF ».
@@ -11416,6 +11422,12 @@ window.__hrSwitchTo=function(force){
     if(vue && vue.value==='jour'){
       const s=document.getElementById('hrx-ca-day-sel');
       if(s && s.value) hrGenFromDate(s.value);
+    } else {
+      // Vue SEMAINE : forcer la régénération sur le lundi sélectionné (jamais sur
+      // une date résiduelle). hrFillWeekSelect a déjà choisi la semaine par défaut
+      // et l'a posée dans le sélecteur ; on génère explicitement ce lundi-là.
+      const ws=document.getElementById('hrx-sem-sel') || document.getElementById('hrx-sem-sel2');
+      if(ws && ws.value && typeof hrGenFromWeek==='function') hrGenFromWeek(ws.value, true);
     }
   }
   hrUpdateHeader();
