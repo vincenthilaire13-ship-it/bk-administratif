@@ -10,7 +10,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
   --bg:#21242b;--bg2:#272b33;--bg3:#2e323b;--card:#2b2f38;
@@ -315,7 +315,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
 .file-item-del:hover{color:var(--red)}
 .mgr-alert-ok{background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);color:var(--green);padding:10px 14px;border-radius:var(--radius-sm);font-size:11px;display:none;margin-top:12px}
 </style>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+
 <style id="horaires-style">
 #sec-horaires{--bg:#0f0f11;--s1:#1a1a1e;--s2:#222228;--bd:#2e2e36;--bd2:#3a3a44;--tx:#f0f0f2;--mu:#7a7a8a;--ac:#e8e020;}#sec-horaires *{box-sizing:border-box;margin:0;padding:0;}#sec-horaires{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--tx);min-height:100vh;}#sec-horaires .hr-hdr{display:flex;align-items:center;justify-content:space-between;padding:.7rem 1.5rem;border-bottom:1px solid var(--bd);background:var(--s1);position:sticky;top:0;z-index:100;}#sec-horaires .hr-hdr-title{font-size:15px;font-weight:600;}#sec-horaires .hr-hdr-sub{font-size:11px;color:var(--mu);font-family:'DM Mono',monospace;}#sec-horaires .hr-nav{display:flex;gap:4px;}#sec-horaires .hr-nt{padding:6px 13px;border-radius:8px;font-size:13px;cursor:pointer;color:var(--mu);border:1px solid transparent;transition:all .15s;}#sec-horaires .hr-nt:hover{color:var(--tx);background:var(--s2);}#sec-horaires .hr-nt.hr-on{color:var(--ac);border-color:var(--bd2);background:var(--s2);}#sec-horaires .hr-hdr-r{display:flex;gap:8px;}#sec-horaires .hr-btn{padding:6px 13px;border-radius:8px;font-size:13px;cursor:pointer;font-family:'DM Sans',sans-serif;border:1px solid var(--bd2);background:var(--s2);color:var(--tx);transition:all .15s;}#sec-horaires .hr-btn:hover{background:var(--bd);}#sec-horaires .hr-btn-ac{background:var(--ac);color:#000;border-color:var(--ac);font-weight:600;}#sec-horaires .hr-btn-ac:hover{background:#f5e820;}#sec-horaires .hr-sec{display:none;padding:1.2rem 1.5rem;}#sec-horaires .hr-sec.hr-on{display:block;}#sec-horaires .hr-mrow{display:flex;gap:10px;margin-bottom:1.2rem;flex-wrap:wrap;}#sec-horaires .hr-mc{background:var(--s1);border:1px solid var(--bd);border-radius:10px;padding:.7rem 1rem;flex:1;min-width:110px;}#sec-horaires .hr-mc-l{font-size:10px;color:var(--mu);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}#sec-horaires .hr-mc-v{font-size:22px;font-weight:500;}#sec-horaires .hr-mc-s{font-size:11px;color:var(--mu);margin-top:1px;}#sec-horaires .hr-plan-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:10px;}#sec-horaires .hr-days{display:flex;gap:5px;flex-wrap:wrap;}#sec-horaires .hr-db{padding:10px 14px;border-radius:10px;font-size:12px;border:1px solid var(--bd);background:var(--s2);color:var(--mu);cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:135px;}#sec-horaires .hr-db:hover{color:var(--tx);border-color:var(--bd2);}#sec-horaires .hr-db.hr-on{color:var(--ac);border-color:var(--ac);background:rgba(232,224,32,.07);}#sec-horaires .hr-db-day{font-size:13px;font-weight:600;}#sec-horaires .hr-db-ca{font-size:10px;font-family:'DM Mono',monospace;opacity:.7;}#sec-horaires .hr-scx{overflow-x:auto;}#sec-horaires .hr-tl-wrap{background:var(--s1);border:1px solid var(--bd);border-radius:14px;overflow:hidden;}#sec-horaires .hr-tl-top{display:flex;border-bottom:1px solid var(--bd);position:sticky;top:53px;z-index:50;background:var(--s1);}#sec-horaires .hr-tl-lh{display:none;}#sec-horaires .hr-tl-hh{flex:1;display:flex;min-width:920px;}#sec-horaires .hr-tl-h{flex:1;text-align:center;font-size:10px;color:var(--mu);font-family:'DM Mono',monospace;padding:12px 0;border-right:1px solid var(--bd);}#sec-horaires .hr-tl-h:last-child{border-right:none;}#sec-horaires .hr-tl-row{display:flex;border-bottom:1px solid var(--bd);min-height:28px;}#sec-horaires .hr-tl-row:last-child{border-bottom:none;}#sec-horaires .hr-tl-row:hover{background:rgba(255,255,255,.015);}#sec-horaires .hr-tl-i{display:none;}#sec-horaires .hr-tl-b{flex:1;position:relative;display:flex;align-items:center;min-width:920px;}#sec-horaires .hr-tl-gl{position:absolute;top:0;left:0;right:0;bottom:0;display:flex;pointer-events:none;}#sec-horaires .hr-tl-gl div{flex:1;border-right:1px solid rgba(255,255,255,.025);}#sec-horaires .hr-tl-gl div:last-child{border-right:none;}#sec-horaires .hr-bar{position:absolute;height:19px;border-radius:4px;display:flex;align-items:center;padding:0 5px;font-size:9px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;top:50%;transform:translateY(-50%);letter-spacing:.3px;transition:filter .12s;}#sec-horaires .hr-bar:hover{filter:brightness(1.2);z-index:20;}#sec-horaires .hr-leg{display:flex;flex-wrap:wrap;gap:8px;padding:.7rem 1.2rem;border-top:1px solid var(--bd);}#sec-horaires .hr-li{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--mu);}#sec-horaires .hr-ld{width:9px;height:9px;border-radius:2px;}#sec-horaires .hr-ca-ctrl{display:flex;gap:12px;margin-bottom:1.2rem;flex-wrap:wrap;align-items:flex-end;}#sec-horaires .hr-cc{display:flex;flex-direction:column;gap:4px;}#sec-horaires .hr-cc label{font-size:10px;font-family:'DM Mono',monospace;color:var(--mu);text-transform:uppercase;}#sec-horaires .hr-cc select{background:var(--s1);border:1px solid var(--bd2);border-radius:8px;padding:6px 11px;font-size:13px;color:var(--tx);font-family:'DM Sans',sans-serif;outline:none;}#sec-horaires .hr-ca-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:1.2rem;}#sec-horaires .hr-ca-cell{background:var(--s1);border:1px solid var(--bd);border-radius:9px;padding:.5rem .8rem;}#sec-horaires .hr-ca-cell label{font-size:10px;font-family:'DM Mono',monospace;color:var(--mu);display:flex;justify-content:space-between;margin-bottom:4px;}#sec-horaires .hr-ca-cell label span{color:var(--ac);font-size:9px;}#sec-horaires .hr-ca-cell input{width:100%;background:var(--s2);border:1px solid var(--bd2);border-radius:6px;padding:4px 7px;font-size:12px;color:var(--tx);font-family:'DM Mono',monospace;outline:none;}#sec-horaires .hr-ca-cell input:focus{border-color:var(--ac);}#sec-horaires .hr-ca-bar{height:3px;border-radius:2px;margin-top:4px;background:var(--ac);min-width:1px;}#sec-horaires .hr-ca-cell.hr-hi{border-color:rgba(232,224,32,.4);}#sec-horaires .hr-gt-wrap{overflow-x:auto;border:1px solid var(--bd);border-radius:12px;}#sec-horaires .hr-gt{width:100%;border-collapse:collapse;font-size:11px;font-family:'DM Mono',monospace;}#sec-horaires .hr-gt th{background:var(--s2);color:var(--mu);padding:6px 9px;border-bottom:1px solid var(--bd);border-right:1px solid var(--bd);text-align:center;font-weight:500;white-space:nowrap;}#sec-horaires .hr-gt td{padding:4px 7px;border-bottom:1px solid var(--bd);border-right:1px solid var(--bd);text-align:center;color:var(--tx);}#sec-horaires .hr-gt tr:last-child td{border-bottom:none;}#sec-horaires .hr-gt td:first-child, #sec-horaires .hr-gt th:first-child{text-align:left;padding-left:12px;}#sec-horaires .hr-cv{display:inline-block;padding:2px 6px;border-radius:4px;font-weight:600;}#sec-horaires .hr-np-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:10px;}#sec-horaires .hr-np-card{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:.9rem 1.1rem;display:flex;flex-direction:column;gap:6px;}#sec-horaires .hr-np-top{display:flex;align-items:center;justify-content:space-between;}#sec-horaires .hr-np-nm{font-size:14px;font-weight:500;}#sec-horaires .hr-np-bg{font-size:9px;font-family:'DM Mono',monospace;padding:2px 7px;border-radius:4px;background:rgba(120,144,156,.15);color:#78909c;border:1px solid rgba(120,144,156,.3);}#sec-horaires .hr-np-ds{font-size:12px;color:var(--mu);line-height:1.5;}#sec-horaires .hr-np-ft{display:flex;gap:6px;align-items:center;}#sec-horaires .hr-np-dt{width:8px;height:8px;border-radius:2px;flex-shrink:0;}#sec-horaires .hr-np-tm{font-size:10px;font-family:'DM Mono',monospace;color:var(--mu);}#sec-horaires .hr-stitle{font-size:16px;font-weight:500;margin-bottom:.4rem;}#sec-horaires .hr-ssub{font-size:12px;color:var(--mu);margin-bottom:1.2rem;}#sec-horaires .hr-db.hr-ok{border-color:#3ecf8e!important;background:rgba(62,207,142,.14)!important;color:#3ecf8e!important;transition:all .25s;}#sec-horaires .hr-db.hr-ok .hr-db-day{color:#3ecf8e!important;}#sec-horaires .hr-db.hr-ok::after{content:'✓';position:absolute;top:6px;right:8px;color:#3ecf8e;font-weight:700;font-size:12px;}#sec-horaires .hr-db.hr-warn{border-color:#f5a623!important;background:rgba(245,166,35,.12)!important;color:#f5a623!important;transition:all .25s;}#sec-horaires .hr-db.hr-warn .hr-db-day{color:#f5a623!important;}#sec-horaires .hr-db.hr-warn::after{content:'⚠';position:absolute;top:6px;right:8px;color:#f5a623;font-weight:700;font-size:12px;}#sec-horaires .hr-db{position:relative;}@keyframes hrSpin{to{transform:rotate(360deg)}}#sec-horaires .hr-btn.hr-spinning{opacity:.7;pointer-events:none;}#sec-horaires .hr-btn .hr-spin-ico{display:inline-block;}#sec-horaires .hr-btn.hr-spinning .hr-spin-ico{animation:hrSpin .7s linear infinite;}#sec-horaires #hrx-rows{padding-top:62px;}#sec-horaires #hrx-rows .hr-tl-row:first-child{min-height:34px;}#sec-horaires .hr-np-jour{padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;border:1px solid var(--bd2);background:var(--s2);color:var(--mu);font-family:'DM Sans',sans-serif;transition:all .12s;}#sec-horaires .hr-np-jour:hover{color:var(--tx);border-color:var(--mu);}#sec-horaires .hr-np-jour.hr-j-on{background:var(--ac);color:#000;border-color:var(--ac);font-weight:600;}#sec-horaires .hr-np-freq{padding:6px 12px;border-radius:8px;font-size:12px;cursor:pointer;border:1px solid var(--bd2);background:var(--s2);color:var(--mu);font-family:'DM Sans',sans-serif;transition:all .12s;}#sec-horaires .hr-np-freq:hover{color:var(--tx);border-color:var(--mu);}#sec-horaires .hr-np-freq.hr-f-on{background:var(--ac);color:#000;border-color:var(--ac);font-weight:600;}
 #sec-horaires #hrx-taux-input::-webkit-outer-spin-button,#sec-horaires #hrx-taux-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
@@ -608,162 +608,6 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     </section>
 
     <!-- IMPORTS — CONTRÔLE DES 4 PDF PAR JOUR -->
-    <!-- (Section "Imports — contrôle" déplacée sous Import massif dans la section Saisie) -->
-
-    <!-- SAISIE / IMPORT PDF -->
-    <section class="section" id="sec-saisie">
-      <div style="max-width:680px">
-
-        <!-- Zone dépôt PDF -->
-        <div class="mgr-card">
-          <div class="mgr-title">📥 Importer un PDF</div>
-          <div class="mgr-sub">Synthèse CA · SOS Drive · Ventes ¼h · Repas employés — le type est détecté automatiquement</div>
-          <div class="drop-zone" id="import-drop-zone"
-               onclick="document.getElementById('import-file-input').click()"
-               ondragover="event.preventDefault();this.classList.add('drag-over')"
-               ondragleave="this.classList.remove('drag-over')"
-               ondrop="handleImportDrop(event)">
-            <div class="drop-zone-icon">📄</div>
-            <div class="drop-zone-text">Cliquez ou <span>glissez le PDF ici</span></div>
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Synthèse CA · SOS Drive · Ventes ¼h · Repas employés · PDF</div>
-          </div>
-          <input type="file" id="import-file-input" accept=".pdf" style="display:none" onchange="handleImportFile(this.files[0])">
-          <div id="import-file-name" style="font-size:11px;color:var(--muted2);margin-bottom:10px;display:none"></div>
-          <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px" id="btn-extraire" onclick="extrairePDF()" disabled>
-            🤖 Extraire les données
-          </button>
-          <div id="import-loading" style="display:none;text-align:center;padding:18px;color:var(--muted2);font-size:12px">
-            <div style="font-size:24px;margin-bottom:8px;animation:pulse 1.5s infinite">⏳</div>
-            Analyse du PDF en cours…
-          </div>
-          <div class="mgr-alert-ok" id="import-err" style="background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.3);color:var(--red)"></div>
-        </div>
-
-        <!-- Prévisualisation des données extraites -->
-        <div id="import-preview" style="display:none">
-          <div class="table-card">
-            <div class="table-header">
-              <span class="table-title">✅ Données extraites — vérifiez avant d'enregistrer</span>
-              <button class="btn" style="font-size:10px;padding:4px 10px" onclick="resetImport()">✕ Recommencer</button>
-            </div>
-            <div style="padding:20px">
-              <div class="alert alert-ok" id="saisie-ok">✓ Journée enregistrée avec succès !</div>
-              <div class="alert alert-err" id="saisie-err">Erreur lors de l'enregistrement.</div>
-
-              <!-- Champs éditables pré-remplis -->
-              <div class="sub-title">Identifiant</div>
-              <div class="form-row" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">Date *</label><input type="date" class="form-input" id="s-date"></div>
-                <div class="form-group"><label class="form-label">Restaurant</label><input type="text" class="form-input" id="s-resto" readonly style="opacity:.6"></div>
-              </div>
-
-              <div class="sub-title">CA</div>
-              <div class="form-row-4" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">CA HT (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-ht"></div>
-                <div class="form-group" style="display:none"><label class="form-label">CA TTC (€)</label><input type="number" step="0.01" class="form-input" id="s-ca-ttc"></div>
-                <div class="form-group"><label class="form-label">Tickets</label><input type="number" class="form-input" id="s-tickets"></div>
-                <div class="form-group"><label class="form-label">Ticket moy. (€)</label><input type="number" step="0.01" class="form-input" id="s-tm"></div>
-              </div>
-
-              <div class="sub-title">Canaux — par ligne : nb (TAC) · CA HT · % du CA · ticket moyen (P.M net)</div>
-              <!-- DRIVE -->
-              <div class="form-row-4" style="margin-bottom:10px">
-                <div class="form-group"><label class="form-label">🚗 Drive — voitures</label><input type="number" class="form-input" id="s-drive-vol"></div>
-                <div class="form-group"><label class="form-label">Drive HT (€)</label><input type="number" step="0.01" class="form-input" id="s-drive-ca"></div>
-                <div class="form-group"><label class="form-label">Drive %</label><input type="number" step="0.01" class="form-input" id="s-drive-pct"></div>
-                <div class="form-group"><label class="form-label">Drive ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-drive-tm"></div>
-              </div>
-              <!-- KIOSK -->
-              <div class="form-row-4" style="margin-bottom:10px">
-                <div class="form-group"><label class="form-label">🖥️ Kiosk — nb</label><input type="number" class="form-input" id="s-kiosk-nb"></div>
-                <div class="form-group"><label class="form-label">Kiosk HT (€)</label><input type="number" step="0.01" class="form-input" id="s-kiosk-ca"></div>
-                <div class="form-group"><label class="form-label">Kiosk %</label><input type="number" step="0.01" class="form-input" id="s-kiosk-pct"></div>
-                <div class="form-group"><label class="form-label">Kiosk ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-kiosk-tm"></div>
-              </div>
-              <!-- LIVRAISON -->
-              <div class="form-row-4" style="margin-bottom:10px">
-                <div class="form-group"><label class="form-label">🛵 Livraison — nb</label><input type="number" class="form-input" id="s-lv-nb"></div>
-                <div class="form-group"><label class="form-label">Livraison HT (€)</label><input type="number" step="0.01" class="form-input" id="s-lv-ca"></div>
-                <div class="form-group"><label class="form-label">Livraison %</label><input type="number" step="0.01" class="form-input" id="s-lv-pct"></div>
-                <div class="form-group"><label class="form-label">Livraison ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-lv-tm"></div>
-              </div>
-              <!-- COMPTOIR -->
-              <div class="form-row-4" style="margin-bottom:10px">
-                <div class="form-group"><label class="form-label">🧾 Comptoir — nb</label><input type="number" class="form-input" id="s-comptoir-nb"></div>
-                <div class="form-group"><label class="form-label">Comptoir HT (€)</label><input type="number" step="0.01" class="form-input" id="s-comptoir-ca"></div>
-                <div class="form-group"><label class="form-label">Comptoir %</label><input type="number" step="0.01" class="form-input" id="s-comptoir-pct"></div>
-                <div class="form-group"><label class="form-label">Comptoir ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-comptoir-tm"></div>
-              </div>
-              <!-- CLICK & COLLECT -->
-              <div class="form-row-4" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">📦 Click&Collect — nb</label><input type="number" class="form-input" id="s-cc-nb"></div>
-                <div class="form-group"><label class="form-label">C&C HT (€)</label><input type="number" step="0.01" class="form-input" id="s-cc-ca"></div>
-                <div class="form-group"><label class="form-label">C&C %</label><input type="number" step="0.01" class="form-input" id="s-cc-pct"></div>
-                <div class="form-group"><label class="form-label">C&C ticket moy.</label><input type="number" step="0.01" class="form-input" id="s-cc-tm"></div>
-              </div>
-
-              <div class="sub-title">Corrections / Remises</div>
-              <div class="form-row-4" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">Corrections nb</label><input type="number" class="form-input" id="s-corr-nb"></div>
-                <div class="form-group"><label class="form-label">Corrections (€)</label><input type="number" step="0.01" class="form-input" id="s-corr-mnt"></div>
-                <div class="form-group"><label class="form-label">Corrections %</label><input type="number" step="0.01" class="form-input" id="s-corr-pct"></div>
-                <div class="form-group"><label class="form-label">Remises (€)</label><input type="number" step="0.01" class="form-input" id="s-rem-mnt"></div>
-              </div>
-              <div class="form-row-4" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">Remises nb</label><input type="number" class="form-input" id="s-rem-nb"></div>
-                <div class="form-group"><label class="form-label">Remises %</label><input type="number" step="0.01" class="form-input" id="s-rem-pct"></div>
-                <div class="form-group"><label class="form-label">Sauces nb</label><input type="number" class="form-input" id="s-sauces-nb"></div>
-                <div class="form-group"><label class="form-label">Sauces (€)</label><input type="number" step="0.01" class="form-input" id="s-sauces-mnt"></div>
-              </div>
-
-              <div class="sub-title">Annulations / Commandes / Repas</div>
-              <div class="form-row-4" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">Annulations nb</label><input type="number" class="form-input" id="s-annul-nb"></div>
-                <div class="form-group"><label class="form-label">Annulations (€)</label><input type="number" step="0.01" class="form-input" id="s-annul-mnt"></div>
-                <div class="form-group"><label class="form-label">Cmd ouvertes nb</label><input type="number" class="form-input" id="s-cmdouv-nb"></div>
-                <div class="form-group"><label class="form-label">Cmd ouvertes (€)</label><input type="number" step="0.01" class="form-input" id="s-cmdouv-mnt"></div>
-              </div>
-              <div class="form-row-4" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">Repas emp. nb</label><input type="number" class="form-input" id="s-repas-nb"></div>
-                <div class="form-group"><label class="form-label">Repas emp. (€)</label><input type="number" step="0.01" class="form-input" id="s-repas-mnt"></div>
-                <div class="form-group"><label class="form-label">Repas emp. %</label><input type="number" step="0.01" class="form-input" id="s-repas-pct"></div>
-                <div class="form-group"><label class="form-label">Erreur caisse (€)</label><input type="number" step="0.01" class="form-input" id="s-err-caisse"></div>
-              </div>
-
-              <div class="sub-title">Encaissements (Compté / Déposé)</div>
-              <div id="s-ecarts-alert" style="display:none;margin-bottom:12px"></div>
-              <div class="form-row-4" style="margin-bottom:10px">
-                <div class="form-group"><label class="form-label">CB (€)</label><input type="number" step="0.01" class="form-input" id="s-cb"></div>
-                <div class="form-group"><label class="form-label">Espèces (€)</label><input type="number" step="0.01" class="form-input" id="s-especes"></div>
-                <div class="form-group"><label class="form-label">ANCV (€)</label><input type="number" step="0.01" class="form-input" id="s-ancv"></div>
-                <div class="form-group"><label class="form-label">C&C CB (€)</label><input type="number" step="0.01" class="form-input" id="s-cccb"></div>
-              </div>
-              <div class="form-row-4" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">Uber Eats (€)</label><input type="number" step="0.01" class="form-input" id="s-uber"></div>
-                <div class="form-group"><label class="form-label">Deliveroo (€)</label><input type="number" step="0.01" class="form-input" id="s-deliveroo"></div>
-                <div class="form-group"><label class="form-label">BK Livraison (€)</label><input type="number" step="0.01" class="form-input" id="s-bkliv"></div>
-                <div class="form-group"><label class="form-label">TRD (€)</label><input type="number" step="0.01" class="form-input" id="s-trd"></div>
-              </div>
-
-              <div class="sub-title">Managers</div>
-              <div class="form-row" style="margin-bottom:16px">
-                <div class="form-group"><label class="form-label">🔑 Manager ouverture</label><input type="text" class="form-input" id="s-manager-ouv" placeholder="Prénom Nom"></div>
-                <div class="form-group"><label class="form-label">🔒 Manager fermeture</label><input type="text" class="form-input" id="s-manager-fer" placeholder="Prénom Nom"></div>
-              </div>
-
-              <div class="form-group" style="margin-bottom:20px">
-                <label class="form-label">Commentaire</label>
-                <input type="text" class="form-input" id="s-comment" placeholder="Événement, météo...">
-              </div>
-
-              <button class="btn btn-accent" style="width:100%;padding:12px;font-size:13px" onclick="saveSaisie(event)">💾 Enregistrer la journée</button>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </section>
-
         <!-- SEUILS -->
     <section class="section" id="sec-seuils">
       <div style="margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
@@ -894,16 +738,16 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
               <div>
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Ouverture (8h → 19h)</div>
                 <label class="form-label">Manager ouverture</label>
-                <select class="form-input" id="mgr-ouv" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
+                <select class="form-input" id="mgr-ouv" style="margin-bottom:10px" onchange="mgrCheckValidable()"><option value="">— sélectionner —</option></select>
                 <label class="form-label">Leader ouverture</label>
-                <select class="form-input" id="mgr-leader-ouv"><option value="">— sélectionner —</option></select>
+                <select class="form-input" id="mgr-leader-ouv" onchange="mgrCheckValidable()"><option value="">— sélectionner —</option></select>
               </div>
               <div>
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Fermeture (19h → 2h)</div>
                 <label class="form-label">Manager fermeture</label>
-                <select class="form-input" id="mgr-fer" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
+                <select class="form-input" id="mgr-fer" style="margin-bottom:10px" onchange="mgrCheckValidable()"><option value="">— sélectionner —</option></select>
                 <label class="form-label">Leader fermeture</label>
-                <select class="form-input" id="mgr-leader-fer"><option value="">— sélectionner —</option></select>
+                <select class="form-input" id="mgr-leader-fer" onchange="mgrCheckValidable()"><option value="">— sélectionner —</option></select>
               </div>
             </div>
 
@@ -1007,11 +851,11 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
               <div class="form-group" style="margin-bottom:0">
                 <label class="form-label">👔 Manager responsable</label>
-                <select class="form-input" id="ann-mgr-resp"><option value="">— sélectionner —</option></select>
+                <select class="form-input" id="ann-mgr-resp" onchange="annCheckValidable()"><option value="">— sélectionner —</option></select>
               </div>
               <div class="form-group" style="margin-bottom:0">
                 <label class="form-label">🧑‍🍳 Équipier (si connu)</label>
-                <input type="text" class="form-input" id="ann-equipier" placeholder="Nom de l'équipier">
+                <input type="text" class="form-input" id="ann-equipier" placeholder="Nom de l'équipier" oninput="annCheckValidable()">
               </div>
             </div>
 
@@ -1640,6 +1484,11 @@ alter table journees add column if not exists commandes_ouvertes_pct numeric;</p
 
 <script>
 // ══ CONFIG ══
+// Helpers localStorage sûrs : en navigation privée stricte ou origine opaque,
+// localStorage peut lever une exception. Ces wrappers évitent tout crash.
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); return true; }catch(e){ return false; } }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
 let SB = null;
 let DATA = [];    // journées 2026
 let DATA25 = []; // journées 2025 (N-1)
@@ -3396,7 +3245,7 @@ function switchResto(restoId) {
     try { window.HR_RESTO = restoId; } catch(e){}
   }
   // Persister le choix pour qu'il survive aux re-renders et au refresh
-  try { localStorage.setItem('bk_active_resto', restoId); } catch(e){}
+  try { lsSet('bk_active_resto', restoId); } catch(e){}
   // Mettre à jour les boutons actifs
   ['BK500','BK509','BK526'].forEach(id => {
     const btn = document.getElementById('sw-'+id);
@@ -3504,7 +3353,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-31T22:21', label: 'v31/05-22h21', affichage: 'dimanche 31 mai 2026 à 22:21' };
+const APP_VERSION = { datetime: '2026-05-31T22:39', label: 'v31/05-22h39', affichage: 'dimanche 31 mai 2026 à 22:39' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -3835,8 +3684,8 @@ function copierSQL(){
 }
 
 function loadConfig() {
-  const url = localStorage.getItem('sb_url') || SB_URL_DEFAULT;
-  const key = localStorage.getItem('sb_key') || SB_KEY_DEFAULT;
+  const url = lsGet('sb_url') || SB_URL_DEFAULT;
+  const key = lsGet('sb_key') || SB_KEY_DEFAULT;
   if(url && key) {
     const cfgUrl = document.getElementById('cfg-url');
     const cfgKey = document.getElementById('cfg-key');
@@ -3850,7 +3699,7 @@ function loadConfig() {
     if(CURRENT_ROLE && CURRENT_ROLE !== 'manager') renderDashboard();
     document.getElementById('db-status').textContent = 'Local (sans DB)';
   }
-  const saved = localStorage.getItem('bk_seuils');
+  const saved = lsGet('bk_seuils');
   if(saved) Object.assign(SEUILS, JSON.parse(saved));
 }
 
@@ -3878,8 +3727,8 @@ async function saveConfig() {
   const url = document.getElementById('cfg-url').value.trim();
   const key = document.getElementById('cfg-key').value.trim();
   if(!url||!key) return;
-  localStorage.setItem('sb_url', url);
-  localStorage.setItem('sb_key', key);
+  lsSet('sb_url', url);
+  lsSet('sb_key', key);
   try {
     SB = window.supabase.createClient(url, key);
     window.SB = SB; // exposer pour la section planning (bloc <script> séparé)
@@ -5130,7 +4979,7 @@ function renderSeuils() {
 
 function saveSeuils() {
   Object.keys(SEUILS).forEach(k=>{ const el=document.getElementById('sl-'+k); if(el) SEUILS[k]=parseFloat(el.value)||SEUILS[k]; });
-  localStorage.setItem('bk_seuils', JSON.stringify(SEUILS));
+  lsSet('bk_seuils', JSON.stringify(SEUILS));
   showAlert('seuils-ok');
 }
 
@@ -5326,7 +5175,7 @@ function getCodes() {
     return Object.assign(base, CODES_LIVE);
   }
   // 2) Sinon le cache local
-  const s = localStorage.getItem('bk_codes');
+  const s = lsGet('bk_codes');
   const base = JSON.parse(JSON.stringify(DEFAULT_CODES));
   if(!s) return base;
   try { return Object.assign(base, JSON.parse(s)); } catch(e){ return base; }
@@ -5336,7 +5185,7 @@ function getCodes() {
 // Écrit les codes en local (cache rapide) ET dans Supabase (partagé)
 async function persistCodes(codes){
   CODES_LIVE = JSON.parse(JSON.stringify(codes));
-  localStorage.setItem('bk_codes', JSON.stringify(codes));
+  lsSet('bk_codes', JSON.stringify(codes));
   try {
     if(SB){
       const { error } = await SB.from('app_config').upsert(
@@ -5359,7 +5208,7 @@ async function chargerCodesSupabase(){
     if(error){ console.warn('chargerCodesSupabase', error); if(st){st.innerHTML='⚠️ Table app_config introuvable'; st.style.color='var(--red)';} return false; }
     if(data && data.valeur){
       CODES_LIVE = data.valeur;
-      localStorage.setItem('bk_codes', JSON.stringify(data.valeur));
+      lsSet('bk_codes', JSON.stringify(data.valeur));
       // Rafraîchir l'écran d'accès s'il est ouvert + les sélecteurs de login
       if(typeof renderAcces==='function' && document.getElementById('managers-list')) try{renderAcces();}catch(e){}
       const st=document.getElementById('login-sync-status');
@@ -5564,7 +5413,7 @@ async function doLogin() {
 function setSession(user) {
   CURRENT_ROLE = user.role;
   CURRENT_USER = user;
-  sessionStorage.setItem('bk_session', JSON.stringify(user));
+  try{ sessionStorage.setItem('bk_session', JSON.stringify(user)); }catch(e){}
 
   document.getElementById('login-screen').style.display   = 'none';
   document.getElementById('app-shell').style.display      = 'flex';
@@ -5606,7 +5455,7 @@ function setSession(user) {
   const _isMultiBoot = ['superviseur','admin'].includes(user.role);
   if(_isMultiBoot){
     let savedResto = null;
-    try { savedResto = localStorage.getItem('bk_active_resto'); } catch(e){}
+    try { savedResto = lsGet('bk_active_resto'); } catch(e){}
     const restoInitial = (savedResto && RESTAURANTS[savedResto] && savedResto!=='ALL') ? savedResto : 'BK526';
     ACTIVE_RESTO = restoInitial;
     window.ACTIVE_RESTO = restoInitial;
@@ -5776,16 +5625,43 @@ async function lireTicket(input, key) {
     }
   } catch(e){ console.log('OCR ticket:', e); }
 
-  // Activer le bouton si au moins 1 ticket
+  // Activer le bouton selon le contrôle complet (photo + manager + équipier)
   ANN_PHOTOS_COUNT = Object.values(ANN_PHOTOS).filter(Boolean).length;
+  annCheckValidable();
+}
+
+// Contrôle de validabilité d'une annulation :
+//  - au moins 1 ticket photographié (ou un "ticket manquant" coché)
+//  - manager responsable obligatoire
+//  - équipier obligatoire (saisie libre acceptée ; créé en base au besoin)
+function annCheckValidable(){
   const btn = document.getElementById('btn-ann-save');
   const hint = document.getElementById('ann-save-hint');
-  if(btn && ANN_PHOTOS_COUNT > 0) {
-    btn.disabled = false;
-    btn.style.opacity = '1';
-    if(hint) hint.style.display = 'none';
+  if(!btn) return false;
+  const aPhoto = (ANN_PHOTOS_COUNT>0)
+    || document.getElementById('chk-miss-bad')?.checked
+    || document.getElementById('chk-miss-annul')?.checked
+    || document.getElementById('chk-miss-good')?.checked;
+  const mgr = (document.getElementById('ann-mgr-resp')?.value||'').trim();
+  const eq  = (document.getElementById('ann-equipier')?.value||'').trim();
+  const ok = aPhoto && mgr && eq;
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '1' : '0.5';
+  btn.style.cursor = ok ? 'pointer' : 'not-allowed';
+  if(hint){
+    if(ok){ hint.style.display='none'; }
+    else {
+      const miss = [];
+      if(!aPhoto) miss.push('photographier un ticket');
+      if(!mgr) miss.push('le manager responsable');
+      if(!eq)  miss.push("le nom de l'équipier");
+      hint.textContent = 'Pour enregistrer : '+miss.join(', ')+'.';
+      hint.style.display='block';
+    }
   }
+  return ok;
 }
+window.annCheckValidable = annCheckValidable;
 
 function majAnnExtracted() {
   const el = document.getElementById('ann-extracted');
@@ -5881,11 +5757,13 @@ async function enregistrerErreurCaisse(){
   const heure   = (document.getElementById('ec-heure')?.value||'').trim() || null;
   const montant = parseFloat(document.getElementById('ec-montant')?.value||'');
   const sens    = document.getElementById('ec-sens')?.value || 'manquant';
-  const manager = document.getElementById('ec-manager')?.value || CURRENT_USER?.nom || null;
-  const equipier= (document.getElementById('ec-equipier')?.value||'').trim() || null;
+  const manager = (document.getElementById('ec-manager')?.value||'').trim();
+  const equipier= (document.getElementById('ec-equipier')?.value||'').trim();
   const comment = (document.getElementById('ec-comment')?.value||'').trim() || null;
 
   if(isNaN(montant) || montant===0){ show('Indiquez un montant d\'écart.', 'var(--red)'); return; }
+  if(!manager){ show('Le manager responsable est obligatoire.', 'var(--red)'); return; }
+  if(!equipier){ show("Le nom de l'equipier est obligatoire.", 'var(--red)'); return; }
   if(!SB){ show('Base non connectée.', 'var(--red)'); return; }
 
   const resto = restoReel();
@@ -6020,7 +5898,7 @@ function populateManagerSelect() {
 }
 
 function doLogout() {
-  sessionStorage.removeItem('bk_session');
+  try{ sessionStorage.removeItem('bk_session'); }catch(e){}
   CURRENT_ROLE=null; CURRENT_USER=null; LOGIN_RESTO=null; LOGIN_ROLE=null;
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-shell').style.display='none';
@@ -6254,22 +6132,64 @@ async function lireTousPDFs(files) {
 
   document.getElementById('mgr-pdf-summary').innerHTML = recap;
 
-  // Gérer le bouton de validation (bloqué si incohérence)
-  const btn = document.getElementById('mgr-btn-save');
-  const errBox = document.getElementById('mgr-coherence-alert');
-  if(bloque){
-    if(errBox){ errBox.innerHTML = alerte; errBox.style.display='block'; }
-    if(btn){ btn.disabled = true; btn.style.opacity='.45'; btn.style.cursor='not-allowed'; }
-  } else {
-    if(errBox){ errBox.style.display='none'; }
-    if(btn){ btn.disabled = false; btn.style.opacity='1'; btn.style.cursor='pointer'; }
-  }
+  // Mémoriser l'état "PDF + dates" (calculé ici une fois) pour que le contrôle
+  // temps réel des managers/leaders puisse le recombiner sans relire les PDF.
+  MGR_BLOQUE_PDF = bloque;
+  MGR_ALERTE_PDF = alerte;
+
+  // Le bouton dépend maintenant AUSSI des champs managers/leaders (voir
+  // mgrCheckValidable). On délègue toute la gestion du bouton à cette fonction.
+  mgrCheckValidable();
 
   // Conserver compat ancienne logique
   MGR_EXTRACTED = MGR_JOUR.synthese || {};
 
   populateManagerSelect();
 }
+
+// État du contrôle PDF/dates, partagé avec le contrôle temps réel des champs.
+let MGR_BLOQUE_PDF = false;
+let MGR_ALERTE_PDF = '';
+
+// Contrôle complet de validabilité de la journée :
+//  1) les 4 PDF présents et de la même date (MGR_BLOQUE_PDF)
+//  2) manager ouverture + fermeture + leader ouverture + fermeture renseignés
+// Le directeur (midi/soir) reste FACULTATIF et ne bloque jamais.
+// Active/désactive le bouton + affiche un message clair sur ce qui manque.
+function mgrCheckValidable(){
+  const btn = document.getElementById('mgr-btn-save');
+  const errBox = document.getElementById('mgr-coherence-alert');
+  if(!btn) return false;
+
+  const champs = [
+    {id:'mgr-ouv',        label:'Manager ouverture'},
+    {id:'mgr-fer',        label:'Manager fermeture'},
+    {id:'mgr-leader-ouv', label:'Leader ouverture'},
+    {id:'mgr-leader-fer', label:'Leader fermeture'},
+  ];
+  const manquantsChamps = champs.filter(c=>{
+    const el = document.getElementById(c.id);
+    return !el || !el.value || !el.value.trim();
+  });
+
+  let bloque = false, alerte = '';
+  if(MGR_BLOQUE_PDF){
+    bloque = true; alerte = MGR_ALERTE_PDF; // priorité au problème PDF/date
+  } else if(manquantsChamps.length){
+    bloque = true;
+    alerte = `🚫 <strong>Champs obligatoires manquants</strong> : ${manquantsChamps.map(c=>c.label).join(', ')}. Renseignez les managers et leaders d'ouverture et de fermeture pour valider (le directeur reste facultatif).`;
+  }
+
+  if(bloque){
+    if(errBox){ errBox.innerHTML = alerte; errBox.style.display='block'; }
+    btn.disabled = true; btn.style.opacity='.45'; btn.style.cursor='not-allowed';
+  } else {
+    if(errBox){ errBox.style.display='none'; }
+    btn.disabled = false; btn.style.opacity='1'; btn.style.cursor='pointer';
+  }
+  return !bloque;
+}
+window.mgrCheckValidable = mgrCheckValidable;
 
 let MGR_VENTES_TXT = null;
 let MGR_VENTES_AB = null;
@@ -6632,6 +6552,19 @@ async function enregistrerJourneeMgr() {
   const dates = [...new Set(Object.values(MGR_JOUR.dates).filter(Boolean))];
   if(manquants.length>0 || dates.length>1){
     alert('Validation impossible : il manque des documents ou les dates diffèrent.');
+    return;
+  }
+  // Re-contrôle : managers + leaders d'ouverture et de fermeture obligatoires
+  // (le directeur reste facultatif).
+  const champsObl = [
+    {id:'mgr-ouv',        label:'Manager ouverture'},
+    {id:'mgr-fer',        label:'Manager fermeture'},
+    {id:'mgr-leader-ouv', label:'Leader ouverture'},
+    {id:'mgr-leader-fer', label:'Leader fermeture'},
+  ];
+  const champsManquants = champsObl.filter(c=>{ const el=document.getElementById(c.id); return !el||!el.value||!el.value.trim(); });
+  if(champsManquants.length){
+    alert('Validation impossible : renseignez '+champsManquants.map(c=>c.label).join(', ')+'.\n(Le directeur reste facultatif.)');
     return;
   }
 
@@ -7237,7 +7170,7 @@ async function saveCodes(){
 
 // ── Vérifier session au démarrage ──
 function checkSession(){
-  const s=sessionStorage.getItem('bk_session');
+  let s=null; try{ s=sessionStorage.getItem('bk_session'); }catch(e){}
   if(s){try{setSession(JSON.parse(s));return;}catch(e){}}
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('app-shell').style.display='none';
@@ -8280,7 +8213,7 @@ function anRenderAnnulations(){
   // ⚠️ Annulations : on prend TOUTES les journées (historique complet), pas la fenêtre de dates.
   let rows = [...(AN_DATA.annulationsTout || AN_DATA.annulations || [])];
   try {
-    const local = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
+    const local = JSON.parse(lsGet('bk_annulations')||'[]');
     let resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null); if(resto==='ALL'||resto==='Administration')resto=null;
     const seen=new Set(rows.map(r=>r.id));
     local.forEach(a=>{
@@ -8564,7 +8497,7 @@ function anRenderParPersonne(type){
   const sos = AN_DATA.sos||[];
   const jours = anJourneesPeriode();
   const anns = (()=>{ let r=[...(AN_DATA.annulations||[])]; try{
-    const local=JSON.parse(localStorage.getItem('bk_annulations')||'[]');
+    const local=JSON.parse(lsGet('bk_annulations')||'[]');
     const from=document.getElementById('an-date-from').value,to=document.getElementById('an-date-to').value;
     let resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null); if(resto==='ALL'||resto==='Administration')resto=null;
     local.forEach(a=>{const d=a.date&&a.date.includes('/')?a.date.split('/').reverse().join('-'):a.date; if(from&&d<from)return; if(to&&d>to)return; if(resto&&a.restaurant!==resto)return; r.push({date:d,montant:a.montant,manager:a.manager});});
@@ -8982,11 +8915,13 @@ function sauvegarderAnnulation() {
   const missAnnul = document.getElementById('chk-miss-annul')?.checked ? document.getElementById('miss-annul-txt')?.value : null;
   const missGood  = document.getElementById('chk-miss-good')?.checked  ? document.getElementById('miss-good-txt')?.value  : null;
 
-  // Manager responsable (sélectionné) sinon le manager connecté ; équipier optionnel
-  const mgrResp  = document.getElementById('ann-mgr-resp')?.value || CURRENT_USER?.nom || null;
-  const equipier = (document.getElementById('ann-equipier')?.value||'').trim() || null;
+  // Manager responsable + équipier OBLIGATOIRES.
+  const mgrResp  = (document.getElementById('ann-mgr-resp')?.value||'').trim();
+  const equipier = (document.getElementById('ann-equipier')?.value||'').trim();
+  if(!mgrResp){ alert('Le manager responsable est obligatoire.'); return; }
+  if(!equipier){ alert("Le nom de l'équipier est obligatoire (saisissez-le même s'il n'est pas dans la liste)."); return; }
 
-  const anns = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
+  const anns = JSON.parse(lsGet('bk_annulations')||'[]');
   anns.unshift({
     id: Date.now(), date, heure, montant, comment,
     manager: mgrResp,
@@ -8997,7 +8932,7 @@ function sauvegarderAnnulation() {
     ticket_good_manquant: missGood||null,
     createdAt: new Date().toISOString()
   });
-  localStorage.setItem('bk_annulations', JSON.stringify(anns.slice(0,500)));
+  lsSet('bk_annulations', JSON.stringify(anns.slice(0,500)));
 
   // Persister aussi dans Supabase pour l'analyse multi-postes
   try {
@@ -9068,10 +9003,10 @@ function _OLD_sauvegarderAnnulation() {
   if(!date||!montant) { alert('Date et montant obligatoires'); return; }
 
   // Stocker localement (Supabase storage pour les photos — à venir)
-  const anns = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
+  const anns = JSON.parse(lsGet('bk_annulations')||'[]');
   anns.unshift({ id:Date.now(), date, heure, montant, manager, motif, comment,
     restaurant: CURRENT_USER?.resto||'BK526', createdAt: new Date().toISOString() });
-  localStorage.setItem('bk_annulations', JSON.stringify(anns.slice(0,200)));
+  lsSet('bk_annulations', JSON.stringify(anns.slice(0,200)));
 
   // Reset
   ['ann-date','ann-heure','ann-montant','ann-comment'].forEach(id=>{
@@ -9092,7 +9027,7 @@ function _OLD_sauvegarderAnnulation() {
 function renderAnnulationsHistorique() {
   const el = document.getElementById('ann-historique-content');
   if(!el) return;
-  const anns = JSON.parse(localStorage.getItem('bk_annulations')||'[]')
+  const anns = JSON.parse(lsGet('bk_annulations')||'[]')
     .filter(a=>!ACTIVE_RESTO||ACTIVE_RESTO==='ALL'||a.restaurant===ACTIVE_RESTO);
   if(!anns.length) { el.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px">Aucune annulation enregistrée</div>'; return; }
   el.innerHTML = `<table style="width:100%;font-size:11px">
@@ -10041,7 +9976,7 @@ function col(l){const u=(l||'').toUpperCase(),k=Object.keys(C).find(k=>u.include
 const NP_ORANGE = {bg:'#f5a623', tx:'#000'};
 // Override par resto : { 'BK526': { 'PLONGE': {bg:'#xxxxxx',tx:'#fff'}, ... }, ... }
 let HR_NP_COLORS = {};
-try { HR_NP_COLORS = JSON.parse(localStorage.getItem('hr_np_colors')||'{}'); } catch(e){ HR_NP_COLORS = {}; }
+try { HR_NP_COLORS = JSON.parse(lsGet('hr_np_colors')||'{}'); } catch(e){ HR_NP_COLORS = {}; }
 
 // Ensemble des libellés non productifs (déduit de BASE_MIN type 'np'), en MAJUSCULES
 function hrNpLabels(){
@@ -10071,7 +10006,7 @@ function hrSetNpColor(label, hex){
   // texte lisible selon clair/foncé
   const tx = _hrTxtFor(hex);
   HR_NP_COLORS[resto][u] = {bg:hex, tx};
-  try { localStorage.setItem('hr_np_colors', JSON.stringify(HR_NP_COLORS)); } catch(e){}
+  try { lsSet('hr_np_colors', JSON.stringify(HR_NP_COLORS)); } catch(e){}
   // persister aussi dans Supabase (app_config) si dispo
   try {
     if(typeof SB!=='undefined' && SB){
@@ -10854,7 +10789,7 @@ function _kGrilleProt(resto){ return 'bk_grille_protegee_'+resto; }
 function nomResto(resto){ try{ return (RESTAURANTS[resto]?.nom)||resto; }catch(e){ return resto; } }
 
 function grilleProtegee(resto){
-  try{ const raw=localStorage.getItem(_kGrilleProt(resto)); return raw?JSON.parse(raw):null; }catch(e){ return null; }
+  try{ const raw=lsGet(_kGrilleProt(resto)); return raw?JSON.parse(raw):null; }catch(e){ return null; }
 }
 function grilleEstProtegee(resto){ const g=grilleProtegee(resto); return !!(g && g.grille && g.grille.length); }
 
@@ -10873,7 +10808,7 @@ function protegerGrille(){
     mode: (typeof grilleMode==='number'?grilleMode:15),
     le: new Date().toISOString()
   };
-  try{ localStorage.setItem(_kGrilleProt(resto), JSON.stringify(snap)); }catch(e){ alert('Impossible d\'enregistrer localement la grille protégée.'); return; }
+  try{ lsSet(_kGrilleProt(resto), JSON.stringify(snap)); }catch(e){ alert('Impossible d\'enregistrer localement la grille protégée.'); return; }
 
   // Best-effort : persister aussi en base (colonne grille_protegee si elle existe)
   if(window.SB){
@@ -11369,7 +11304,7 @@ window.__hrInit=function(){
       SB.from('app_config').select('valeur').eq('cle','hr_np_colors').maybeSingle().then(({data})=>{
         if(data && data.valeur && typeof data.valeur==='object'){
           HR_NP_COLORS = data.valeur;
-          try{ localStorage.setItem('hr_np_colors', JSON.stringify(HR_NP_COLORS)); }catch(e){}
+          try{ lsSet('hr_np_colors', JSON.stringify(HR_NP_COLORS)); }catch(e){}
           try{ renderNP&&renderNP(); renderAll&&renderAll(); }catch(e){}
         }
       }).catch(()=>{});
