@@ -1265,7 +1265,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="hr-cc"><label>Vue</label>
       <select id="hrx-vue-sel" onchange="hrSetVue(this.value)">
         <option value="jour">Jour</option>
-        <option value="semaine">Semaine</option>
+        <option value="semaine" selected>Semaine</option>
       </select>
     </div>
     <div class="hr-cc"><label>Source du CA</label>
@@ -3504,7 +3504,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-31T22:12', label: 'v31/05-22h12', affichage: 'dimanche 31 mai 2026 à 22:12' };
+const APP_VERSION = { datetime: '2026-05-31T22:16', label: 'v31/05-22h16', affichage: 'dimanche 31 mai 2026 à 22:16' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -11953,6 +11953,11 @@ function hrGenFromWeek(lundi, garderOnglet){
   const resto = hrCurrentResto();
   if(resto !== HR_GRILLE_RESTO) hrSwitchRestoGrille(resto);
   const moisC=['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
+  // SÉCURITÉ : normaliser systématiquement sur le LUNDI de la semaine contenant
+  // la date reçue. L'argument peut venir d'un sélecteur dont la value n'est pas
+  // garantie d'être un lundi (dates réelles différentes selon le resto) → sans
+  // ça la semaine démarrait un samedi/vendredi et il « manquait » des jours.
+  if(lundi && typeof hrMonday==='function') lundi = hrMonday(lundi);
   const base=hrParse(lundi);
   HR_WEEK_LUNDI = lundi; // mémorise le lundi affiché (sert au bouton Actualiser)
   // La couleur (vert/orange) est déduite automatiquement de l'état de validation
