@@ -3280,6 +3280,49 @@ async function sbCouplesRD(table, from, to, cond){
   return m;
 }
 
+// Lecture paginée renvoyant un map "restaurant|date" → valeur (dernière ligne gardée).
+// cols = colonnes à sélectionner ; pick(row) = valeur à stocker.
+async function sbMapRD(table, cols, from, to, pick){
+  const map = {};
+  if(!SB) return map;
+  const PAGE = 1000; let offset = 0;
+  for(let garde=0; garde<200; garde++){
+    const { data, error } = await SB.from(table).select(cols)
+      .gte('date',from).lte('date',to).order('date',{ascending:true}).range(offset, offset+PAGE-1);
+    if(error){ console.error('[sbMapRD]', table, error); break; }
+    const rows = data||[];
+    rows.forEach(x=>{
+      const dt=(x.date||'').slice(0,10);
+      let rt=x.restaurant; if(rt==='ALL'||rt==='Administration') rt='BK526';
+      map[rt+'|'+dt] = pick(x);
+    });
+    if(rows.length < PAGE) break;
+    offset += PAGE;
+  }
+  return map;
+}
+
+// Lecture paginée renvoyant un map "restaurant|date" → nombre de lignes (déclarations).
+async function sbCountRD(table, from, to){
+  const map = {};
+  if(!SB) return map;
+  const PAGE = 1000; let offset = 0;
+  for(let garde=0; garde<200; garde++){
+    const { data, error } = await SB.from(table).select('restaurant,date')
+      .gte('date',from).lte('date',to).order('date',{ascending:true}).range(offset, offset+PAGE-1);
+    if(error){ console.error('[sbCountRD]', table, error); break; }
+    const rows = data||[];
+    rows.forEach(x=>{
+      const dt=(x.date||'').slice(0,10);
+      let rt=x.restaurant; if(rt==='ALL'||rt==='Administration') rt='BK526';
+      map[rt+'|'+dt] = (map[rt+'|'+dt]||0) + 1;
+    });
+    if(rows.length < PAGE) break;
+    offset += PAGE;
+  }
+  return map;
+}
+
 async function renderImports(){
   const el = document.getElementById('imports-content');
   if(!el) return;
@@ -3301,6 +3344,14 @@ async function renderImports(){
       ventes:   await sbCouplesRD('ventes_horaire', from, to),
       repas:    await sbCouplesRD('repas_employes', from, to),
     };
+    // Données pour le contrôle annulations & erreurs caisse :
+    // - nb d'annulations vu par la caisse (journees.annulations_nb) + écart caisse (journees.erreur_caisse)
+    // - nb de déclarations faites par les managers (tables annulations / erreurs_caisse)
+    const SEUIL_EC = (typeof SEUILS!=='undefined' && SEUILS.erreur_caisse_max) ? SEUILS.erreur_caisse_max : 5;
+    const annulCaisse = await sbMapRD('journees', 'restaurant,date,annulations_nb', from, to, x=>x.annulations_nb||0);
+    const ecartCaisse = await sbMapRD('journees', 'restaurant,date,erreur_caisse', from, to, x=>(x.erreur_caisse!=null?x.erreur_caisse:null));
+    const declAnnul   = await sbCountRD('annulations', from, to);
+    const declErrCais = await sbCountRD('erreurs_caisse', from, to);
     const cols = [
       {key:'synthese', label:'Synthèse CA',  ico:'📄'},
       {key:'sos',      label:'SOS Drive',     ico:'🚗'},
@@ -3350,10 +3401,41 @@ async function renderImports(){
           : nbOk===0
             ? '<span style="color:var(--muted)">—</span>'
             : `<span style="color:var(--yellow);font-weight:600">${nbOk}/${cols.length}</span>`;
-        const bg = nbOk===cols.length ? 'rgba(62,207,142,.05)' : nbOk===0 ? 'transparent' : 'rgba(251,191,36,.05)';
+        // ── Contrôle annulations : caisse vs déclarations ──
+        const key = rt+'|'+jour;
+        const nbCaisse = annulCaisse[key]||0;       // annulations comptées par la caisse
+        const nbDecl   = declAnnul[key]||0;         // déclarations faites par le manager
+        let cellAnnul;
+        if(nbCaisse===0 && nbDecl===0){
+          cellAnnul = '<span style="color:var(--muted)" title="aucune annulation">—</span>';
+        } else if(nbDecl>=nbCaisse){
+          cellAnnul = `<span style="color:var(--green)" title="${nbDecl} déclarée(s)">✅ ${nbDecl}</span>`;
+        } else {
+          const reste = nbCaisse-nbDecl;
+          cellAnnul = `<span style="color:var(--red);font-weight:600" title="caisse: ${nbCaisse}, déclarées: ${nbDecl}">❌ ${reste} à décl.</span>`;
+        }
+        // ── Contrôle erreur caisse : écart >±seuil sans déclaration ──
+        const ec = ecartCaisse[key];                // écart total de la journée
+        const nbEcDecl = declErrCais[key]||0;       // déclarations erreur caisse
+        let cellEc;
+        if(ec==null){
+          cellEc = '<span style="color:var(--muted)">—</span>';
+        } else if(Math.abs(ec)<=SEUIL_EC){
+          cellEc = `<span style="color:var(--green)" title="écart ${ec>0?'+':''}${ec} €">✅</span>`;
+        } else if(nbEcDecl>0){
+          cellEc = `<span style="color:var(--green)" title="écart ${ec>0?'+':''}${ec} € — déclaré">✅ décl.</span>`;
+        } else {
+          cellEc = `<span style="color:var(--red);font-weight:600" title="écart ${ec>0?'+':''}${ec} € > ±${SEUIL_EC} € non déclaré">❌ ${ec>0?'+':''}${Math.round(ec)} €</span>`;
+        }
+        // Anomalie = au moins une cellule rouge (annul non déclarée ou erreur caisse non déclarée)
+        const anomalie = (nbDecl<nbCaisse) || (ec!=null && Math.abs(ec)>SEUIL_EC && nbEcDecl===0);
+        const bg = anomalie ? 'rgba(248,113,113,.07)'
+          : nbOk===cols.length ? 'rgba(62,207,142,.05)' : nbOk===0 ? 'transparent' : 'rgba(251,191,36,.05)';
         return `<tr style="background:${bg}">
           <td style="color:var(--accent);white-space:nowrap">${formatDate(jour)} <span style="color:var(--muted2)">${jourSemaine(new Date(jour))}</span></td>
           ${cells}
+          <td class="num" style="font-size:12px">${cellAnnul}</td>
+          <td class="num" style="font-size:12px">${cellEc}</td>
           <td class="num">${statut}</td>
         </tr>`;
       }).join('');
@@ -3364,6 +3446,8 @@ async function renderImports(){
           <thead><tr>
             <th>Date</th>
             ${cols.map(c=>`<th class="num">${c.ico} ${c.label}</th>`).join('')}
+            <th class="num">🚫 Annul.</th>
+            <th class="num">💶 Caisse</th>
             <th class="num">Statut</th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -3371,7 +3455,7 @@ async function renderImports(){
       </div>`;
     });
 
-    el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px">✅ = fichier importé dans la base · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.</div>`;
+    el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px;line-height:1.6">✅ = fichier importé dans la base · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.<br>🚫 Annul. : compare les annulations vues par la caisse aux déclarations faites (❌ N à décl. = il manque N déclaration(s) d'annulation). 💶 Caisse : ❌ = écart caisse supérieur à ±${SEUIL_EC} € non déclaré via « Déclarer une erreur de caisse ».</div>`;
   } catch(err){
     console.error('renderImports', err);
     el.innerHTML = _impEmpty('⚠️','Erreur de chargement', (err&&err.message)||'Impossible de lire les dépôts.');
@@ -3537,7 +3621,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-11T10:26', label: 'v11/06-10h26', affichage: 'jeudi 11 juin 2026 à 10:26' };
+const APP_VERSION = { datetime: '2026-06-11T11:02', label: 'v11/06-11h02', affichage: 'jeudi 11 juin 2026 à 11:02' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -4840,8 +4924,9 @@ function renderComparaison() {
   let D26, D25;
   if(mode==='jour'){
     D26 = DATA.filter(d=>d.date===sel);
-    const mmdd = sel.slice(5);
-    D25 = DATA25.filter(d=>d.date.slice(5)===mmdd);
+    // Référence N-1 = même JOUR DE SEMAINE en 2025 (lundi↔lundi), pas la date calendaire.
+    const ref = D26.length ? findN1(D26[0]) : null;
+    D25 = ref ? DATA25.filter(d=>d.date===ref.date) : [];
   } else if(mode==='mois'){
     D26 = DATA.filter(d=>d.date.slice(5,7)===sel);
     D25 = DATA25.filter(d=>d.date.slice(5,7)===sel);
@@ -4865,7 +4950,9 @@ function renderComparaison() {
     .map(([m,lbl])=>`<button onclick="window.COMP_MODE='${m}';window.COMP_SEL=undefined;renderComparaison()" class="btn ${mode===m?'btn-accent':''}" style="font-size:11px;padding:5px 12px">${lbl}</button>`).join('');
   let selecteur = '';
   if(mode==='jour'){
-    selecteur = `<select onchange="window.COMP_SEL=this.value;renderComparaison()" class="form-input" style="width:auto;font-size:12px;padding:5px 10px">${allDates26.map(d=>`<option value="${d}" ${d===sel?'selected':''}>${formatDate(d)}</option>`).join('')}</select>`;
+    const refJour = D26.length ? findN1(D26[0]) : null;
+    const refTxt = refJour ? ` <span style="font-size:10px;color:var(--muted2)">→ comparé à ${formatDate(refJour.date)} ${jourSemaine(new Date(refJour.date))} (même jour de semaine)</span>` : ` <span style="font-size:10px;color:var(--muted2)">→ réf. N-1 indisponible</span>`;
+    selecteur = `<select onchange="window.COMP_SEL=this.value;renderComparaison()" class="form-input" style="width:auto;font-size:12px;padding:5px 10px">${allDates26.map(d=>`<option value="${d}" ${d===sel?'selected':''}>${formatDate(d)} ${jourSemaine(new Date(d))}</option>`).join('')}</select>${refTxt}`;
   } else if(mode==='mois'){
     const moisDispo=[...new Set(allDates26.map(d=>d.slice(5,7)))];
     selecteur = `<select onchange="window.COMP_SEL=this.value;renderComparaison()" class="form-input" style="width:auto;font-size:12px;padding:5px 10px">${moisDispo.map(mm=>`<option value="${mm}" ${mm===sel?'selected':''}>${moisNomsFull[parseInt(mm)]}</option>`).join('')}</select>`;
@@ -5191,20 +5278,24 @@ const caHT_n1 = d => (d.ca_ht_n1!=null ? d.ca_ht_n1 : (d.ca_ht!=null ? d.ca_ht :
 // semaine dans une fenêtre de ±10 jours.
 function findN1(d){
   if(!d || !d.date || !Array.isArray(DATA25) || !DATA25.length) return null;
-  const base = new Date(d.date+'T00:00:00');
+  // Arithmétique de dates en UTC PUR pour éviter tout décalage de fuseau
+  // (en France UTC+2, 'YYYY-MM-DDT00:00:00' tombait la veille en .toISOString()).
+  const base = new Date(d.date + 'T12:00:00Z'); // midi UTC = jamais de bascule de jour
   if(isNaN(base)) return null;
-  const cible = new Date(base.getTime() - 364*86400000); // même jour de semaine
-  const cibleISO = cible.toISOString().slice(0,10);
+  const isoOf = ms => new Date(ms).toISOString().slice(0,10);
+  const dowOf = ms => new Date(ms).getUTCDay();
+  const cibleMs = base.getTime() - 364*86400000; // 52 semaines pile → même jour de semaine
+  const cibleISO = isoOf(cibleMs);
   const byDate = {};
   DATA25.forEach(x=>{ if(x && x.date) byDate[x.date] = x; });
   if(byDate[cibleISO]) return byDate[cibleISO];
   // sinon, plus proche même jour de semaine (±10 j), priorité au plus proche
-  const js = cible.getDay();
+  const js = dowOf(cibleMs);
   let best=null, bestDiff=Infinity;
   for(let off=-10; off<=10; off++){
-    const dt = new Date(cible.getTime()+off*86400000);
-    if(dt.getDay()!==js) continue;
-    const iso = dt.toISOString().slice(0,10);
+    const ms = cibleMs + off*86400000;
+    if(dowOf(ms)!==js) continue;
+    const iso = isoOf(ms);
     if(byDate[iso] && Math.abs(off)<bestDiff){ best=byDate[iso]; bestDiff=Math.abs(off); }
   }
   return best;
