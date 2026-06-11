@@ -3778,7 +3778,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-11T11:44', label: 'v11/06-11h44', affichage: 'jeudi 11 juin 2026 à 11:44' };
+const APP_VERSION = { datetime: '2026-06-11T11:52', label: 'v11/06-11h52', affichage: 'jeudi 11 juin 2026 à 11:52' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -4235,6 +4235,9 @@ async function checkFichiersManquants(){
     const annulCaisse = await sbMapRD('journees', 'restaurant,date,annulations_nb,annulations_montant', SUIVI_DATE_DEBUT, finISO, x=>({nb:x.annulations_nb||0, mnt:x.annulations_montant||0}));
     const ecartCaisse = await sbMapRD('journees', 'restaurant,date,erreur_caisse', SUIVI_DATE_DEBUT, finISO, x=>(x.erreur_caisse!=null?x.erreur_caisse:null));
     const declAnnul   = await sbCountRD('annulations', SUIVI_DATE_DEBUT, finISO);
+    // Manager d'ouverture / fermeture (pour savoir qui était de service un jour incomplet)
+    const mgrOuv = await sbMapRD('journees', 'restaurant,date,manager_ouverture', SUIVI_DATE_DEBUT, finISO, x=>x.manager_ouverture||'');
+    const mgrFer = await sbMapRD('journees', 'restaurant,date,manager_fermeture', SUIVI_DATE_DEBUT, finISO, x=>x.manager_fermeture||'');
     const declErrCais = await sbCountRD('erreurs_caisse', SUIVI_DATE_DEBUT, finISO);
 
     // Liste des jours du 17 mai à hier (dates locales)
@@ -4282,13 +4285,18 @@ async function checkFichiersManquants(){
         <div style="display:flex;flex-direction:column;gap:4px">`;
       inc.slice().reverse().forEach(it=>{
         const jourLbl = formatDate(it.jour)+' '+jourSemaine(new Date(it.jour));
+        const k = rt+'|'+it.jour;
+        const mO = mgrOuv[k]||'', mF = mgrFer[k]||'';
+        const respLine = (mO||mF)
+          ? `<div style="font-size:10px;color:var(--muted2);margin-top:3px">🔑 Ouv : ${mO||'—'} &nbsp;·&nbsp; 🔒 Ferm : ${mF||'—'}</div>`
+          : '<div style="font-size:10px;color:var(--muted);margin-top:3px">Responsables non renseignés (synthèse manquante ?)</div>';
         const docsManquants = it.manque.map(t=>{
           if(t.startsWith('annul:')){ const p=t.split(':'); const n=p[1]; const m=parseFloat(p[2]||'0'); return `<span style="color:var(--red);font-weight:500">${n} annulation(s) à déclarer${m?` (${fmt(m)} €)`:''}</span>`; }
           if(t.startsWith('caisse:')){ const v=parseInt(t.slice(7),10); return `<span style="color:var(--red);font-weight:500">erreur caisse ${v>0?'+':''}${v} € à déclarer</span>`; }
           return `<span style="color:var(--red);font-weight:500">${labels[t]}</span>`;
         }).join(', ');
         html += `<div style="font-size:11px;padding:5px 10px;background:var(--bg3);border-radius:6px;border-left:2px solid var(--red)">
-          <span style="color:var(--accent)">${jourLbl}</span> — manque : ${docsManquants}</div>`;
+          <span style="color:var(--accent)">${jourLbl}</span> — manque : ${docsManquants}${respLine}</div>`;
       });
       html += `</div></div>`;
     });
