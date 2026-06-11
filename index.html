@@ -1334,8 +1334,8 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
         </select>
       </div>
       <button class="hr-btn hr-btn-ac" onclick="applyGrille()" style="margin-top:18px;">✓ Appliquer au planning</button>
-      <button class="hr-btn" onclick="protegerGrille()" style="margin-top:18px;" title="Verrouiller la grille validée de ce restaurant">🔒 Protéger</button>
-      <button class="hr-btn" onclick="restaurerGrilleProtegee()" style="margin-top:18px;" title="Recharger la grille protégée de ce restaurant">♻️ Restaurer protégée</button>
+      <button class="hr-btn role-superadmin-only" onclick="protegerGrille()" style="margin-top:18px;" title="Verrouiller la grille validée de ce restaurant (suite/admin)">🔒 Protéger</button>
+      <button class="hr-btn role-superadmin-only" onclick="restaurerGrilleProtegee()" style="margin-top:18px;" title="Recharger la grille protégée de ce restaurant (suite/admin)">♻️ Restaurer protégée</button>
       <button class="hr-btn" onclick="resetGrille()" style="margin-top:18px;">↺ Réinitialiser</button>
     </div>
   </div>
@@ -3778,7 +3778,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-11T11:40', label: 'v11/06-11h40', affichage: 'jeudi 11 juin 2026 à 11:40' };
+const APP_VERSION = { datetime: '2026-06-11T11:44', label: 'v11/06-11h44', affichage: 'jeudi 11 juin 2026 à 11:44' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -11146,7 +11146,31 @@ function grilleProtegee(resto){
 }
 function grilleEstProtegee(resto){ const g=grilleProtegee(resto); return !!(g && g.grille && g.grille.length); }
 
+// Garde de sécurité : seules la suite (superviseur) et l'admin peuvent protéger/restaurer
+// la grille CA, ET uniquement après saisie de leur code. Évite toute fausse manip.
+function verifierCodeSuite(intitule){
+  let role=null, codes=null;
+  try{ role = (typeof CURRENT_USER!=='undefined' && CURRENT_USER) ? CURRENT_USER.role : null; }catch(e){}
+  try{ codes = (typeof getCodes==='function') ? getCodes() : null; }catch(e){}
+  if(role!=='admin' && role!=='superviseur'){
+    alert('⛔ Action réservée à la suite (superviseur) et à l\'administrateur.\n\nVous n\'avez pas les droits pour '+(intitule||'cette action')+'.');
+    return false;
+  }
+  const attendus = [];
+  if(codes){ if(codes.admin) attendus.push(String(codes.admin)); if(codes.superviseur) attendus.push(String(codes.superviseur)); }
+  // Si aucun code configuré (cas improbable), on autorise puisque le rôle est déjà admin/superviseur.
+  if(!attendus.length) return true;
+  const saisi = prompt('🔐 '+(intitule||'Action protégée')+'\n\nEntrez votre code suite/admin pour confirmer :');
+  if(saisi===null) return false; // annulé
+  if(!attendus.includes(String(saisi).trim())){
+    alert('❌ Code incorrect. Action annulée.');
+    return false;
+  }
+  return true;
+}
+
 function protegerGrille(){
+  if(!verifierCodeSuite('protéger la grille CA')) return;
   const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
   const dejaProt = grilleEstProtegee(resto);
   const msg = dejaProt
@@ -11182,6 +11206,7 @@ function protegerGrille(){
 }
 
 function restaurerGrilleProtegee(){
+  if(!verifierCodeSuite('restaurer la grille protégée')) return;
   const resto = HR_GRILLE_RESTO || HR_RESTO || 'BK526';
   const snap = grilleProtegee(resto);
   if(!snap || !snap.grille || !snap.grille.length){
