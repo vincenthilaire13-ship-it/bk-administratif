@@ -369,6 +369,11 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
           ⚙️ Accès administration (superviseur / admin)
         </button>
       </div>
+      <div style="margin-top:10px">
+        <button class="login-btn" style="background:rgba(251,191,36,.10);color:var(--yellow);border:1px solid rgba(251,191,36,.3);font-size:12px;padding:10px;font-weight:600" onclick="openLoginFeedback()">
+          💡 Correctifs &amp; demandes
+        </button>
+      </div>
     </div>
 
     <!-- ÉTAPE 2 : choix rôle -->
@@ -438,6 +443,57 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
   </div>
 </div>
 
+<!-- Modal Correctifs & demandes (accessible dès l'écran d'entrée) -->
+<div id="login-feedback-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:16px">
+  <div style="background:var(--card);border:1px solid var(--border2);border-radius:16px;padding:24px;width:420px;max-width:95vw;max-height:90vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="font-family:var(--font-head);font-size:18px;font-weight:800;color:var(--accent)">💡 Correctifs &amp; demandes</div>
+      <button onclick="closeLoginFeedback()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:16px">Signale un bug, propose une amélioration ou pose une question. C'est lu et traité.</div>
+
+    <label class="login-label">Restaurant concerné</label>
+    <select class="login-input" id="ret-resto" style="cursor:pointer">
+      <option value="">— Général / tous —</option>
+      <option value="BK500">BK 500 — Arènes</option>
+      <option value="BK509">BK 509 — Saint-Jean-de-Védas</option>
+      <option value="BK526">BK 526 — Saint-Clément-Rivière</option>
+    </select>
+
+    <label class="login-label">Votre nom</label>
+    <input class="login-input" id="ret-auteur" placeholder="Qui fait la demande ?">
+
+    <div style="display:flex;gap:10px">
+      <div style="flex:1">
+        <label class="login-label">Type</label>
+        <select class="login-input" id="ret-type" style="cursor:pointer">
+          <option value="bug">🐞 Bug / problème</option>
+          <option value="amelioration" selected>✨ Amélioration</option>
+          <option value="question">❓ Question</option>
+        </select>
+      </div>
+      <div style="flex:1">
+        <label class="login-label">Priorité</label>
+        <select class="login-input" id="ret-priorite" style="cursor:pointer">
+          <option value="basse">Basse</option>
+          <option value="normale" selected>Normale</option>
+          <option value="haute">🔴 Haute</option>
+        </select>
+      </div>
+    </div>
+
+    <label class="login-label">Titre (optionnel)</label>
+    <input class="login-input" id="ret-titre" placeholder="Résumé court">
+
+    <label class="login-label">Description</label>
+    <textarea class="login-input" id="ret-message" rows="4" style="resize:vertical;font-family:inherit" placeholder="Décris le problème ou la demande…"></textarea>
+
+    <div id="ret-msg" style="display:none;font-size:12px;margin-bottom:10px"></div>
+
+    <button class="login-btn" onclick="enregistrerRetourLogin()">Envoyer</button>
+  </div>
+</div>
+
 <div class="shell" id="app-shell" style="display:none">
 
 <div id="resto-color-bar"></div>
@@ -466,7 +522,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires-import')"><span>📥</span><span>Importer ventes ¼h</span></div>
-    <div class="nav-item role-full-only" style="display:none" onclick="nav('retours')"><span>💡</span><span>Correctifs & demandes</span></div>
+    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('retours')"><span>💡</span><span>Correctifs &amp; demandes</span></div>
     <div class="nav-section role-admin-only" style="display:none">Config</div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
@@ -3544,6 +3600,37 @@ async function renderImports(){
 }
 
 // ══ CORRECTIFS & DEMANDES (retours directeurs) ══
+function openLoginFeedback(){
+  const m = document.getElementById('login-feedback-modal');
+  if(m) m.style.display='flex';
+}
+function closeLoginFeedback(){
+  const m = document.getElementById('login-feedback-modal');
+  if(m) m.style.display='none';
+}
+// Version autonome pour l'écran d'entrée (pas de CURRENT_USER disponible)
+async function enregistrerRetourLogin(){
+  const msgEl = document.getElementById('ret-msg');
+  const show = (txt,color)=>{ if(msgEl){ msgEl.textContent=txt; msgEl.style.color=color; msgEl.style.display='block'; } };
+  const message = (document.getElementById('ret-message')?.value||'').trim();
+  if(!message){ show('⚠️ Décris au moins le problème ou la demande.','var(--red)'); return; }
+  if(!SB){ show('⚠️ Base non connectée.','var(--red)'); return; }
+  const ligne = {
+    restaurant: document.getElementById('ret-resto')?.value || null,
+    auteur: (document.getElementById('ret-auteur')?.value||'').trim() || 'anonyme',
+    type: document.getElementById('ret-type')?.value || 'amelioration',
+    priorite: document.getElementById('ret-priorite')?.value || 'normale',
+    titre: (document.getElementById('ret-titre')?.value||'').trim() || null,
+    message,
+    statut: 'nouveau'
+  };
+  const { error } = await SB.from('retours_app').insert(ligne);
+  if(error){ show('❌ Erreur : '+error.message,'var(--red)'); return; }
+  show('✅ Envoyé, merci !','var(--green)');
+  ['ret-titre','ret-message','ret-auteur'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  setTimeout(closeLoginFeedback, 1400);
+}
+
 async function enregistrerRetour(){
   const msgEl = document.getElementById('ret-msg');
   const message = (document.getElementById('ret-message')?.value||'').trim();
@@ -3778,7 +3865,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-11T11:52', label: 'v11/06-11h52', affichage: 'jeudi 11 juin 2026 à 11:52' };
+const APP_VERSION = { datetime: '2026-06-11T14:39', label: 'v11/06-14h39', affichage: 'jeudi 11 juin 2026 à 14:39' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
