@@ -793,7 +793,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
           </div>
 
           <!-- Bouton 1 : PDF journée -->
-          <div class="mgr-card" style="cursor:pointer;transition:border-color .2s" onclick="showMgrSection('pdf')"
+          <div class="mgr-card" style="cursor:pointer;transition:border-color .2s" onclick="document.getElementById('modal-pre-depot').classList.add('open')"
                onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''">
             <div style="display:flex;align-items:center;gap:16px">
               <div style="font-size:36px">📂</div>
@@ -1658,6 +1658,17 @@ alter table journees add column if not exists commandes_ouvertes_pct numeric;</p
       <button class="btn" onclick="fermerRappel();showMgrSection('home')">Plus tard</button>
       <button class="btn btn-accent" id="rappel-btn-annul" style="display:none;background:var(--red);border-color:var(--red)" onclick="fermerRappel();showMgrSection('annulation')">🚫 Déclarer l'annulation</button>
       <button class="btn btn-accent" id="rappel-btn-caisse" style="display:none" onclick="fermerRappel();showMgrSection('erreurcaisse')">💶 Déclarer l'erreur caisse</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modale de rappel AVANT dépôt des 4 PDF -->
+<div class="modal-overlay" id="modal-pre-depot">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">📋 Avant de déposer</div>
+    <div class="modal-sub" style="line-height:1.6">Avez-vous pensé à :<br>• <strong>déclarer vos annulations</strong> (photos des 3 tickets) ?<br>• <strong>déclarer vos erreurs de caisse</strong> (si écart) ?</div>
+    <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+      <button class="btn btn-accent" onclick="document.getElementById('modal-pre-depot').classList.remove('open');showMgrSection('pdf')" style="flex:1">✅ OK, c'est parti</button>
     </div>
   </div>
 </div>
@@ -3362,7 +3373,7 @@ async function renderImports(){
     // - nb d'annulations vu par la caisse (journees.annulations_nb) + écart caisse (journees.erreur_caisse)
     // - nb de déclarations faites par les managers (tables annulations / erreurs_caisse)
     const SEUIL_EC = (typeof SEUILS!=='undefined' && SEUILS.erreur_caisse_max) ? SEUILS.erreur_caisse_max : 5;
-    const annulCaisse = await sbMapRD('journees', 'restaurant,date,annulations_nb', from, to, x=>x.annulations_nb||0);
+    const annulCaisse = await sbMapRD('journees', 'restaurant,date,annulations_nb,annulations_montant', from, to, x=>({nb:x.annulations_nb||0, mnt:x.annulations_montant||0}));
     const ecartCaisse = await sbMapRD('journees', 'restaurant,date,erreur_caisse', from, to, x=>(x.erreur_caisse!=null?x.erreur_caisse:null));
     const declAnnul   = await sbCountRD('annulations', from, to);
     const declErrCais = await sbCountRD('erreurs_caisse', from, to);
@@ -3417,16 +3428,19 @@ async function renderImports(){
             : `<span style="color:var(--yellow);font-weight:600">${nbOk}/${cols.length}</span>`;
         // ── Contrôle annulations : caisse vs déclarations ──
         const key = rt+'|'+jour;
-        const nbCaisse = annulCaisse[key]||0;       // annulations comptées par la caisse
+        const annulInfo = annulCaisse[key] || {nb:0, mnt:0};
+        const nbCaisse = annulInfo.nb||0;           // annulations comptées par la caisse
+        const mntCaisse = annulInfo.mnt||0;         // montant total des annulations (caisse)
         const nbDecl   = declAnnul[key]||0;         // déclarations faites par le manager
+        const mntTxt = mntCaisse ? ` <span style="color:var(--muted2);font-weight:400">(${fmt(mntCaisse)} €)</span>` : '';
         let cellAnnul;
         if(nbCaisse===0 && nbDecl===0){
           cellAnnul = '<span style="color:var(--muted)" title="aucune annulation">—</span>';
         } else if(nbDecl>=nbCaisse){
-          cellAnnul = `<span style="color:var(--green)" title="${nbDecl} déclarée(s)">✅ ${nbDecl}</span>`;
+          cellAnnul = `<span style="color:var(--green)" title="${nbDecl} déclarée(s)">✅ ${nbDecl}${mntTxt}</span>`;
         } else {
           const reste = nbCaisse-nbDecl;
-          cellAnnul = `<span style="color:var(--red);font-weight:600" title="caisse: ${nbCaisse}, déclarées: ${nbDecl}">❌ ${reste} à décl.</span>`;
+          cellAnnul = `<span style="color:var(--red);font-weight:600" title="caisse: ${nbCaisse}, déclarées: ${nbDecl}">❌ ${reste} à décl.${mntTxt}</span>`;
         }
         // ── Contrôle erreur caisse : écart >±seuil sans déclaration ──
         const ec = ecartCaisse[key];                // écart total de la journée
@@ -3635,7 +3649,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-11T11:08', label: 'v11/06-11h08', affichage: 'jeudi 11 juin 2026 à 11:08' };
+const APP_VERSION = { datetime: '2026-06-11T11:22', label: 'v11/06-11h22', affichage: 'jeudi 11 juin 2026 à 11:22' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -4089,7 +4103,7 @@ async function checkFichiersManquants(){
     const labels = { synthese:'Synthèse CA', sos:'SOS Drive', ventes:'Ventes au quart d\'heure', repas:'Bons repas' };
     // Données pour annulations non déclarées + erreurs caisse > seuil non déclarées
     const SEUIL_EC = (typeof SEUILS!=='undefined' && SEUILS.erreur_caisse_max) ? SEUILS.erreur_caisse_max : 5;
-    const annulCaisse = await sbMapRD('journees', 'restaurant,date,annulations_nb', SUIVI_DATE_DEBUT, finISO, x=>x.annulations_nb||0);
+    const annulCaisse = await sbMapRD('journees', 'restaurant,date,annulations_nb,annulations_montant', SUIVI_DATE_DEBUT, finISO, x=>({nb:x.annulations_nb||0, mnt:x.annulations_montant||0}));
     const ecartCaisse = await sbMapRD('journees', 'restaurant,date,erreur_caisse', SUIVI_DATE_DEBUT, finISO, x=>(x.erreur_caisse!=null?x.erreur_caisse:null));
     const declAnnul   = await sbCountRD('annulations', SUIVI_DATE_DEBUT, finISO);
     const declErrCais = await sbCountRD('erreurs_caisse', SUIVI_DATE_DEBUT, finISO);
@@ -4108,8 +4122,9 @@ async function checkFichiersManquants(){
         const key = rt+'|'+jour;
         const manque = Object.keys(labels).filter(t=>!has[t].has(key));
         // Annulations vues par la caisse mais non (toutes) déclarées
-        const nbCaisse = annulCaisse[key]||0, nbDecl = declAnnul[key]||0;
-        if(nbCaisse>nbDecl) manque.push('annul:'+(nbCaisse-nbDecl));
+        const aInfo = annulCaisse[key]||{nb:0,mnt:0};
+        const nbCaisse = aInfo.nb||0, nbDecl = declAnnul[key]||0;
+        if(nbCaisse>nbDecl) manque.push('annul:'+(nbCaisse-nbDecl)+':'+(aInfo.mnt||0));
         // Erreur caisse > seuil sans déclaration
         const ec = ecartCaisse[key], nbEcDecl = declErrCais[key]||0;
         if(ec!=null && Math.abs(ec)>SEUIL_EC && nbEcDecl===0) manque.push('caisse:'+Math.round(ec));
@@ -4139,7 +4154,7 @@ async function checkFichiersManquants(){
       inc.slice().reverse().forEach(it=>{
         const jourLbl = formatDate(it.jour)+' '+jourSemaine(new Date(it.jour));
         const docsManquants = it.manque.map(t=>{
-          if(t.startsWith('annul:')) return `<span style="color:var(--red);font-weight:500">${t.slice(6)} annulation(s) à déclarer</span>`;
+          if(t.startsWith('annul:')){ const p=t.split(':'); const n=p[1]; const m=parseFloat(p[2]||'0'); return `<span style="color:var(--red);font-weight:500">${n} annulation(s) à déclarer${m?` (${fmt(m)} €)`:''}</span>`; }
           if(t.startsWith('caisse:')){ const v=parseInt(t.slice(7),10); return `<span style="color:var(--red);font-weight:500">erreur caisse ${v>0?'+':''}${v} € à déclarer</span>`; }
           return `<span style="color:var(--red);font-weight:500">${labels[t]}</span>`;
         }).join(', ');
