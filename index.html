@@ -466,6 +466,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires-import')"><span>📥</span><span>Importer ventes ¼h</span></div>
+    <div class="nav-item role-full-only" style="display:none" onclick="nav('retours')"><span>💡</span><span>Correctifs & demandes</span></div>
     <div class="nav-section role-admin-only" style="display:none">Config</div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
@@ -1434,6 +1435,58 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
 
         <div style="margin-top:16px;text-align:center">
           <button class="btn btn-accent" onclick="nav('horaires')" style="padding:10px 24px">→ Aller au planning</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CORRECTIFS & DEMANDES (retours directeurs) -->
+    <section class="section" id="sec-retours">
+      <div style="max-width:760px">
+        <div class="table-card" style="margin-bottom:16px">
+          <div class="table-header"><span class="table-title">💡 Signaler un problème ou une demande</span></div>
+          <div style="padding:16px">
+            <p style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6">
+              Décris ce qui ne va pas ou ce que tu aimerais améliorer dans l'application. Ces retours servent à savoir sur quoi travailler en priorité.
+            </p>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">Type</label>
+                <select class="form-input" id="ret-type">
+                  <option value="bug">🐞 Quelque chose ne marche pas</option>
+                  <option value="amelioration">✨ Amélioration / nouvelle idée</option>
+                  <option value="question">❓ Question</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">Priorité</label>
+                <select class="form-input" id="ret-priorite">
+                  <option value="basse">Basse</option>
+                  <option value="normale" selected>Normale</option>
+                  <option value="haute">🔴 Urgente</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label class="form-label">Titre court</label>
+              <input type="text" class="form-input" id="ret-titre" placeholder="ex : Le bouton X ne réagit pas">
+            </div>
+            <div class="form-group" style="margin-bottom:12px">
+              <label class="form-label">Description</label>
+              <textarea class="form-input" id="ret-message" placeholder="Explique en détail : où, quand, ce qui se passe ou ce que tu voudrais…" style="height:110px;resize:vertical"></textarea>
+            </div>
+            <button class="btn btn-accent" style="width:100%;padding:11px;font-size:13px" onclick="enregistrerRetour()">📨 Envoyer le retour</button>
+            <div id="ret-msg" style="display:none;font-size:12px;text-align:center;margin-top:8px"></div>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="table-header">
+            <span class="table-title">📋 Retours envoyés</span>
+            <button class="btn" style="font-size:10px;padding:4px 12px" onclick="renderRetours()">↺ Actualiser</button>
+          </div>
+          <div id="retours-liste" style="padding:8px">
+            <div class="empty"><div class="empty-icon">💡</div><div class="empty-sub">Cliquez sur Actualiser.</div></div>
+          </div>
         </div>
       </div>
     </section>
@@ -3259,7 +3312,7 @@ const SEED_BK500_2026 = [
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',analyses:'Analyses',equipiers:'Équipiers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)',imports:'Imports — contrôle des PDF'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',analyses:'Analyses',equipiers:'Équipiers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)',imports:'Imports — contrôle des PDF',retours:'Correctifs & demandes'};
 // ══════════════════════════════════════════════════════════════
 //  SECTION IMPORTS — contrôle visuel des 4 PDF par journée
 // ══════════════════════════════════════════════════════════════
@@ -3490,6 +3543,81 @@ async function renderImports(){
   }
 }
 
+// ══ CORRECTIFS & DEMANDES (retours directeurs) ══
+async function enregistrerRetour(){
+  const msgEl = document.getElementById('ret-msg');
+  const message = (document.getElementById('ret-message')?.value||'').trim();
+  if(!message){ if(msgEl){ msgEl.textContent='⚠️ Décris au moins le problème ou la demande.'; msgEl.style.color='var(--red)'; msgEl.style.display='block'; } return; }
+  if(!SB){ if(msgEl){ msgEl.textContent='⚠️ Base non connectée.'; msgEl.style.color='var(--red)'; msgEl.style.display='block'; } return; }
+  const ligne = {
+    restaurant: (typeof restoReel==='function'?restoReel():null) || CURRENT_USER?.resto || null,
+    auteur: CURRENT_USER?.nom || CURRENT_USER?.role || 'inconnu',
+    type: document.getElementById('ret-type')?.value || 'amelioration',
+    priorite: document.getElementById('ret-priorite')?.value || 'normale',
+    titre: (document.getElementById('ret-titre')?.value||'').trim() || null,
+    message,
+    statut: 'nouveau'
+  };
+  const { error } = await SB.from('retours_app').insert(ligne);
+  if(error){
+    if(msgEl){ msgEl.textContent='❌ Erreur : '+error.message; msgEl.style.color='var(--red)'; msgEl.style.display='block'; }
+    return;
+  }
+  if(msgEl){ msgEl.textContent='✅ Retour envoyé, merci !'; msgEl.style.color='var(--green)'; msgEl.style.display='block'; }
+  ['ret-titre','ret-message'].forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  setTimeout(()=>{ if(msgEl) msgEl.style.display='none'; }, 2500);
+  renderRetours();
+}
+
+async function renderRetours(){
+  const box = document.getElementById('retours-liste');
+  if(!box) return;
+  if(!SB){ box.innerHTML='<div class="empty"><div class="empty-sub">Base non connectée.</div></div>'; return; }
+  box.innerHTML='<div style="font-size:11px;color:var(--muted);padding:10px">Chargement…</div>';
+  const isAdmin = ['admin','superviseur'].includes(CURRENT_USER?.role);
+  // Un directeur ne voit que ses propres retours (son resto) ; admin/superviseur voient tout.
+  let req = SB.from('retours_app').select('*').order('created_at',{ascending:false}).limit(200);
+  const { data, error } = await req;
+  if(error){ box.innerHTML='<div class="empty"><div class="empty-sub">Table introuvable. Configuration → SQL.</div></div>'; return; }
+  let rows = data||[];
+  if(!isAdmin && CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL'){
+    rows = rows.filter(r=> r.restaurant===CURRENT_USER.resto || r.auteur===CURRENT_USER?.nom);
+  }
+  if(!rows.length){ box.innerHTML='<div class="empty"><div class="empty-icon">💡</div><div class="empty-sub">Aucun retour pour le moment.</div></div>'; return; }
+  const typeIco = {bug:'🐞', amelioration:'✨', question:'❓'};
+  const prioBadge = p => p==='haute' ? '<span style="font-size:9px;background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.35);border-radius:5px;padding:2px 6px;font-weight:600">URGENT</span>' : p==='basse' ? '<span style="font-size:9px;color:var(--muted)">basse</span>' : '';
+  const statutBadge = s => {
+    if(s==='traite') return '<span style="font-size:9px;background:rgba(62,207,142,.15);color:var(--green);border-radius:5px;padding:2px 6px;font-weight:600">✓ traité</span>';
+    if(s==='encours') return '<span style="font-size:9px;background:rgba(96,165,250,.15);color:#60a5fa;border-radius:5px;padding:2px 6px;font-weight:600">en cours</span>';
+    return '<span style="font-size:9px;background:rgba(251,191,36,.15);color:var(--yellow);border-radius:5px;padding:2px 6px;font-weight:600">nouveau</span>';
+  };
+  box.innerHTML = rows.map(r=>{
+    const d = r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+    const resto = r.restaurant && RESTAURANTS[r.restaurant] ? RESTAURANTS[r.restaurant].nom : (r.restaurant||'');
+    const actions = isAdmin ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn" style="font-size:9px;padding:3px 8px" onclick="majStatutRetour(${r.id},'encours')">▶ En cours</button>
+        <button class="btn" style="font-size:9px;padding:3px 8px" onclick="majStatutRetour(${r.id},'traite')">✓ Traité</button>
+        <button class="btn" style="font-size:9px;padding:3px 8px" onclick="majStatutRetour(${r.id},'nouveau')">↺ Rouvrir</button>
+      </div>` : '';
+    return `<div style="border:1px solid var(--border2);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--bg3)">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+        <span style="font-size:15px">${typeIco[r.type]||'💡'}</span>
+        <span style="font-weight:600;font-size:13px;flex:1">${r.titre||'(sans titre)'}</span>
+        ${prioBadge(r.priorite)} ${statutBadge(r.statut)}
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.5;white-space:pre-wrap">${(r.message||'').replace(/</g,'&lt;')}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:6px">${[r.auteur,resto,d].filter(Boolean).join(' · ')}</div>
+      ${actions}
+    </div>`;
+  }).join('');
+}
+
+async function majStatutRetour(id, statut){
+  if(!SB) return;
+  await SB.from('retours_app').update({statut}).eq('id',id);
+  renderRetours();
+}
+
 function nav(id) {
   const targetSec = document.getElementById('sec-'+id);
   if(!targetSec) { console.warn("nav: section sec-"+id+" introuvable"); return; }
@@ -3508,6 +3636,7 @@ function nav(id) {
   if(id==='managers') renderManagers();
   if(id==='analyses') anInit();
   if(id==='imports') renderImports();
+  if(id==='retours') renderRetours();
   if(id==='import-masse'){ try{ if(!document.getElementById('imp-date-from').value) impSetPeriode(30); else renderImports(); }catch(e){} }
   if(id==='equipiers') chargerEquipiers();
   if(id==='manager'){
@@ -3649,7 +3778,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-11T11:22', label: 'v11/06-11h22', affichage: 'jeudi 11 juin 2026 à 11:22' };
+const APP_VERSION = { datetime: '2026-06-11T11:40', label: 'v11/06-11h40', affichage: 'jeudi 11 juin 2026 à 11:40' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -11461,24 +11590,31 @@ async function hrReloadVentes(el){
   if(typeof SB==='undefined' || !SB){ alert('Base non connectée.'); return; }
   if(el){ el.textContent='⏳ Rechargement…'; }
   try {
-    const { data, error } = await SB.from('ventes_horaire').select('restaurant,date,tranches_ca,tranches');
-    if(error){ alert('Erreur lecture ventes_horaire : '+error.message); if(el) el.textContent='🔧 Recharger ventes ¼h'; return; }
     if(typeof HR_ALL==='undefined') window.HR_ALL = HR_ALL = {};
     let n=0, sansCa=0;
     const parResto = {};
-    (data||[]).forEach(row=>{
-      let rt=row.restaurant; if(rt==='ALL'||rt==='Administration') rt='BK526';
-      const dt=(row.date||'').slice(0,10);
-      let ca = row.tranches_ca;
-      if(typeof ca==='string'){ try{ ca=JSON.parse(ca); }catch(e){ ca=null; } }
-      if(ca && typeof ca==='object' && Object.keys(ca).length){
-        if(!HR_ALL[rt]) HR_ALL[rt]={};
-        HR_ALL[rt][dt]=ca; n++;
-        parResto[rt]=(parResto[rt]||0)+1;
-      } else {
-        sansCa++;
-      }
-    });
+    let offset=0; const PAGE=1000;
+    for(let garde=0; garde<200; garde++){
+      const { data, error } = await SB.from('ventes_horaire')
+        .select('restaurant,date,tranches_ca,tranches')
+        .order('date',{ascending:true}).range(offset, offset+PAGE-1);
+      if(error){ alert('Erreur lecture ventes_horaire : '+error.message); if(el) el.textContent='🔧 Recharger ventes ¼h'; return; }
+      (data||[]).forEach(row=>{
+        let rt=row.restaurant; if(rt==='ALL'||rt==='Administration') rt='BK526';
+        const dt=(row.date||'').slice(0,10);
+        let ca = row.tranches_ca;
+        if(typeof ca==='string'){ try{ ca=JSON.parse(ca); }catch(e){ ca=null; } }
+        if(ca && typeof ca==='object' && Object.keys(ca).length){
+          if(!HR_ALL[rt]) HR_ALL[rt]={};
+          HR_ALL[rt][dt]=ca; n++;
+          parResto[rt]=(parResto[rt]||0)+1;
+        } else {
+          sansCa++;
+        }
+      });
+      if(!data || data.length < PAGE) break;
+      offset += PAGE;
+    }
     window.HR_ALL = HR_ALL;
     const r = (typeof HR_RESTO!=='undefined' && HR_RESTO) ? HR_RESTO : 'BK526';
     if(HR_ALL[r]){ HR_DATA = HR_ALL[r]; window.HR_DATA = HR_DATA; }
@@ -11534,32 +11670,35 @@ window.__hrInit=function(){
           try{ renderNP&&renderNP(); renderAll&&renderAll(); }catch(e){}
         }
       }).catch(()=>{});
-      SB.from('ventes_horaire').select('restaurant,date,tranches_ca').then(({data,error})=>{
-        if(error||!data) return;
-        let n=0;
+      (async function(){
         const RESTOS_VALIDES = (typeof RESTAURANTS!=='undefined') ? Object.keys(RESTAURANTS) : ['BK500','BK509','BK526'];
-        data.forEach(row=>{
-          if(row.tranches_ca && typeof row.tranches_ca==='object'){
-            const rt=row.restaurant;
-            // ISOLATION STRICTE : on ne range que sous un vrai restaurant identifié.
-            // Les anciennes lignes ambiguës ('ALL'/'Administration') sont ignorées
-            // pour ne JAMAIS polluer un resto avec le CA d'un autre.
-            if(!rt || RESTOS_VALIDES.indexOf(rt)<0) return;
-            const dt=(row.date||'').slice(0,10);
-            if(!HR_ALL[rt]) HR_ALL[rt]={};
-            HR_ALL[rt][dt]=row.tranches_ca; n++;
+        let n=0, offset=0; const PAGE=1000;
+        try{
+          for(let garde=0; garde<200; garde++){
+            const { data, error } = await SB.from('ventes_horaire')
+              .select('restaurant,date,tranches_ca')
+              .order('date',{ascending:true}).range(offset, offset+PAGE-1);
+            if(error||!data) break;
+            data.forEach(row=>{
+              if(row.tranches_ca && typeof row.tranches_ca==='object'){
+                const rt=row.restaurant;
+                if(!rt || RESTOS_VALIDES.indexOf(rt)<0) return;
+                const dt=(row.date||'').slice(0,10);
+                if(!HR_ALL[rt]) HR_ALL[rt]={};
+                HR_ALL[rt][dt]=row.tranches_ca; n++;
+              }
+            });
+            if(data.length < PAGE) break;
+            offset += PAGE;
           }
-        });
+        }catch(e){ console.warn('[ventes_horaire pagination]', e); }
         if(n){ window.HR_ALL=HR_ALL; const r=(typeof HR_RESTO!=='undefined'&&HR_RESTO)?HR_RESTO:'BK526'; if(HR_ALL[r]){HR_DATA=HR_ALL[r];window.HR_DATA=HR_DATA;} try{hrFillDaySelect&&hrFillDaySelect();hrFillWeekSelect&&hrFillWeekSelect();}catch(e){}
-          // Les données ¼h sont arrivées de Supabase APRÈS le 1er rendu : on re-affiche
-          // tout ce qui dépend de HR_DATA (pastilles ✓/✗ du dashboard, sélecteur de
-          // consultation, prévisionnel) sinon ça reste figé sur « aucun PDF ».
           try{ renderDays&&renderDays(); }catch(e){}
           try{ renderAll&&renderAll(); }catch(e){}
           try{ hrFillConsultSelect&&hrFillConsultSelect(); }catch(e){}
           try{ const vs=document.getElementById('hrx-ca-vue'); if((!vs||vs.value==='jour')){ const ds=document.getElementById('hrx-ca-day-sel'); if(ds&&ds.value&&/^\d{4}-\d{2}-\d{2}$/.test(ds.value)&&typeof hrGenFromDate==='function') hrGenFromDate(ds.value,true); } }catch(e){}
         }
-      });
+      })();
     }
     const resto = hrCurrentResto();
     if(HR_ALL[resto]){ HR_DATA=HR_ALL[resto]; HR_RESTO=resto; window.HR_DATA=HR_DATA; }
