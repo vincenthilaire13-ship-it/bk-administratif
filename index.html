@@ -3245,6 +3245,36 @@ function impSetPeriode(jours){
   renderImports();
 }
 
+// ══ LECTURE PAGINÉE DES COUPLES restaurant|date ══
+// Évite la troncature silencieuse à 1000 lignes de Supabase (PostgREST).
+// Indispensable pour repas_employes qui a 15-30 lignes nominatives PAR jour ET PAR resto :
+// sur une longue période le total dépasse vite 1000 → les journées récentes étaient
+// considérées « non déposées » à tort dans le Contrôle des imports.
+// Renvoie un Set "restaurant|date" couvrant TOUTES les lignes de la période.
+async function sbCouplesRD(table, from, to, cond){
+  const m = new Set();
+  if(!SB) return m;
+  const PAGE = 1000;
+  let offset = 0;
+  for(let garde=0; garde<200; garde++){ // garde-fou
+    let req = SB.from(table).select('restaurant,date');
+    if(table==='journees') req = SB.from(table).select('restaurant,date,ca_ht');
+    req = req.gte('date',from).lte('date',to).order('date',{ascending:true}).range(offset, offset+PAGE-1);
+    const { data, error } = await req;
+    if(error){ console.error('[sbCouplesRD]', table, error); break; }
+    const rows = data||[];
+    rows.forEach(x=>{
+      if(cond && !cond(x)) return;
+      const dt=(x.date||'').slice(0,10);
+      let rt=x.restaurant; if(rt==='ALL'||rt==='Administration') rt='BK526';
+      m.add(rt+'|'+dt);
+    });
+    if(rows.length < PAGE) break; // dernière page atteinte
+    offset += PAGE;
+  }
+  return m;
+}
+
 async function renderImports(){
   const el = document.getElementById('imports-content');
   if(!el) return;
@@ -3260,10 +3290,12 @@ async function renderImports(){
   el.innerHTML = _impEmpty('🗂️','Contrôle des imports','Lecture des dépôts…');
 
   try {
-    const q = (table)=> SB.from(table).select('restaurant,date').gte('date',from).lte('date',to);
-    const [j,s,v,rp] = await Promise.all([ q('journees'), q('sos_drive'), q('ventes_horaire'), q('repas_employes') ]);
-    const setOf = (rows)=>{ const m=new Set(); (rows.data||[]).forEach(x=>m.add(x.restaurant+'|'+x.date)); return m; };
-    const has = { synthese:setOf(j), sos:setOf(s), ventes:setOf(v), repas:setOf(rp) };
+    const has = {
+      synthese: await sbCouplesRD('journees', from, to, x=>x.ca_ht!=null),
+      sos:      await sbCouplesRD('sos_drive', from, to),
+      ventes:   await sbCouplesRD('ventes_horaire', from, to),
+      repas:    await sbCouplesRD('repas_employes', from, to),
+    };
     const cols = [
       {key:'synthese', label:'Synthèse CA',  ico:'📄'},
       {key:'sos',      label:'SOS Drive',     ico:'🚗'},
@@ -3500,7 +3532,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-05-30T23:06', label: 'v30/05-23h06', affichage: 'samedi 30 mai 2026 à 23:06' };
+const APP_VERSION = { datetime: '2026-06-11T09:25', label: 'v11/06-09h25', affichage: 'jeudi 11 juin 2026 à 09:25' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -3944,11 +3976,12 @@ async function checkFichiersManquants(){
 
   try {
     // Synthèse CA = présence d'un CA HT (pas juste une ligne journees créée par le SOS)
-    const qJ = SB.from('journees').select('restaurant,date,ca_ht').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO);
-    const q = (table)=>{ let r=SB.from(table).select('restaurant,date').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO); return r; };
-    const [j,s,v,rp] = await Promise.all([ qJ, q('sos_drive'), q('ventes_horaire'), q('repas_employes') ]);
-    const setOf = (rows, cond)=>{ const m=new Set(); (rows.data||[]).forEach(x=>{ if(cond && !cond(x)) return; const dt=(x.date||'').slice(0,10); let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; m.add(rt+'|'+dt); }); return m; };
-    const has = { synthese:setOf(j, x=>x.ca_ht!=null), sos:setOf(s), ventes:setOf(v), repas:setOf(rp) };
+    const has = {
+      synthese: await sbCouplesRD('journees', SUIVI_DATE_DEBUT, finISO, x=>x.ca_ht!=null),
+      sos:      await sbCouplesRD('sos_drive', SUIVI_DATE_DEBUT, finISO),
+      ventes:   await sbCouplesRD('ventes_horaire', SUIVI_DATE_DEBUT, finISO),
+      repas:    await sbCouplesRD('repas_employes', SUIVI_DATE_DEBUT, finISO),
+    };
     const labels = { synthese:'Synthèse CA', sos:'SOS Drive', ventes:'Ventes au quart d\'heure', repas:'Bons repas' };
 
     // Liste des jours du 17 mai à hier (dates locales)
@@ -4342,11 +4375,16 @@ function renderJournee(d) {
   // Harmonisation des noms de champs (selon source : import PDF ou saisie manuelle)
   const livNb = d.livraison_commandes ?? d.livraison_nb ?? null;
   const caht = caHT(d);
-  const caht_n1 = caHT_n1(d);
+  // Référence N-1 = même jour de semaine en 2025 (DATA25), repli sur champs stockés
+  const ref = findN1(d);
+  const caht_n1 = ref ? caHT(ref) : (d.ca_ht_n1!=null ? d.ca_ht_n1 : null);
+  const tk_n1   = ref ? (ref.tickets_nb||null) : (d.tickets_n1||null);
+  const dr_n1   = ref ? (ref.drive_voitures||null) : (d.drive_n1||null);
+  const lv_n1   = ref ? (ref.livraison_commandes ?? ref.livraison_nb ?? null) : (d.livraison_n1||null);
   const ecN1 = caht_n1 ? ((caht-caht_n1)/caht_n1*100) : null;
-  const ecT = d.tickets_n1&&d.tickets_nb ? ((d.tickets_nb-d.tickets_n1)/d.tickets_n1*100) : null;
-  const ecDr = d.drive_n1&&d.drive_voitures ? ((d.drive_voitures-d.drive_n1)/d.drive_n1*100) : null;
-  const ecLv = d.livraison_n1&&livNb ? ((livNb-d.livraison_n1)/d.livraison_n1*100) : null;
+  const ecT = tk_n1&&d.tickets_nb ? ((d.tickets_nb-tk_n1)/tk_n1*100) : null;
+  const ecDr = dr_n1&&d.drive_voitures ? ((d.drive_voitures-dr_n1)/dr_n1*100) : null;
+  const ecLv = lv_n1&&livNb ? ((livNb-lv_n1)/lv_n1*100) : null;
   const tM = d.tickets_nb ? (caht/d.tickets_nb).toFixed(2) : '—';
   const drM = d.drive_voitures&&canalHT(d,'drive') ? (canalHT(d,'drive')/d.drive_voitures).toFixed(2) : '—';
   const lvM = livNb&&canalHT(d,'livraison') ? (canalHT(d,'livraison')/livNb).toFixed(2) : '—';
@@ -4374,15 +4412,15 @@ function renderJournee(d) {
   const rows = [
     ['CA HT',fmt(caht)+' €',caht_n1?fmt(caht_n1)+' €':'—','—',ecN1!==null?chipEc(ecN1):'—'],
     ['CA Prévu',d.ca_prevu?fmt(d.ca_prevu)+' €':'—','—','—',d.ca_prevu?chipEc(((caht-d.ca_prevu)/d.ca_prevu)*100):'—'],
-    ['Tickets',d.tickets_nb||'—',d.tickets_n1||'—','—',ecT!==null?chipEc(ecT):'—'],
+    ['Tickets',d.tickets_nb||'—',tk_n1||'—','—',ecT!==null?chipEc(ecT):'—'],
     ['Ticket moyen HT',tM+' €','—','≥'+SEUILS.ticket_min+' €',chipS(parseFloat(tM),SEUILS.ticket_min,null,'h')],
     ['─────── DRIVE ───────','','','',''],
-    ['Voitures drive',d.drive_voitures||'—',d.drive_n1||'—','≥'+SEUILS.drive_min,chipS(d.drive_voitures,SEUILS.drive_min,null,'h')],
+    ['Voitures drive',d.drive_voitures||'—',dr_n1||'—','≥'+SEUILS.drive_min,chipS(d.drive_voitures,SEUILS.drive_min,null,'h')],
     ['CA drive HT',canalHT(d,'drive')?fmt(canalHT(d,'drive'))+' €':'—','—','—','—'],
     ['Drive % du CA',d.drive_pct?d.drive_pct+'%':'—','—','—','—'],
     ['Ticket moyen drive',(d.drive_ticket_moyen??drM)+' €','—','≥'+SEUILS.drive_ticket_min+' €',chipS(parseFloat(d.drive_ticket_moyen??drM),SEUILS.drive_ticket_min,null,'h')],
     ['─────── LIVRAISON ───────','','','',''],
-    ['Commandes livraison',livNb||'—',d.livraison_n1||'—','≥'+SEUILS.livraison_min,chipS(livNb,SEUILS.livraison_min,null,'h')],
+    ['Commandes livraison',livNb||'—',lv_n1||'—','≥'+SEUILS.livraison_min,chipS(livNb,SEUILS.livraison_min,null,'h')],
     ['CA livraison HT',canalHT(d,'livraison')?fmt(canalHT(d,'livraison'))+' €':'—','—','—','—'],
     ['Livraison % du CA',d.livraison_pct?d.livraison_pct+'%':'—','—','—','—'],
     ['Ticket moyen livraison',(d.livraison_ticket_moyen??lvM)+' €','—','—','—'],
@@ -4490,7 +4528,7 @@ function renderJournee(d) {
 
   <div class="table-card">
     <div class="table-header">
-      <span class="table-title">Analyse complète — ${formatDate(d.date)} ${jourSemaine(d.date)}</span>
+      <span class="table-title">Analyse complète — ${formatDate(d.date)} ${jourSemaine(d.date)}${ref?` <span style="font-size:10px;color:var(--muted2);font-weight:400">· réf. N-1 : ${formatDate(ref.date)} ${jourSemaine(ref.date)}</span>`:` <span style="font-size:10px;color:var(--muted2);font-weight:400">· réf. N-1 indisponible</span>`}</span>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         ${d.manager_ouverture||d.manager_fermeture ? `<span style="font-size:10px;color:var(--muted2)">🔑 ${d.manager_ouverture||'—'} &nbsp;·&nbsp; 🔒 ${d.manager_fermeture||'—'}</span>` : ''}
         <button class="btn" style="font-size:10px;padding:4px 12px" onclick="exportPDF('${d.date}')">⬇ Export PDF</button>
@@ -4988,7 +5026,7 @@ function renderComparaison() {
       <thead>
         <tr>
           <th rowspan="2">Mois</th>
-          <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">CA HT</th>
+          <th colspan="5" style="text-align:center;border-bottom:1px solid var(--border)">CA HT</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Ticket moyen HT</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Drive</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Livraison</th>
@@ -4996,7 +5034,7 @@ function renderComparaison() {
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Remises</th>
         </tr>
         <tr>
-          <th class="num" style="color:var(--muted)">Jours</th><th class="num" style="color:var(--muted)">2025</th><th class="num">2026 (Δ/j)</th>
+          <th class="num" style="color:var(--muted)">Jours 25</th><th class="num" style="color:var(--muted)">2025</th><th class="num">Jours 26</th><th class="num">2026</th><th class="num">Δ/j</th>
           <th class="num" style="color:var(--muted)">2025</th><th class="num">2026</th><th class="num">Δ</th>
           <th class="num" style="color:var(--muted)">2025/j</th><th class="num">2026/j</th><th class="num">Δ</th>
           <th class="num" style="color:var(--muted)">2025/j</th><th class="num">2026/j</th><th class="num">Δ</th>
@@ -5140,6 +5178,31 @@ const fmt = v => v?Math.round(v).toLocaleString('fr-FR'):'0';
 // ══ HELPERS HT ══ (hors taxes UNIQUEMENT — aucune conversion, aucun TTC)
 const caHT = d => (d.ca_ht!=null ? d.ca_ht : 0);
 const caHT_n1 = d => (d.ca_ht_n1!=null ? d.ca_ht_n1 : (d.ca_ht!=null ? d.ca_ht : 0));
+// ══ RÉSOLUTION DE LA JOURNÉE N-1 (même jour de semaine) ══
+// Pour une journée 2026, retrouve la journée 2025 correspondante dans DATA25 :
+// on recule de 364 jours (= 52 semaines pile → même jour de semaine), puis on
+// cherche cette date dans DATA25 ; à défaut, la plus proche au même jour de
+// semaine dans une fenêtre de ±10 jours.
+function findN1(d){
+  if(!d || !d.date || !Array.isArray(DATA25) || !DATA25.length) return null;
+  const base = new Date(d.date+'T00:00:00');
+  if(isNaN(base)) return null;
+  const cible = new Date(base.getTime() - 364*86400000); // même jour de semaine
+  const cibleISO = cible.toISOString().slice(0,10);
+  const byDate = {};
+  DATA25.forEach(x=>{ if(x && x.date) byDate[x.date] = x; });
+  if(byDate[cibleISO]) return byDate[cibleISO];
+  // sinon, plus proche même jour de semaine (±10 j), priorité au plus proche
+  const js = cible.getDay();
+  let best=null, bestDiff=Infinity;
+  for(let off=-10; off<=10; off++){
+    const dt = new Date(cible.getTime()+off*86400000);
+    if(dt.getDay()!==js) continue;
+    const iso = dt.toISOString().slice(0,10);
+    if(byDate[iso] && Math.abs(off)<bestDiff){ best=byDate[iso]; bestDiff=Math.abs(off); }
+  }
+  return best;
+}
 const canalHT = (d,canal) => {
   // canal: 'kiosk'|'drive'|'livraison'|'comptoir'|'cc' — lit UNIQUEMENT le champ HT
   const ht = d[canal+'_ht'];
