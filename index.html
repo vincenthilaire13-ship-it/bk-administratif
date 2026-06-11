@@ -899,22 +899,22 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
               <div>
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Ouverture (8h → 19h)</div>
                 <label class="form-label">Manager ouverture</label>
-                <select class="form-input" id="mgr-ouv" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
+                <select class="form-input" id="mgr-ouv" style="margin-bottom:10px" onchange="rafraichirBlocageMgr()"><option value="">— sélectionner —</option></select>
                 <label class="form-label">Leader ouverture</label>
-                <select class="form-input" id="mgr-leader-ouv"><option value="">— sélectionner —</option></select>
+                <select class="form-input" id="mgr-leader-ouv" onchange="rafraichirBlocageMgr()"><option value="">— sélectionner —</option></select>
               </div>
               <div>
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Fermeture (19h → 2h)</div>
                 <label class="form-label">Manager fermeture</label>
-                <select class="form-input" id="mgr-fer" style="margin-bottom:10px"><option value="">— sélectionner —</option></select>
+                <select class="form-input" id="mgr-fer" style="margin-bottom:10px" onchange="rafraichirBlocageMgr()"><option value="">— sélectionner —</option></select>
                 <label class="form-label">Leader fermeture</label>
-                <select class="form-input" id="mgr-leader-fer"><option value="">— sélectionner —</option></select>
+                <select class="form-input" id="mgr-leader-fer" onchange="rafraichirBlocageMgr()"><option value="">— sélectionner —</option></select>
               </div>
             </div>
 
             <!-- Directeur -->
             <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:16px">
-              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px">Présence directeur</div>
+              <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:10px">Présence directeur (cocher au moins une case)</div>
               <div style="display:flex;gap:12px">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border2);border-radius:var(--radius-sm);flex:1;transition:all .15s" id="lbl-dir-midi">
                   <input type="checkbox" id="mgr-dir-midi" onchange="toggleDirStyle('midi')">
@@ -925,6 +925,11 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
                   <input type="checkbox" id="mgr-dir-soir" onchange="toggleDirStyle('soir')">
                   <span style="font-size:16px">🌙</span>
                   <div><div style="font-size:11px;font-weight:600">Rush soir</div><div style="font-size:10px;color:var(--muted)">Dîner</div></div>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 16px;border:1px solid var(--border2);border-radius:var(--radius-sm);flex:1;transition:all .15s" id="lbl-dir-repos">
+                  <input type="checkbox" id="mgr-dir-repos" onchange="toggleDirStyle('repos')">
+                  <span style="font-size:16px">😴</span>
+                  <div><div style="font-size:11px;font-weight:600">Repos</div><div style="font-size:10px;color:var(--muted)">Absent</div></div>
                 </label>
               </div>
             </div>
@@ -1666,7 +1671,7 @@ const JOURNEES_COLS_BASE = ['restaurant','date','ca_ht','ca_ttc','ca_n1','ca_pre
   'repas_employes_nb','repas_employes_montant','repas_employes_pct',
   'erreur_caisse','cb','especes','ancv','click_collect_cb','uber_eats','deliveroo','bk_livraison','trd',
   'mo_pct','salaires','ts_bornes_midi','ts_drive_midi','ts_bornes_soir','ts_drive_soir','pertes_brutes','pertes_finies',
-  'manager_ouverture','manager_fermeture','leader_ouverture','leader_fermeture','directeur_midi','directeur_soir','commentaire'];
+  'manager_ouverture','manager_fermeture','leader_ouverture','leader_fermeture','directeur_midi','directeur_soir','directeur_repos','commentaire'];
 
 // Détecte les colonnes réellement présentes (1 requête) → plus jamais d'erreur "column not found"
 async function detecterColonnesJournees(){
@@ -3532,7 +3537,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-11T09:25', label: 'v11/06-09h25', affichage: 'jeudi 11 juin 2026 à 09:25' };
+const APP_VERSION = { datetime: '2026-06-11T09:41', label: 'v11/06-09h41', affichage: 'jeudi 11 juin 2026 à 09:41' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -3716,7 +3721,8 @@ alter table journees add column if not exists manager_fermeture text;
 alter table journees add column if not exists leader_ouverture text;
 alter table journees add column if not exists leader_fermeture text;
 alter table journees add column if not exists directeur_midi boolean;
-alter table journees add column if not exists directeur_soir boolean;`;
+alter table journees add column if not exists directeur_soir boolean;
+alter table journees add column if not exists directeur_repos boolean;`;
 
 function copierSQLColonnesPDF(){
   navigator.clipboard.writeText(SQL_COLONNES_PDF).then(()=>{
@@ -5758,14 +5764,16 @@ function majAnnExtracted() {
 }
 
 function toggleDirStyle(rush) {
-  const id = rush==='midi' ? 'mgr-dir-midi' : 'mgr-dir-soir';
-  const lblId = rush==='midi' ? 'lbl-dir-midi' : 'lbl-dir-soir';
+  const map = { midi:['mgr-dir-midi','lbl-dir-midi'], soir:['mgr-dir-soir','lbl-dir-soir'], repos:['mgr-dir-repos','lbl-dir-repos'] };
+  const [id,lblId] = map[rush] || [];
   const checked = document.getElementById(id)?.checked;
   const lbl = document.getElementById(lblId);
   if(lbl) {
     lbl.style.borderColor = checked ? 'var(--green)' : 'var(--border2)';
     lbl.style.background  = checked ? 'rgba(62,207,142,.08)' : 'transparent';
   }
+  // Réévaluer le blocage du bouton d'enregistrement à chaque changement
+  if(typeof rafraichirBlocageMgr==='function') rafraichirBlocageMgr();
 }
 
 function enregistrerEquipe() {
@@ -5776,6 +5784,7 @@ function enregistrerEquipe() {
   const lfer    = document.getElementById('mgr-leader-fer')?.value;
   const dirMidi = document.getElementById('mgr-dir-midi')?.checked;
   const dirSoir = document.getElementById('mgr-dir-soir')?.checked;
+  const dirRepos = document.getElementById('mgr-dir-repos')?.checked;
   const comment = document.getElementById('mgr-comment')?.value;
   if(!date) { alert('Veuillez sélectionner une date.'); return; }
   const row = {
@@ -5787,6 +5796,7 @@ function enregistrerEquipe() {
     leader_fermeture:  lfer||null,
     directeur_midi:    dirMidi||false,
     directeur_soir:    dirSoir||false,
+    directeur_repos:   dirRepos||false,
     commentaire:       comment||''
   };
   if(typeof upsert==='function') upsert(row,'mgr-equipe-ok','mgr-equipe-ok');
@@ -6210,9 +6220,52 @@ async function lireTousPDFs(files) {
 
   document.getElementById('mgr-pdf-summary').innerHTML = recap;
 
-  // Gérer le bouton de validation (bloqué si incohérence)
+  // Gérer le bouton de validation (bloqué si incohérence PDF/date ou équipe incomplète)
+  // L'état PDF/date est mémorisé pour pouvoir réévaluer à chaque changement de champ équipe.
+  MGR_JOUR._pdfBloque = bloque;
+  MGR_JOUR._pdfAlerte = alerte;
+  rafraichirBlocageMgr();
+
+  // Conserver compat ancienne logique
+  MGR_EXTRACTED = MGR_JOUR.synthese || {};
+
+  populateManagerSelect();
+}
+
+// ══ BLOCAGE DE L'ENREGISTREMENT — 4 PDF + même date + équipe complète ══
+// Équipe obligatoire : manager ouverture, manager fermeture, leader ouverture,
+// leader fermeture, et AU MOINS UNE case directeur (midi, soir ou repos).
+// Appelée au dépôt des PDF ET à chaque changement de champ équipe.
+function rafraichirBlocageMgr(){
   const btn = document.getElementById('mgr-btn-save');
   const errBox = document.getElementById('mgr-coherence-alert');
+  if(!MGR_JOUR){ return; }
+
+  // 1) Blocage PDF/date déjà calculé au dépôt
+  let bloque = !!MGR_JOUR._pdfBloque;
+  let alerte = MGR_JOUR._pdfAlerte || '';
+
+  // 2) Blocage équipe (seulement si les PDF sont OK, pour ne pas masquer l'alerte PDF)
+  if(!bloque){
+    const ouv  = document.getElementById('mgr-ouv')?.value;
+    const fer  = document.getElementById('mgr-fer')?.value;
+    const louv = document.getElementById('mgr-leader-ouv')?.value;
+    const lfer = document.getElementById('mgr-leader-fer')?.value;
+    const dirMidi  = document.getElementById('mgr-dir-midi')?.checked;
+    const dirSoir  = document.getElementById('mgr-dir-soir')?.checked;
+    const dirRepos = document.getElementById('mgr-dir-repos')?.checked;
+    const manquantsEquipe = [];
+    if(!ouv)  manquantsEquipe.push('Manager ouverture');
+    if(!fer)  manquantsEquipe.push('Manager fermeture');
+    if(!louv) manquantsEquipe.push('Leader ouverture');
+    if(!lfer) manquantsEquipe.push('Leader fermeture');
+    if(!dirMidi && !dirSoir && !dirRepos) manquantsEquipe.push('Présence directeur (midi, soir ou repos)');
+    if(manquantsEquipe.length){
+      bloque = true;
+      alerte = `🚫 <strong>Informations équipe manquantes :</strong> ${manquantsEquipe.join(', ')}. Renseignez-les pour pouvoir valider la journée.`;
+    }
+  }
+
   if(bloque){
     if(errBox){ errBox.innerHTML = alerte; errBox.style.display='block'; }
     if(btn){ btn.disabled = true; btn.style.opacity='.45'; btn.style.cursor='not-allowed'; }
@@ -6220,11 +6273,6 @@ async function lireTousPDFs(files) {
     if(errBox){ errBox.style.display='none'; }
     if(btn){ btn.disabled = false; btn.style.opacity='1'; btn.style.cursor='pointer'; }
   }
-
-  // Conserver compat ancienne logique
-  MGR_EXTRACTED = MGR_JOUR.synthese || {};
-
-  populateManagerSelect();
 }
 
 let MGR_VENTES_TXT = null;
@@ -6571,8 +6619,8 @@ function resetMgrFlow() {
   // Repartir d'une feuille blanche pour la journée suivante : décocher le directeur
   // (midi/soir) et vider les champs managers/leaders + commentaire, sinon ils
   // restaient cochés/remplis de la journée précédente.
-  ['mgr-dir-midi','mgr-dir-soir'].forEach(id=>{ const c=document.getElementById(id); if(c) c.checked=false; });
-  try{ toggleDirStyle('midi'); toggleDirStyle('soir'); }catch(e){}
+  ['mgr-dir-midi','mgr-dir-soir','mgr-dir-repos'].forEach(id=>{ const c=document.getElementById(id); if(c) c.checked=false; });
+  try{ toggleDirStyle('midi'); toggleDirStyle('soir'); toggleDirStyle('repos'); }catch(e){}
   ['mgr-ouv','mgr-fer','mgr-leader-ouv','mgr-leader-fer','mgr-comment'].forEach(id=>{
     const el=document.getElementById(id); if(el){ if(el.tagName==='SELECT') el.selectedIndex=0; else el.value=''; }
   });
@@ -6590,6 +6638,18 @@ async function enregistrerJourneeMgr() {
     alert('Validation impossible : il manque des documents ou les dates diffèrent.');
     return;
   }
+  // Re-contrôle équipe : managers + leaders obligatoires + au moins une case directeur
+  const _ouv  = document.getElementById('mgr-ouv')?.value;
+  const _fer  = document.getElementById('mgr-fer')?.value;
+  const _louv = document.getElementById('mgr-leader-ouv')?.value;
+  const _lfer = document.getElementById('mgr-leader-fer')?.value;
+  const _dMidi  = document.getElementById('mgr-dir-midi')?.checked;
+  const _dSoir  = document.getElementById('mgr-dir-soir')?.checked;
+  const _dRepos = document.getElementById('mgr-dir-repos')?.checked;
+  if(!_ouv || !_fer || !_louv || !_lfer || (!_dMidi && !_dSoir && !_dRepos)){
+    alert('Validation impossible : renseignez les managers et leaders (ouverture + fermeture) ainsi que la présence directeur (midi, soir ou repos).');
+    return;
+  }
 
   const resto = restoReel();
   const date  = MGR_JOUR.date;
@@ -6600,6 +6660,7 @@ async function enregistrerJourneeMgr() {
     leader_fermeture:  document.getElementById('mgr-leader-fer')?.value||null,
     directeur_midi:    document.getElementById('mgr-dir-midi')?.checked||false,
     directeur_soir:    document.getElementById('mgr-dir-soir')?.checked||false,
+    directeur_repos:   document.getElementById('mgr-dir-repos')?.checked||false,
     commentaire:       document.getElementById('mgr-comment')?.value||''
   };
 
@@ -6610,12 +6671,15 @@ async function enregistrerJourneeMgr() {
     let erreurs = [];
     // 1) JOURNÉES (synthèse CA + équipe)
     if(SB){
-      // Champs équipe sûrs pour journees (manager + directeur + commentaire ; PAS les leaders qui n'existent pas dans journees)
+      // Champs équipe sûrs pour journees (filtrés ensuite sur colonnes réelles)
       const equipeJournee = {
         manager_ouverture: equipe.manager_ouverture,
         manager_fermeture: equipe.manager_fermeture,
+        leader_ouverture: equipe.leader_ouverture,
+        leader_fermeture: equipe.leader_fermeture,
         directeur_midi: equipe.directeur_midi,
         directeur_soir: equipe.directeur_soir,
+        directeur_repos: equipe.directeur_repos,
         commentaire: equipe.commentaire
       };
       const rowJournee = { restaurant:resto, date, ...(MGR_JOUR.synthese||{}), ...equipeJournee };
