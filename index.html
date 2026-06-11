@@ -1648,6 +1648,20 @@ alter table journees add column if not exists commandes_ouvertes_pct numeric;</p
   </div>
 </div>
 
+<!-- Modale de rappel post-validation : annulations / erreur caisse à déclarer -->
+<div class="modal-overlay" id="modal-rappel">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title" style="color:var(--yellow)">⚠️ Pensez à vos déclarations</div>
+    <div class="modal-sub">La journée est bien enregistrée. La synthèse CA fait toutefois apparaître des éléments à déclarer :</div>
+    <div id="rappel-contenu" style="display:flex;flex-direction:column;gap:10px;margin:14px 0"></div>
+    <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="fermerRappel();showMgrSection('home')">Plus tard</button>
+      <button class="btn btn-accent" id="rappel-btn-annul" style="display:none;background:var(--red);border-color:var(--red)" onclick="fermerRappel();showMgrSection('annulation')">🚫 Déclarer l'annulation</button>
+      <button class="btn btn-accent" id="rappel-btn-caisse" style="display:none" onclick="fermerRappel();showMgrSection('erreurcaisse')">💶 Déclarer l'erreur caisse</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ══ CONFIG ══
 let SB = null;
@@ -3621,7 +3635,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-11T11:02', label: 'v11/06-11h02', affichage: 'jeudi 11 juin 2026 à 11:02' };
+const APP_VERSION = { datetime: '2026-06-11T11:08', label: 'v11/06-11h08', affichage: 'jeudi 11 juin 2026 à 11:08' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -4073,6 +4087,12 @@ async function checkFichiersManquants(){
       repas:    await sbCouplesRD('repas_employes', SUIVI_DATE_DEBUT, finISO),
     };
     const labels = { synthese:'Synthèse CA', sos:'SOS Drive', ventes:'Ventes au quart d\'heure', repas:'Bons repas' };
+    // Données pour annulations non déclarées + erreurs caisse > seuil non déclarées
+    const SEUIL_EC = (typeof SEUILS!=='undefined' && SEUILS.erreur_caisse_max) ? SEUILS.erreur_caisse_max : 5;
+    const annulCaisse = await sbMapRD('journees', 'restaurant,date,annulations_nb', SUIVI_DATE_DEBUT, finISO, x=>x.annulations_nb||0);
+    const ecartCaisse = await sbMapRD('journees', 'restaurant,date,erreur_caisse', SUIVI_DATE_DEBUT, finISO, x=>(x.erreur_caisse!=null?x.erreur_caisse:null));
+    const declAnnul   = await sbCountRD('annulations', SUIVI_DATE_DEBUT, finISO);
+    const declErrCais = await sbCountRD('erreurs_caisse', SUIVI_DATE_DEBUT, finISO);
 
     // Liste des jours du 17 mai à hier (dates locales)
     const jours = [];
@@ -4087,6 +4107,12 @@ async function checkFichiersManquants(){
       jours.forEach(jour=>{
         const key = rt+'|'+jour;
         const manque = Object.keys(labels).filter(t=>!has[t].has(key));
+        // Annulations vues par la caisse mais non (toutes) déclarées
+        const nbCaisse = annulCaisse[key]||0, nbDecl = declAnnul[key]||0;
+        if(nbCaisse>nbDecl) manque.push('annul:'+(nbCaisse-nbDecl));
+        // Erreur caisse > seuil sans déclaration
+        const ec = ecartCaisse[key], nbEcDecl = declErrCais[key]||0;
+        if(ec!=null && Math.abs(ec)>SEUIL_EC && nbEcDecl===0) manque.push('caisse:'+Math.round(ec));
         if(manque.length>0) incomplets.push({jour, manque});
       });
       parResto[rt] = incomplets; // toujours une entrée par resto, même vide
@@ -4112,7 +4138,11 @@ async function checkFichiersManquants(){
         <div style="display:flex;flex-direction:column;gap:4px">`;
       inc.slice().reverse().forEach(it=>{
         const jourLbl = formatDate(it.jour)+' '+jourSemaine(new Date(it.jour));
-        const docsManquants = it.manque.map(t=>`<span style="color:var(--red);font-weight:500">${labels[t]}</span>`).join(', ');
+        const docsManquants = it.manque.map(t=>{
+          if(t.startsWith('annul:')) return `<span style="color:var(--red);font-weight:500">${t.slice(6)} annulation(s) à déclarer</span>`;
+          if(t.startsWith('caisse:')){ const v=parseInt(t.slice(7),10); return `<span style="color:var(--red);font-weight:500">erreur caisse ${v>0?'+':''}${v} € à déclarer</span>`; }
+          return `<span style="color:var(--red);font-weight:500">${labels[t]}</span>`;
+        }).join(', ');
         html += `<div style="font-size:11px;padding:5px 10px;background:var(--bg3);border-radius:6px;border-left:2px solid var(--red)">
           <span style="color:var(--accent)">${jourLbl}</span> — manque : ${docsManquants}</div>`;
       });
@@ -6699,6 +6729,11 @@ function parserVentesHoraire(txt){
 }
 
 
+function fermerRappel(){
+  const m=document.getElementById('modal-rappel');
+  if(m) m.classList.remove('open');
+}
+
 function resetMgrFlow() {
   MGR_EXTRACTED = null; MGR_VENTES_TXT = null; MGR_VENTES_AB = null; MGR_VENTES_FILE = null; FILES_LIST = []; MGR_JOUR = null;
   document.getElementById('file-list').innerHTML = '';
@@ -6962,6 +6997,29 @@ async function enregistrerJourneeMgr() {
     }
     if(ok){ ok.textContent='✓ Journée complète enregistrée (4 documents rangés) !'; ok.style.color='var(--green)'; ok.style.display='block'; }
     renderDashboard();
+    // Rappel : si la synthèse CA déposée fait apparaître des annulations ou un écart caisse > seuil,
+    // on invite le manager à déposer sa déclaration d'annulation / d'erreur caisse.
+    const syn = MGR_JOUR.synthese || {};
+    const SEUIL_EC = (typeof SEUILS!=='undefined' && SEUILS.erreur_caisse_max) ? SEUILS.erreur_caisse_max : 5;
+    const nbAnnul = syn.annulations_nb||0;
+    const ecCaisse = (syn.erreur_caisse!=null) ? syn.erreur_caisse : null;
+    const besoinAnnul  = nbAnnul>0;
+    const besoinCaisse = ecCaisse!=null && Math.abs(ecCaisse)>SEUIL_EC;
+    if(besoinAnnul || besoinCaisse){
+      if(ok) ok.style.display='none';
+      const cont = document.getElementById('rappel-contenu');
+      let h = '';
+      if(besoinAnnul) h += `<div style="font-size:12px;padding:10px 12px;background:rgba(248,113,113,.08);border-left:3px solid var(--red);border-radius:6px">La synthèse indique <strong>${nbAnnul} annulation(s)</strong> ce jour. Merci de déposer la déclaration d'annulation (photos des tickets).</div>`;
+      if(besoinCaisse) h += `<div style="font-size:12px;padding:10px 12px;background:rgba(248,113,113,.08);border-left:3px solid var(--red);border-radius:6px">Écart de caisse de <strong>${ecCaisse>0?'+':''}${Number(ecCaisse).toFixed(2)} €</strong> (> ±${SEUIL_EC} €). Merci de déposer la déclaration d'erreur de caisse en indiquant qui tenait la caisse.</div>`;
+      if(cont) cont.innerHTML = h;
+      const bA=document.getElementById('rappel-btn-annul'), bC=document.getElementById('rappel-btn-caisse');
+      if(bA) bA.style.display = besoinAnnul ? '' : 'none';
+      if(bC) bC.style.display = besoinCaisse ? '' : 'none';
+      document.getElementById('modal-rappel').classList.add('open');
+      // On ne referme PAS automatiquement : le manager choisit. On nettoie quand même le flux PDF.
+      resetMgrFlow();
+      return;
+    }
     setTimeout(()=>{ if(ok) ok.style.display='none'; resetMgrFlow(); showMgrSection('home'); }, 2600);
   } catch(err){
     console.error('Erreur enregistrement journée:', err);
