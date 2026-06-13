@@ -3865,7 +3865,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-11T14:39', label: 'v11/06-14h39', affichage: 'jeudi 11 juin 2026 à 14:39' };
+const APP_VERSION = { datetime: '2026-06-13T14:10', label: 'v13/06-14h10', affichage: 'samedi 13 juin 2026 à 14:10' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -8689,32 +8689,53 @@ function anRenderAnnulations(){
   } catch(e){}
 
   rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const totMontant = rows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
-  const nb = rows.length;
+
+  // ── Séparation des sources ──
+  // • lignes PDF caisse (source de vérité, avec montant réel + flag photographiable)
+  // • déclarations photos managers (saisies via « Déclarer une annulation », montant souvent 0)
+  const isPdf = r => r.source==='pdf_caisse';
+  const isUber = r => isPdf(r) && r.photographiable===false;        // annulé par Uber/appli → pas de photo possible
+  const pdfRows   = rows.filter(isPdf);
+  const declRows  = rows.filter(r=>!isPdf(r));                       // déclarations photos managers + saisies locales
+  const uberRows  = pdfRows.filter(r=>r.photographiable===false);
+  const photoRows = pdfRows.filter(r=>r.photographiable!==false);   // PDF photographiables
+
+  // KPIs basés sur le PDF caisse (vérité). Montant total = somme PDF.
+  const totMontant = pdfRows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
+  const nb = pdfRows.length;
+  const nbUber = uberRows.length;
+  const montantUber = uberRows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
 
   // ── RAPPROCHEMENT PHOTOS (à partir du 17/05/2026) ──
-  // Pour chaque journée ≥ 17/05/2026, comparer le nb d'annulations enregistrées (= photographiées)
-  // au nb attendu de la Synthèse CA (journees.annulations_nb). On signale s'il manque des photos.
+  // L'attendu PHOTOGRAPHIABLE provient du PDF caisse (lignes non-Uber).
+  // Les annulations « Annulé par Uber » sont exclues : aucune photo n'est possible.
   const DATE_DEBUT_PHOTOS = '2026-05-17';
-  const journees = (AN_DATA.journeesTout || AN_DATA.journeesAll || []);
-  // nb d'annulations enregistrées par journée (restaurant|date)
-  const parJour = {};
-  rows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!parJour[k])parJour[k]={enregistrees:0,montant:0}; parJour[k].enregistrees++; parJour[k].montant+=Math.abs(r.montant||0); });
-  const suivi = journees
-    .filter(j=> j.date >= DATE_DEBUT_PHOTOS && (j.annulations_nb!=null))
-    .map(j=>{
-      const k=(j.restaurant||'')+'|'+j.date;
-      const attendu = j.annulations_nb||0;
-      const montantPDF = Math.abs(j.annulations_montant||0);
-      const photographiees = (parJour[k]?.enregistrees)||0;
-      const montantDecl = (parJour[k]?.montant)||0;
+  // attendu photographiable par journée (restaurant|date), depuis le PDF caisse
+  const attenduJour = {};
+  photoRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!attenduJour[k])attenduJour[k]={nb:0,montant:0}; attenduJour[k].nb++; attenduJour[k].montant+=Math.abs(r.montant||0); });
+  // déclarations photos managers par journée
+  const declJour = {};
+  declRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!declJour[k])declJour[k]={nb:0,montant:0}; declJour[k].nb++; declJour[k].montant+=Math.abs(r.montant||0); });
+  // Uber par journée (info affichée séparément)
+  const uberJour = {};
+  uberRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!uberJour[k])uberJour[k]={nb:0,montant:0}; uberJour[k].nb++; uberJour[k].montant+=Math.abs(r.montant||0); });
+
+  const clefsJour = Array.from(new Set([...Object.keys(attenduJour), ...Object.keys(declJour)]))
+    .filter(k=> k.split('|')[1] >= DATE_DEBUT_PHOTOS);
+  const suivi = clefsJour.map(k=>{
+      const [restaurant,date]=k.split('|');
+      const attendu = attenduJour[k]?.nb||0;                 // nb photographiable attendu (PDF)
+      const montantPDF = attenduJour[k]?.montant||0;
+      const photographiees = declJour[k]?.nb||0;             // nb déclaré par managers
+      const montantDecl = declJour[k]?.montant||0;
+      const nbUberJ = uberJour[k]?.nb||0;
       const manque = Math.max(0, attendu - photographiees);
       let statut, col, ico;
-      if(attendu===0){ statut='Aucune annulation'; col='var(--green)'; ico='✓'; }
+      if(attendu===0){ statut='Aucune annulation photographiable'; col='var(--green)'; ico='✓'; }
       else if(photographiees>=attendu){ statut='Complet ('+photographiees+'/'+attendu+')'; col='var(--green)'; ico='✓'; }
       else if(photographiees===0){ statut='Aucune photo ('+photographiees+'/'+attendu+')'; col='var(--red)'; ico='⛔'; }
       else { statut='Incomplet ('+photographiees+'/'+attendu+')'; col='var(--yellow)'; ico='⚠️'; }
-      return {date:j.date, restaurant:j.restaurant, attendu, photographiees, manque, statut, col, ico, montantPDF, montantDecl};
+      return {date, restaurant, attendu, photographiees, manque, statut, col, ico, montantPDF, montantDecl, nbUberJ};
     })
     .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
@@ -8725,10 +8746,10 @@ function anRenderAnnulations(){
 
   const kpis = `
   <div class="kpi-grid">
-    <div class="kpi bad"><div class="kpi-label">Total annulations (historique)</div><div class="kpi-val">${nb}</div></div>
+    <div class="kpi bad"><div class="kpi-label">Total annulations (PDF caisse)</div><div class="kpi-val">${nb}</div></div>
     <div class="kpi bad"><div class="kpi-label">Montant total</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
     <div class="kpi ${totManque>0?'bad':'ok'}"><div class="kpi-label">Photos manquantes (depuis 17/05)</div><div class="kpi-val">${totManque}</div></div>
-    <div class="kpi ${joursIncomplets>0?'warn':'ok'}"><div class="kpi-label">Jours incomplets</div><div class="kpi-val">${joursIncomplets}</div></div>
+    <div class="kpi"><div class="kpi-label">Dont annulées par Uber (sans photo)</div><div class="kpi-val">${nbUber} · ${fmt(montantUber)} €</div></div>
   </div>`;
 
   // Tableau de rapprochement photos
@@ -8738,6 +8759,7 @@ function anRenderAnnulations(){
       <td class="num">${s.attendu}</td>
       <td class="num">${s.photographiees}</td>
       <td class="num" style="font-weight:600;color:${s.manque>0?'var(--red)':'var(--green)'}">${s.manque>0?s.manque:'0'}</td>
+      <td class="num" style="color:var(--muted2)">${s.nbUberJ||'—'}</td>
       <td class="num" style="color:var(--muted2)">${fmt(s.montantPDF)} €</td>
       <td class="num" style="color:var(--muted2)">${fmt(s.montantDecl)} €</td>
       <td><span style="color:${s.col};font-weight:600">${s.ico} ${s.statut}</span></td>
@@ -8745,20 +8767,22 @@ function anRenderAnnulations(){
   const suiviTbl = suivi.length ? `
   <div class="table-card" style="margin-top:16px">
     <div class="table-header"><span class="table-title">📸 Rapprochement — annulations (depuis le 17/05/2026)</span><span style="font-size:10px;color:var(--muted)">${totPhoto}/${totAttendu} déclarées</span></div>
-    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Compare la Synthèse CA (attendu + montant PDF) avec les annulations déclarées par les managers (déclarées + montant déclaré). ⚠️ ou ⛔ = des déclarations manquent.</div>
-    <div class="table-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Attendu (CA)</th><th class="num">Déclarées</th><th class="num">Manque</th><th class="num">Montant PDF</th><th class="num">Montant déclaré</th><th>Statut</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
-  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Le rapprochement démarre le 17/05/2026. Aucune journée concernée pour l'instant (ou Synthèse CA non importée).</div></div>`;
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">L'attendu = annulations <strong>photographiables</strong> du PDF caisse (les annulations « Annulé par Uber » sont exclues car aucune photo n'est possible, affichées en colonne Uber pour info). Comparé aux annulations déclarées par les managers. ⚠️ ou ⛔ = des déclarations manquent.</div>
+    <div class="table-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Attendu (photo)</th><th class="num">Déclarées</th><th class="num">Manque</th><th class="num">Uber</th><th class="num">Montant PDF</th><th class="num">Montant déclaré</th><th>Statut</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
+  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Le rapprochement démarre le 17/05/2026. Aucune journée concernée pour l'instant (ou PDF des annulations non importé).</div></div>`;
 
-  // Par manager / équipier (sur tout l'historique)
-  const byMgr={}; rows.forEach(r=>{const m=r.manager||'(non renseigné)'; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0);});
+  // Par responsable (manager) — uniquement lignes PDF photographiables (Uber exclu : pas de responsable)
+  // + déclarations photos managers, pour couvrir l'historique antérieur aux PDF.
+  const baseClt = [...photoRows, ...declRows];
+  const byMgr={}; baseClt.forEach(r=>{const m=r.manager||'(non renseigné)'; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0);});
   const cltMgr=Object.values(byMgr).sort((a,b)=>b.montant-a.montant);
-  const byEq={}; rows.forEach(r=>{ if(!r.equipier)return; const e=r.equipier; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=Math.abs(r.montant||0);});
+  const byEq={}; baseClt.forEach(r=>{ if(!r.equipier)return; const e=r.equipier; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=Math.abs(r.montant||0);});
   const cltEq=Object.values(byEq).sort((a,b)=>b.montant-a.montant);
 
-  const cltMgrTbl = cltMgr.length ? anClassement('🏆 Classement managers — annulations (pire → meilleur)', cltMgr.length+' managers',
+  const cltMgrTbl = cltMgr.length ? anClassement('🏆 Classement — annulé par (pire → meilleur)', cltMgr.length+' personnes',
     [
       {label:'#', render:(l,i)=>anBadge(i)},
-      {label:'Manager', key:'nom'},
+      {label:'Annulé par', key:'nom'},
       {label:'Nb', num:true, key:'nb'},
       {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,30,80,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
     ], cltMgr) : '';
@@ -8771,19 +8795,24 @@ function anRenderAnnulations(){
       {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,30,80,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
     ], cltEq) : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun équipier renseigné sur les annulations. Saisissez le nom de l'équipier lors de la déclaration pour suivre les responsabilités individuelles.</div></div>`;
 
-  const detail = rows.slice(0,150).map(r=>`
+  // Détail : PDF caisse + déclarations, avec canal + tag Uber
+  const detailSrc = [...pdfRows, ...declRows].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const detail = detailSrc.slice(0,200).map(r=>{
+    const uber = isUber(r);
+    const par = uber ? '<span style="color:var(--blue)">🤖 Uber</span>' : (r.manager||'—');
+    return `
     <tr><td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
       <td style="color:var(--muted2)">${r.heure||'—'}</td>
       <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
-      <td>${r.manager||'—'}</td>
-      <td style="color:var(--muted2)">${r.equipier||'—'}</td>
-      <td>${r.photo?'<span style="color:var(--green)">📸 oui</span>':'<span style="color:var(--muted)">—</span>'}</td>
-      <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`).join('');
-  const detailTbl = rows.length ? `
+      <td>${par}</td>
+      <td style="color:var(--muted2)">${r.canal||r.equipier||'—'}</td>
+      <td>${uber?'<span style="color:var(--muted)">— (impossible)</span>':(r.photo||!isPdf(r)?'<span style="color:var(--green)">📸 oui</span>':'<span style="color:var(--yellow)">à photographier</span>')}</td>
+      <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`;}).join('');
+  const detailTbl = detailSrc.length ? `
   <div class="table-card" style="margin-top:16px">
-    <div class="table-header"><span class="table-title">Détail des annulations (historique complet)</span><span style="font-size:10px;color:var(--muted)">${nb} annulations</span></div>
-    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Manager</th><th>Équipier</th><th>Photo</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
-  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune annulation détaillée enregistrée. Les annulations détaillées (heure, manager, équipier, photo) seront reliées demain depuis les PDF/CSV.</div></div>`;
+    <div class="table-header"><span class="table-title">Détail des annulations (PDF caisse + déclarations)</span><span style="font-size:10px;color:var(--muted)">${detailSrc.length} lignes</span></div>
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Annulé par</th><th>Canal / caisse</th><th>Photo</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
+  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune annulation détaillée enregistrée.</div></div>`;
 
   return kpis + suiviTbl + `<div style="height:16px"></div>` + cltMgrTbl + (cltMgr.length?`<div style="height:16px"></div>`:'') + cltEqTbl + detailTbl;
 }
