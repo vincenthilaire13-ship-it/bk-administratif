@@ -3897,7 +3897,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-13T15:06', label: 'v13/06-15h06', affichage: 'samedi 13 juin 2026 à 15:06' };
+const APP_VERSION = { datetime: '2026-06-13T16:41', label: 'v13/06-16h41', affichage: 'samedi 13 juin 2026 à 16:41' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -4215,10 +4215,39 @@ function loadConfig() {
   if(saved) Object.assign(SEUILS, JSON.parse(saved));
 }
 
+// ── Double écriture vers BK RH (passerelle transitoire) ───────────────────────
+// Pendant la transition, l'import ¼h fait dans BK administratif est aussi recopié
+// dans la base BK RH (ventes_horaire) pour que BK RH se remplisse automatiquement.
+// Best effort : n'empêche JAMAIS l'enregistrement administratif. Un avertissement
+// non bloquant est ajouté à la liste d'erreurs si l'écriture RH échoue.
+const SB_RH_URL = 'https://qggkbtzhkomhldhacohd.supabase.co';
+const SB_RH_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZ2tidHpoa29taGxkaGFjb2hkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNzc0MzIsImV4cCI6MjA5NDc1MzQzMn0.l4W4rH4CFREugjImoRqN8hocmEXFcVqnN1-H78x3S-c';
+let SB_RH = null;
+function initSupabaseRH(){
+  try {
+    if(!SB_RH && window.supabase && window.supabase.createClient){
+      SB_RH = window.supabase.createClient(SB_RH_URL, SB_RH_ANON);
+      window.SB_RH = SB_RH;
+    }
+  } catch(e){ console.warn('[RH] init client RH impossible', e); SB_RH = null; }
+  return SB_RH;
+}
+// Recopie un upsert ventes_horaire vers BK RH. Best effort, non bloquant.
+// Renvoie {ok:true} ou {ok:false, msg:'...'} pour un avertissement éventuel.
+async function rhUpsertVentes(payload){
+  try {
+    if(!initSupabaseRH()) return {ok:false, msg:'client RH indisponible'};
+    const { error } = await SB_RH.from('ventes_horaire').upsert(payload,{onConflict:'restaurant,date'});
+    if(error){ console.warn('[RH] upsert ventes_horaire', error); return {ok:false, msg:(error.message||String(error))}; }
+    return {ok:true};
+  } catch(e){ console.warn('[RH] upsert ventes_horaire exception', e); return {ok:false, msg:(e.message||String(e))}; }
+}
+
 function initSupabase(url, key) {
   try {
     SB = window.supabase.createClient(url, key);
     window.SB = SB; // exposer pour la section planning (bloc <script> séparé)
+    initSupabaseRH(); // préparer le client RH pour la double écriture ¼h
     document.getElementById('db-status').textContent = 'Connecté';
     // Charger les codes partagés AVANT le login (pour que les bons PIN soient dispo)
     chargerCodesSupabase().then(ok=>{
@@ -7315,13 +7344,19 @@ async function enregistrerJourneeMgr() {
 
     // 4) VENTES HORAIRE ¼h
     if(MGR_JOUR.ventes && SB){
-      const { error:eV } = await SB.from('ventes_horaire').upsert({
+      const payloadV = {
         restaurant:resto, date,
         tickets_total: MGR_JOUR.ventes.tickets||null,
         ht_total: MGR_JOUR.ventes.ht||null,
         tranches: MGR_JOUR.ventes.tranches||[]
-      },{onConflict:'restaurant,date'});
+      };
+      const { error:eV } = await SB.from('ventes_horaire').upsert(payloadV,{onConflict:'restaurant,date'});
       if(eV){ erreurs.push('Ventes : '+eV.message); console.error('ventes_horaire', eV); }
+      // Double écriture BK RH (passerelle transitoire) — non bloquante
+      try {
+        const rRH = await rhUpsertVentes(payloadV);
+        if(!rRH.ok){ erreurs.push('⚠️ Copie BK RH (ventes) non effectuée : '+rRH.msg+' — l\'enregistrement BK administratif a bien réussi.'); }
+      } catch(_e){ erreurs.push('⚠️ Copie BK RH (ventes) non effectuée — l\'enregistrement BK administratif a bien réussi.'); }
 
       // 4bis) ALIMENTER LES HORAIRES / PLANNING + CA PRÉVISIONNEL
       // On utilise EN PRIORITÉ le CA par quart d'heure déjà extrait à la lecture
@@ -7367,6 +7402,11 @@ async function enregistrerJourneeMgr() {
           try {
             const { error: eUp } = await SB.from('ventes_horaire').upsert({restaurant:rResto, date:rDate, tranches_ca: ca15},{onConflict:'restaurant,date'});
             if(eUp){ console.error('[upsert tranches_ca]', eUp); erreurs.push('Tranches ¼h (horaires) : '+(eUp.message||eUp)); }
+            // Double écriture BK RH (courbe ¼h) — non bloquante
+            try {
+              const rRH = await rhUpsertVentes({restaurant:rResto, date:rDate, tranches_ca: ca15});
+              if(!rRH.ok){ erreurs.push('⚠️ Copie BK RH (courbe ¼h) non effectuée : '+rRH.msg+' — l\'enregistrement BK administratif a bien réussi.'); }
+            } catch(_e){ erreurs.push('⚠️ Copie BK RH (courbe ¼h) non effectuée — l\'enregistrement BK administratif a bien réussi.'); }
           } catch(eU){ console.error('[upsert tranches_ca exception]', eU); erreurs.push('Tranches ¼h (horaires) : '+(eU.message||eU)); }
           // 3) Rafraîchir les affichages dépendant de HR_DATA (si la section existe)
           try { hrFillDaySelect && hrFillDaySelect(); hrFillWeekSelect && hrFillWeekSelect(); } catch(e){}
