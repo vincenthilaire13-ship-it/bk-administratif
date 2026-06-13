@@ -532,6 +532,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('acces')"><span>🔑</span><span>Gestion accès</span></div>
+    <div class="nav-item role-admin-only" style="display:none" onclick="nav('voir-comme')"><span>👁️</span><span>Voir comme</span></div>
   </nav>
   <div class="sidebar-bottom">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
@@ -1601,17 +1602,22 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
             </div>
           </div>
         </div>
+      </div>
+    </section>
 
-        <div class="table-card role-admin-only" style="margin-top:18px">
+    <!-- VOIR COMME (admin uniquement) -->
+    <section class="section" id="sec-voir-comme">
+      <div style="max-width:560px">
+        <div class="table-card role-admin-only">
           <div class="table-header"><span class="table-title">👁️ Voir comme…</span><span style="font-size:10px;color:var(--muted)">Aperçu — admin uniquement</span></div>
           <div style="padding:22px">
-            <div style="font-size:12px;color:var(--muted2);margin-bottom:16px;line-height:1.6">
-              Bascule l'affichage pour voir exactement ce que voit chaque rôle (menus, sections, accès). Aucun mot de passe requis, ta session reste intacte. Un bandeau te permet de revenir à ta vue à tout moment.
+            <div style="font-size:12px;color:var(--muted2);margin-bottom:18px;line-height:1.6">
+              Bascule l'affichage pour voir exactement ce que voit chaque rôle (menus, sections, accès), comme si tu passais d'administrateur à manager, directeur ou superviseur. Aucun mot de passe requis, ta session reste intacte. Un bandeau violet en haut te permet de revenir à ta vue à tout moment.
             </div>
-            <div style="display:flex;flex-direction:column;gap:10px">
-              <button class="btn" style="padding:11px;justify-content:flex-start;display:flex;align-items:center;gap:8px" onclick="voirComme('directeur')"><span class="role-badge role-directeur">Directeur</span> Voir comme un directeur</button>
-              <button class="btn" style="padding:11px;justify-content:flex-start;display:flex;align-items:center;gap:8px" onclick="voirComme('manager')"><span class="role-badge" style="background:rgba(245,166,35,.2);color:var(--accent)">Manager</span> Voir comme un manager</button>
-              <button class="btn role-admin-only" style="padding:11px;justify-content:flex-start;display:flex;align-items:center;gap:8px" onclick="voirComme('superviseur')"><span class="role-badge role-superviseur">Superviseur</span> Voir comme un superviseur</button>
+            <div style="display:flex;flex-direction:column;gap:12px">
+              <button class="btn" style="padding:13px;justify-content:flex-start;display:flex;align-items:center;gap:10px;font-size:13px" onclick="voirComme('directeur')"><span class="role-badge role-directeur">Directeur</span> Voir comme un directeur</button>
+              <button class="btn" style="padding:13px;justify-content:flex-start;display:flex;align-items:center;gap:10px;font-size:13px" onclick="voirComme('manager')"><span class="role-badge" style="background:rgba(245,166,35,.2);color:var(--accent)">Manager</span> Voir comme un manager</button>
+              <button class="btn" style="padding:13px;justify-content:flex-start;display:flex;align-items:center;gap:10px;font-size:13px" onclick="voirComme('superviseur')"><span class="role-badge role-superviseur">Superviseur</span> Voir comme un superviseur</button>
             </div>
           </div>
         </div>
@@ -3388,7 +3394,7 @@ const SEED_BK500_2026 = [
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès',managers:'Suivi managers',analyses:'Analyses',equipiers:'Équipiers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)',imports:'Imports — contrôle des PDF',retours:'Correctifs & demandes'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès','voir-comme':'Voir comme',managers:'Suivi managers',analyses:'Analyses',equipiers:'Équipiers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)',imports:'Imports — contrôle des PDF',retours:'Correctifs & demandes'};
 // ══════════════════════════════════════════════════════════════
 //  SECTION IMPORTS — contrôle visuel des 4 PDF par journée
 // ══════════════════════════════════════════════════════════════
@@ -3885,7 +3891,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-13T14:33', label: 'v13/06-14h33', affichage: 'samedi 13 juin 2026 à 14:33' };
+const APP_VERSION = { datetime: '2026-06-13T14:39', label: 'v13/06-14h39', affichage: 'samedi 13 juin 2026 à 14:39' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6109,7 +6115,7 @@ function quitterApercu(){
   if(banner) banner.style.display = 'none';
   document.body.style.paddingTop = '';
   applyRoleUI(CURRENT_ROLE);                 // ré-appliquer la vraie vue
-  setTimeout(()=>nav('acces'), 80);          // revenir sur la page Gestion accès
+  setTimeout(()=>nav('voir-comme'), 80);     // revenir sur la page Voir comme
 }
 
 function showMgrSection(section) {
@@ -6493,12 +6499,47 @@ let MGR_JOUR = null;
 
 function detecterTypePDF(txt){
   if(/Rapidit[ée] de service au Drive|SOS\s*DRIVE/i.test(txt)) return 'sos';
+  // Rapport des annulations (5e PDF) : titre spécifique + colonnes "Annulé par / Caisse comptée par"
+  if(/Rapport des annulations/i.test(txt)) return 'annulations';
   // Synthèse AVANT repas (la synthèse contient le mot "Repas Employés" dans un tableau)
   if(/Synth[èe]se CA/i.test(txt) || (/TOTAL DRIVE/i.test(txt) && /TOTAL KIOSK/i.test(txt))) return 'synthese';
   if(/VENTES HORAIRE|PAR QUART D'HEURE|DEMI HEU/i.test(txt)) return 'ventes';
   // Repas : titre spécifique "Repas Employé Operationnel" (pas juste "Repas Employés")
   if(/Repas\s*Employ[ée]\s*Operationnel|BENEFICIAIRE.*MATRICULE|MATRICULE\s*NBR REPAS/i.test(txt)) return 'repas';
   return null;
+}
+
+// ── Parser du rapport d'annulations (5e PDF) ──
+// Format ligne (texte séquentiel pdf.js) :
+//   <caissier> <NOM PRENOM> <HH:MM caissier> <CAISSE> <HH:MM caisse>
+//   192.168.x.x - <ticket> <JJ/MM/AAAA> <montant>€
+// Le "Caissier / Annulé par" = code court (ex. webuser, BEGYYOH). Le NOM PRENOM suit.
+function parserAnnulations(txt){
+  const lignes = [];
+  let dateGlobale = null;
+  const mD = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2})\s+au/i);
+  if(mD){ dateGlobale = '20'+mD[3]+'-'+mD[2]+'-'+mD[1]; }
+  // On capture chaque bloc ticket : "192.168.x.x - NNNN  JJ/MM/AAAA  MM,MM€"
+  // et on relie au texte qui précède (caissier + nom + heures + caisse).
+  // Approche robuste : on découpe sur les motifs IP-ticket.
+  const blocRe = /(\S+)\s+([A-Za-zÀ-ÿ' \-]+?)\s+(\d{1,2}:\d{2})\s+(\S+)\s+(\d{1,2}:\d{2})\s+192\.168\.\d+\.\d+\s*-\s*(\d+)\s+(\d{2}\/\d{2}\/\d{4})\s+([\d  ]+,\d{2})\s*€/g;
+  let m;
+  while((m = blocRe.exec(txt))){
+    const caissier = (m[1]||'').trim();          // code court : webuser / BEGYYOH...
+    const nomPrenom = (m[2]||'').trim();          // NOM PRENOM lisible
+    const heure = m[3];
+    const canal = (m[4]||'').trim();              // Caisse comptée par
+    const ticket = m[6];
+    const dateLigne = m[7] ? m[7].split('/').reverse().join('-') : dateGlobale;
+    const montant = parseFloat((m[8]||'0').replace(/\s/g,'').replace(',','.')) || 0;
+    const webuser = /^webuser$/i.test(caissier);
+    // Nom à afficher : si webuser → aucun ; sinon le NOM PRENOM lisible du rapport
+    lignes.push({
+      date: dateLigne, heure, montant, canal, ticket,
+      caissier, nom: webuser ? null : nomPrenom, webuser
+    });
+  }
+  return { date: dateGlobale, lignes };
 }
 
 async function lireTousPDFs(files) {
@@ -6510,7 +6551,7 @@ async function lireTousPDFs(files) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
   // Réinitialiser l'objet du jour
-  MGR_JOUR = { synthese:null, repas:null, ventes:null, sos:null, dates:{}, fichiers:{} };
+  MGR_JOUR = { synthese:null, repas:null, ventes:null, sos:null, annulations:null, dates:{}, fichiers:{} };
   const summaries = [];
 
   for(let i=0; i<files.length; i++) {
@@ -6606,6 +6647,16 @@ async function lireTousPDFs(files) {
         MGR_JOUR.dates.sos = MGR_JOUR.sos?.date || null;
         MGR_JOUR.fichiers.sos = file.name;
         summaries.push({key:'sos', nom:file.name, label:'SOS Drive', ok:true, date:MGR_JOUR.sos?.date, info:MGR_JOUR.sos.totalJour?('Temps moyen '+secToHMS(MGR_JOUR.sos.totalJour.total_sec)):''});
+      } else if(typeFinal === 'annulations'){
+        MGR_JOUR.annulations = parserAnnulations(txt);
+        MGR_JOUR.dates.annulations = MGR_JOUR.annulations?.date || null;
+        MGR_JOUR.fichiers.annulations = file.name;
+        const n = MGR_JOUR.annulations.lignes.length;
+        const aPhoto = MGR_JOUR.annulations.lignes.filter(a=>!a.webuser).length;
+        const info = n===0 ? 'aucune annulation'
+          : (aPhoto===0 ? n+' annulation(s) · toutes webuser (rien à photographier)'
+                        : n+' annulation(s) · '+aPhoto+' à photographier');
+        summaries.push({key:'annulations', nom:file.name, label:'Rapport annulations', ok:true, date:MGR_JOUR.annulations?.date, info});
       } else {
         summaries.push({key:null, nom:file.name, label:'Document non reconnu', ok:false});
       }
@@ -6641,6 +6692,18 @@ async function lireTousPDFs(files) {
   summaries.filter(s=>s.ok===false).forEach(s=>{
     recap += `<div style="font-size:10px;color:var(--red);padding:2px 10px">⚠ ${s.label}</div>`;
   });
+  // 5e PDF (rapport annulations) — OPTIONNEL : affiché mais ne bloque jamais la validation
+  {
+    const sA = summaries.find(x=>x.key==='annulations');
+    const presentA = !!MGR_JOUR.annulations;
+    recap += `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:6px 10px;border-radius:8px;margin-top:4px;background:var(--bg3);border:1px dashed ${presentA?'rgba(62,207,142,.35)':'rgba(255,255,255,.12)'}">
+      <span style="font-size:14px">🚫</span>
+      <span style="flex:1">Rapport annulations <span style="font-size:9px;color:var(--muted)">(optionnel)</span></span>
+      ${presentA
+        ? `<span style="color:var(--muted2);font-size:10px">${sA?.info||''}</span><span style="color:var(--green);font-weight:600">✓</span>`
+        : `<span style="color:var(--muted);font-size:10px">non déposé</span>`}
+    </div>`;
+  }
   recap += '</div>';
 
   // Bloc d'alerte cohérence
@@ -7322,6 +7385,29 @@ async function enregistrerJourneeMgr() {
           erreurs.push('CA ¼h non extrait du PDF ventes.'+diagTxt+' La journée est enregistrée mais le CA ¼h restera vide.');
         }
       } catch(e){ console.warn('alimentation horaires depuis ventes', e); }
+    }
+
+    // 5) ANNULATIONS (5e PDF — rapport des annulations de la journée)
+    // Optionnel : si le 5e PDF a été déposé, on enregistre chaque annulation.
+    // Règle : « Annulé par webuser » = considéré fait (sans nom) ; sinon = à photographier (nom du caissier).
+    if(MGR_JOUR.annulations?.lignes?.length && SB){
+      try {
+        // On purge les annulations PDF déjà enregistrées pour ce resto/date (réimport propre)
+        await SB.from('annulations').delete().eq('restaurant',resto).eq('date',date).eq('source','pdf_caisse');
+        const rowsAnn = MGR_JOUR.annulations.lignes.map(a=>({
+          restaurant:resto, date,
+          heure:a.heure||null,
+          montant:a.montant||0,
+          manager: a.webuser ? null : (a.nom||null),
+          commentaire: a.webuser ? 'Annulé par webuser (considéré fait)' : ('Annulé par '+(a.nom||'?')),
+          canal: a.canal||null,
+          photographiable: !a.webuser,
+          source:'pdf_caisse',
+          ticket_no: a.ticket||null
+        }));
+        const { error:eA } = await SB.from('annulations').insert(rowsAnn);
+        if(eA){ erreurs.push('Annulations : '+eA.message); console.error('annulations insert', eA); }
+      } catch(e){ console.warn('enregistrement annulations', e); }
     }
 
     // Recharger les données depuis Supabase pour que tout s'affiche immédiatement
