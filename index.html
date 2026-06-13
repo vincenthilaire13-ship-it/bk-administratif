@@ -3865,7 +3865,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-13T14:10', label: 'v13/06-14h10', affichage: 'samedi 13 juin 2026 à 14:10' };
+const APP_VERSION = { datetime: '2026-06-13T14:21', label: 'v13/06-14h21', affichage: 'samedi 13 juin 2026 à 14:21' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -8731,7 +8731,7 @@ function anRenderAnnulations(){
       const nbUberJ = uberJour[k]?.nb||0;
       const manque = Math.max(0, attendu - photographiees);
       let statut, col, ico;
-      if(attendu===0){ statut='Aucune annulation photographiable'; col='var(--green)'; ico='✓'; }
+      if(attendu===0){ statut='Aucune annulation à photographier'; col='var(--green)'; ico='✓'; }
       else if(photographiees>=attendu){ statut='Complet ('+photographiees+'/'+attendu+')'; col='var(--green)'; ico='✓'; }
       else if(photographiees===0){ statut='Aucune photo ('+photographiees+'/'+attendu+')'; col='var(--red)'; ico='⛔'; }
       else { statut='Incomplet ('+photographiees+'/'+attendu+')'; col='var(--yellow)'; ico='⚠️'; }
@@ -8749,7 +8749,7 @@ function anRenderAnnulations(){
     <div class="kpi bad"><div class="kpi-label">Total annulations (PDF caisse)</div><div class="kpi-val">${nb}</div></div>
     <div class="kpi bad"><div class="kpi-label">Montant total</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
     <div class="kpi ${totManque>0?'bad':'ok'}"><div class="kpi-label">Photos manquantes (depuis 17/05)</div><div class="kpi-val">${totManque}</div></div>
-    <div class="kpi"><div class="kpi-label">Dont annulées par Uber (sans photo)</div><div class="kpi-val">${nbUber} · ${fmt(montantUber)} €</div></div>
+    <div class="kpi"><div class="kpi-label">Dont annulé par webuser (considéré fait)</div><div class="kpi-val">${nbUber} · ${fmt(montantUber)} €</div></div>
   </div>`;
 
   // Tableau de rapprochement photos
@@ -8767,8 +8767,8 @@ function anRenderAnnulations(){
   const suiviTbl = suivi.length ? `
   <div class="table-card" style="margin-top:16px">
     <div class="table-header"><span class="table-title">📸 Rapprochement — annulations (depuis le 17/05/2026)</span><span style="font-size:10px;color:var(--muted)">${totPhoto}/${totAttendu} déclarées</span></div>
-    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">L'attendu = annulations <strong>photographiables</strong> du PDF caisse (les annulations « Annulé par Uber » sont exclues car aucune photo n'est possible, affichées en colonne Uber pour info). Comparé aux annulations déclarées par les managers. ⚠️ ou ⛔ = des déclarations manquent.</div>
-    <div class="table-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Attendu (photo)</th><th class="num">Déclarées</th><th class="num">Manque</th><th class="num">Uber</th><th class="num">Montant PDF</th><th class="num">Montant déclaré</th><th>Statut</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">L'attendu = annulations <strong>à photographier</strong> (annulé par un manager). Les annulations <strong>« annulé par webuser »</strong> sont considérées comme faites (aucune photo requise) et affichées dans la colonne « webuser » pour info. Comparé aux annulations déclarées par les managers. ⚠️ ou ⛔ = des photos manquent.</div>
+    <div class="table-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">À photographier</th><th class="num">Déclarées</th><th class="num">Manque</th><th class="num">webuser</th><th class="num">Montant PDF</th><th class="num">Montant déclaré</th><th>Statut</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
   </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Le rapprochement démarre le 17/05/2026. Aucune journée concernée pour l'instant (ou PDF des annulations non importé).</div></div>`;
 
   // Par responsable (manager) — uniquement lignes PDF photographiables (Uber exclu : pas de responsable)
@@ -8799,14 +8799,14 @@ function anRenderAnnulations(){
   const detailSrc = [...pdfRows, ...declRows].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const detail = detailSrc.slice(0,200).map(r=>{
     const uber = isUber(r);
-    const par = uber ? '<span style="color:var(--blue)">🤖 Uber</span>' : (r.manager||'—');
+    const par = uber ? '<span style="color:var(--blue)">🌐 webuser</span>' : (r.manager||'—');
     return `
     <tr><td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
       <td style="color:var(--muted2)">${r.heure||'—'}</td>
       <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
       <td>${par}</td>
       <td style="color:var(--muted2)">${r.canal||r.equipier||'—'}</td>
-      <td>${uber?'<span style="color:var(--muted)">— (impossible)</span>':(r.photo||!isPdf(r)?'<span style="color:var(--green)">📸 oui</span>':'<span style="color:var(--yellow)">à photographier</span>')}</td>
+      <td>${uber?'<span style="color:var(--muted)">— (considéré fait)</span>':(r.photo||!isPdf(r)?'<span style="color:var(--green)">📸 oui</span>':'<span style="color:var(--yellow)">à photographier</span>')}</td>
       <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`;}).join('');
   const detailTbl = detailSrc.length ? `
   <div class="table-card" style="margin-top:16px">
