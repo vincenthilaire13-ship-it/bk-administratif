@@ -925,10 +925,10 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
                 </div>
                 <div style="display:flex;align-items:flex-start;gap:10px">
                   <span style="font-size:16px">🚫</span>
-                  <div><div style="font-weight:600">Rapport des annulations <span style="font-size:9px;color:var(--muted);font-weight:400">(optionnel)</span></div><div style="font-size:10px;color:var(--muted)">annulations de la journée — webuser = considéré fait, sinon le nom est suivi pour les tickets</div></div>
+                  <div><div style="font-weight:600">Rapport des annulations</div><div style="font-size:10px;color:var(--muted)">annulations de la journée — webuser = considéré fait, sinon le nom est suivi pour les tickets</div></div>
                 </div>
               </div>
-              <div style="font-size:10px;color:var(--muted);margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">⚠️ Les 4 premiers documents doivent être du <strong style="color:var(--muted2)">même jour</strong>. L'enregistrement est bloqué si l'un d'eux manque ou si les dates ne correspondent pas. Le rapport des annulations est optionnel et ne bloque pas.</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:11px;padding-top:10px;border-top:1px solid var(--border)">⚠️ Les 5 documents doivent être du <strong style="color:var(--muted2)">même jour</strong>. L'enregistrement est bloqué si l'un d'eux manque ou si les dates ne correspondent pas.</div>
             </div>
 
             <div class="drop-zone" id="drop-zone"
@@ -3897,7 +3897,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-13T14:55', label: 'v13/06-14h55', affichage: 'samedi 13 juin 2026 à 14:55' };
+const APP_VERSION = { datetime: '2026-06-13T15:06', label: 'v13/06-15h06', affichage: 'samedi 13 juin 2026 à 15:06' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -6496,12 +6496,13 @@ function handleMgrFiles(files) {
 // ══════════════════════════════════════════════════════════════
 //  DÉPÔT DES 4 PDF DE LA JOURNÉE — détection + contrôle cohérence
 // ══════════════════════════════════════════════════════════════
-// Les 4 documents attendus chaque jour
+// Les 5 documents attendus chaque jour
 const MGR_PDF_ATTENDUS = [
-  {key:'synthese', label:'Synthèse CA',          ico:'📄'},
-  {key:'repas',    label:'Repas employés',       ico:'🍔'},
-  {key:'ventes',   label:'Ventes horaire ¼h',    ico:'⏱️'},
-  {key:'sos',      label:'SOS Drive (temps service)', ico:'🚗'},
+  {key:'synthese',    label:'Synthèse CA',               ico:'📄'},
+  {key:'repas',       label:'Repas employés',            ico:'🍔'},
+  {key:'ventes',      label:'Ventes horaire ¼h',         ico:'⏱️'},
+  {key:'sos',         label:'SOS Drive (temps service)', ico:'🚗'},
+  {key:'annulations', label:'Rapport annulations',       ico:'🚫'},
 ];
 // Objet rassemblant les données du jour, rempli au fur et à mesure
 let MGR_JOUR = null;
@@ -6688,9 +6689,8 @@ async function lireTousPDFs(files) {
   // ── CONTRÔLE DE COHÉRENCE ──
   const presents = MGR_PDF_ATTENDUS.filter(p=>MGR_JOUR[p.key]);
   const manquants = MGR_PDF_ATTENDUS.filter(p=>!MGR_JOUR[p.key]);
-  // Le rapport d'annulations (5e PDF, optionnel) ne doit pas bloquer le contrôle de dates :
-  // on ne compare que les dates des 4 documents obligatoires.
-  const datesObligatoires = ['synthese','repas','ventes','sos'].map(k=>MGR_JOUR.dates[k]).filter(Boolean);
+  // Les 5 documents doivent être du même jour.
+  const datesObligatoires = ['synthese','repas','ventes','sos','annulations'].map(k=>MGR_JOUR.dates[k]).filter(Boolean);
   const datesDistinctes = [...new Set(datesObligatoires)];
 
   // Construire le tableau récapitulatif de contrôle
@@ -6710,18 +6710,6 @@ async function lireTousPDFs(files) {
   summaries.filter(s=>s.ok===false).forEach(s=>{
     recap += `<div style="font-size:10px;color:var(--red);padding:2px 10px">⚠ ${s.label}</div>`;
   });
-  // 5e PDF (rapport annulations) — OPTIONNEL : affiché mais ne bloque jamais la validation
-  {
-    const sA = summaries.find(x=>x.key==='annulations');
-    const presentA = !!MGR_JOUR.annulations;
-    recap += `<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:6px 10px;border-radius:8px;margin-top:4px;background:var(--bg3);border:1px dashed ${presentA?'rgba(62,207,142,.35)':'rgba(255,255,255,.12)'}">
-      <span style="font-size:14px">🚫</span>
-      <span style="flex:1">Rapport annulations <span style="font-size:9px;color:var(--muted)">(optionnel)</span></span>
-      ${presentA
-        ? `<span style="color:var(--muted2);font-size:10px">${sA?.info||''}</span><span style="color:var(--green);font-weight:600">✓</span>`
-        : `<span style="color:var(--muted);font-size:10px">non déposé</span>`}
-    </div>`;
-  }
   recap += '</div>';
 
   // Bloc d'alerte cohérence
@@ -6729,10 +6717,10 @@ async function lireTousPDFs(files) {
   let alerte = '';
   if(manquants.length > 0){
     bloque = true;
-    alerte = `🚫 <strong>${manquants.length} document(s) manquant(s)</strong> : ${manquants.map(m=>m.label).join(', ')}. Déposez les 4 PDF pour pouvoir valider.`;
+    alerte = `🚫 <strong>${manquants.length} document(s) manquant(s)</strong> : ${manquants.map(m=>m.label).join(', ')}. Déposez les 5 PDF pour pouvoir valider.`;
   } else if(datesDistinctes.length > 1){
     bloque = true;
-    alerte = `🚫 <strong>Les dates ne correspondent pas !</strong> Dates trouvées : ${datesDistinctes.map(d=>formatDate(d)).join(' · ')}. Vérifiez que les 4 PDF sont bien du même jour.`;
+    alerte = `🚫 <strong>Les dates ne correspondent pas !</strong> Dates trouvées : ${datesDistinctes.map(d=>formatDate(d)).join(' · ')}. Vérifiez que les 5 PDF sont bien du même jour.`;
   }
   // NB : le CA ¼h est rangé sous le restaurant de la journée déposée (resto courant),
   // exactement comme l'import « ventes ¼h » sous Horaire. On NE bloque PAS sur le
@@ -7178,12 +7166,12 @@ function resetMgrFlow() {
 
 async function enregistrerJourneeMgr() {
   if(!MGR_JOUR || !MGR_JOUR.date){
-    alert('Aucune donnée valide. Déposez les 4 PDF du même jour.');
+    alert('Aucune donnée valide. Déposez les 5 PDF du même jour.');
     return;
   }
-  // Re-contrôle de sécurité : 4 PDF obligatoires + même date (le 5e PDF annulations n'entre pas dans le contrôle)
+  // Re-contrôle de sécurité : 5 PDF obligatoires + même date
   const manquants = MGR_PDF_ATTENDUS.filter(p=>!MGR_JOUR[p.key]);
-  const dates = [...new Set(['synthese','repas','ventes','sos'].map(k=>MGR_JOUR.dates[k]).filter(Boolean))];
+  const dates = [...new Set(['synthese','repas','ventes','sos','annulations'].map(k=>MGR_JOUR.dates[k]).filter(Boolean))];
   if(manquants.length>0 || dates.length>1){
     alert('Validation impossible : il manque des documents ou les dates diffèrent.');
     return;
