@@ -563,6 +563,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <!-- DASHBOARD -->
     <section class="section active" id="sec-dashboard">
       <div id="dash-manquants" style="margin-bottom:16px"></div>
+      <div id="dash-annul-photos" style="margin-bottom:16px"></div>
       <div id="dash-kpis" class="kpi-grid"></div>
 
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
@@ -3865,7 +3866,7 @@ function applyRestoFilter() {
 
 // ══ VERSION DE L'APPLICATION ══
 // À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-13T14:21', label: 'v13/06-14h21', affichage: 'samedi 13 juin 2026 à 14:21' };
+const APP_VERSION = { datetime: '2026-06-13T14:30', label: 'v13/06-14h30', affichage: 'samedi 13 juin 2026 à 14:30' };
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
 // Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
@@ -4395,8 +4396,71 @@ async function checkFichiersManquants(){
   }
 }
 
+// ───────── DASHBOARD : annulations en attente des 3 tickets (photos) ─────────
+async function renderAnnulationsSansPhoto(){
+  const box = document.getElementById('dash-annul-photos');
+  if(!box) return;
+  try{
+    let resto = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' && ACTIVE_RESTO!=='Administration') ? ACTIVE_RESTO : (CURRENT_USER?.resto||null);
+    if(resto==='ALL'||resto==='Administration') resto=null;
+    // Lecture des annulations PDF photographiables (annulé par un nom) + déclarations managers
+    let qPdf = SB.from('annulations').select('*').eq('source','pdf_caisse').eq('photographiable',true);
+    let qDecl= SB.from('annulations').select('restaurant,date').neq('source','pdf_caisse');
+    if(resto){ qPdf=qPdf.eq('restaurant',resto); qDecl=qDecl.eq('restaurant',resto); }
+    const [pdf, decl] = await Promise.all([ qPdf.order('date',{ascending:false}), qDecl ]);
+    const pdfRows = pdf.data||[];
+    const declRows = decl.data||[];
+    if(!pdfRows.length){ box.innerHTML=''; return; }
+    // nb de déclarations managers par jour|resto (= photos faites)
+    const declJour={}; declRows.forEach(d=>{ const k=d.restaurant+'|'+d.date; declJour[k]=(declJour[k]||0)+1; });
+    // Regrouper les annulations à photographier par jour|resto
+    const parJour={};
+    pdfRows.forEach(r=>{ const k=r.restaurant+'|'+r.date; if(!parJour[k])parJour[k]=[]; parJour[k].push(r); });
+    // Une annulation reste "en attente" tant que le nb de déclarations < nb à photographier ce jour-là
+    const enAttente=[];
+    Object.keys(parJour).forEach(k=>{
+      const list=parJour[k]; const faites=declJour[k]||0;
+      if(faites < list.length){ // il manque des photos ce jour-là
+        // on liste celles non couvertes (les dernières au-delà du nb de photos faites)
+        list.slice(faites).forEach(r=>enAttente.push(r));
+      }
+    });
+    if(!enAttente.length){
+      box.innerHTML = `<div class="table-card"><div style="padding:14px 16px;font-size:12px;color:var(--green)">✓ Toutes les annulations à photographier ont leurs tickets. Rien en attente.</div></div>`;
+      return;
+    }
+    enAttente.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const totMnt = enAttente.reduce((a,b)=>a+Math.abs(b.montant||0),0);
+    const restoLabel = r => (RESTAURANTS[r]?.nom)||r;
+    const lignes = enAttente.slice(0,80).map(r=>`
+      <tr>
+        <td style="color:var(--accent)">${formatDate(r.date)}</td>
+        ${resto?'':`<td style="color:var(--muted2);font-size:10px">${restoLabel(r.restaurant)}</td>`}
+        <td style="color:var(--muted2)">${r.heure||'—'}</td>
+        <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
+        <td style="font-weight:600">${r.manager||'—'}</td>
+        <td style="color:var(--muted2);font-size:10px">${r.canal||''}</td>
+      </tr>`).join('');
+    box.innerHTML = `
+    <div class="table-card" style="border-color:rgba(248,113,113,.35)">
+      <div class="table-header" style="background:rgba(248,113,113,.08)">
+        <span class="table-title" style="color:var(--red)">📸 Annulations en attente des 3 tickets (photos)</span>
+        <span style="font-size:11px;color:var(--muted2)">${enAttente.length} annulation(s) · ${fmt(totMnt)} €</span>
+      </div>
+      <div style="padding:8px 16px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">
+        Annulations faites par un manager pour lesquelles les photos des 3 tickets n'ont pas encore été transmises. Les annulations « webuser » (Uber/livraison) sont considérées faites et n'apparaissent pas ici.
+      </div>
+      <div class="table-wrap" style="max-height:300px;overflow-y:auto"><table>
+        <thead><tr><th>Date</th>${resto?'':'<th>Resto</th>'}<th>Heure</th><th class="num">Montant</th><th>Annulé par</th><th>Caisse</th></tr></thead>
+        <tbody>${lignes}</tbody>
+      </table></div>
+    </div>`;
+  }catch(e){ console.warn('renderAnnulationsSansPhoto', e); box.innerHTML=''; }
+}
+
 function renderDashboard() {
   checkFichiersManquants();
+  renderAnnulationsSansPhoto();
   if(!DATA || !DATA.length) {
     const restoNom = ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' ? (RESTAURANTS[ACTIVE_RESTO]?.nom||ACTIVE_RESTO) : 'ce restaurant';
     document.getElementById('dash-kpis').innerHTML = `
