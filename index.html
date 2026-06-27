@@ -319,6 +319,49 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
 .file-item-del{cursor:pointer;color:var(--muted);font-size:14px;flex-shrink:0}
 .file-item-del:hover{color:var(--red)}
 .mgr-alert-ok{background:rgba(62,207,142,.1);border:1px solid rgba(62,207,142,.3);color:var(--green);padding:10px 14px;border-radius:var(--radius-sm);font-size:11px;display:none;margin-top:12px}
+
+/* ═══════════════════ MODE TÉLÉPHONE (≤680px) ═══════════════════ */
+/* Bouton "Quitter" : visible uniquement dans la barre du bas mobile */
+.nav-mobile-logout{display:none;}
+@media(max-width:680px){
+  .nav-mobile-logout{display:flex!important;color:var(--red)!important;}
+  .shell{flex-direction:column;min-height:100vh;}
+  /* Sidebar : passe en barre fixe en bas, déroulante horizontalement */
+  .sidebar{
+    width:100%!important;height:auto!important;position:fixed!important;
+    left:0;right:0;bottom:0;top:auto!important;
+    flex-direction:row!important;align-items:stretch;
+    border-right:none!important;border-top:1px solid var(--border);
+    background:var(--bg2);z-index:9999;
+    overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;padding-bottom:env(safe-area-inset-bottom);
+  }
+  .sidebar::-webkit-scrollbar{display:none;}
+  /* On masque le logo et le pied dans la barre du bas (infos déplacées ailleurs) */
+  .sidebar > .sidebar-logo{display:none!important;}
+  .sidebar > .sidebar-bottom{display:none!important;}
+  .sidebar-nav{display:flex!important;flex-direction:row!important;flex:1;}
+  .nav-section{display:none!important;}
+  /* Chaque onglet : icône au-dessus, label dessous, largeur fixe lisible */
+  .sidebar-nav .nav-item{
+    flex:0 0 auto!important;min-width:68px;
+    flex-direction:column!important;align-items:center!important;justify-content:center;
+    gap:3px!important;padding:8px 6px 7px!important;border-left:none!important;
+    border-top:2px solid transparent;text-align:center;
+  }
+  .sidebar-nav .nav-item.active{border-left:none!important;border-top:2px solid var(--accent);}
+  .sidebar-nav .nav-item span{display:inline!important;}
+  .sidebar-nav .nav-item span:first-child{font-size:18px;line-height:1;}
+  .sidebar-nav .nav-item span:last-child{font-size:8.5px;line-height:1.1;font-weight:600;white-space:nowrap;}
+  /* Le contenu prend toute la largeur, avec marge basse pour la barre */
+  .main{width:100%!important;min-width:0!important;}
+  .content{padding:14px 12px 86px!important;}
+  .topbar{padding:10px 14px;}
+  /* Rien ne déborde horizontalement */
+  html,body{overflow-x:hidden;max-width:100vw;}
+  .shell,.main,.content{max-width:100vw;}
+  .table-card,.table-wrap{overflow-x:auto;}
+}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style id="horaires-style">
@@ -533,6 +576,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('acces')"><span>🔑</span><span>Gestion accès</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('voir-comme')"><span>👁️</span><span>Voir comme</span></div>
+    <div class="nav-item nav-mobile-logout" onclick="doLogout()"><span>⏻</span><span>Quitter</span></div>
   </nav>
   <div class="sidebar-bottom">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
