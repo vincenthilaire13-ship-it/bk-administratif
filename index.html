@@ -356,7 +356,19 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
   /* Le contenu prend toute la largeur, avec marge basse pour la barre */
   .main{width:100%!important;min-width:0!important;}
   .content{padding:14px 12px 86px!important;}
-  .topbar{padding:10px 14px;}
+  /* Topbar sur téléphone : passe sur plusieurs lignes, rien n'est coupé */
+  .topbar{padding:10px 12px!important;flex-wrap:wrap!important;gap:8px!important;align-items:center;}
+  .topbar-title{font-size:14px;flex:0 0 auto;}
+  #app-version-badge{font-size:9px!important;padding:2px 6px!important;order:3;}
+  .topbar-right{order:2;margin-left:auto;gap:6px;}
+  .topbar-right .btn{padding:7px 10px;font-size:11px;}
+  /* Sélecteur de restaurant : sa propre ligne, pleine largeur, boutons tappables.
+     On NE force PAS l'affichage : le JS gère display:flex/none selon le rôle. */
+  #resto-switcher[style*="flex"]{order:5;flex:1 0 100%!important;width:100%!important;
+    gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;padding-top:8px;border-top:1px solid var(--border);}
+  #resto-switcher::-webkit-scrollbar{display:none;}
+  #resto-switcher .btn{flex:1 1 0;min-width:96px;padding:9px 8px!important;font-size:12px!important;white-space:nowrap;}
   /* Rien ne déborde horizontalement */
   html,body{overflow-x:hidden;max-width:100vw;}
   .shell,.main,.content{max-width:100vw;}
@@ -410,11 +422,6 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
       <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
         <button class="login-btn" style="background:transparent;color:var(--muted);border:1px solid var(--border);font-size:11px;padding:8px" onclick="selectResto('ALL','Administration')">
           ⚙️ Accès administration (superviseur / admin)
-        </button>
-      </div>
-      <div style="margin-top:10px">
-        <button class="login-btn" style="background:rgba(251,191,36,.10);color:var(--yellow);border:1px solid rgba(251,191,36,.3);font-size:12px;padding:10px;font-weight:600" onclick="openLoginFeedback()">
-          💡 Correctifs &amp; demandes
         </button>
       </div>
     </div>
@@ -570,7 +577,6 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="nav-section role-full-only" style="display:none">Horaires</div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires-import')"><span>📥</span><span>Importer ventes ¼h</span></div>
-    <div class="nav-item role-superadmin-only" style="display:none" onclick="nav('retours')"><span>💡</span><span>Correctifs &amp; demandes</span></div>
     <div class="nav-section role-admin-only" style="display:none">Config</div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
