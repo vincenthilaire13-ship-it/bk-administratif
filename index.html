@@ -590,7 +590,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
       <div><span class="status-dot"></span><span id="db-status">Chargement...</span></div>
       <span style="cursor:pointer;color:var(--muted);font-size:10px" onclick="doLogout()" title="Déconnexion">⏻ Quitter</span>
     </div>
-    <div style="margin-top:6px;font-size:9px;color:var(--muted);opacity:.6">version 24/05 · canaux séparés</div>
+    <div id="sidebar-version" style="margin-top:6px;font-size:9px;color:var(--muted);opacity:.6">version —</div>
   </div>
 </aside>
 
@@ -3946,25 +3946,56 @@ function applyRestoFilter() {
   DATA25.sort((a,b)=> (a.date||'').localeCompare(b.date||''));
 }
 
-// ══ VERSION DE L'APPLICATION ══
-// À mettre à jour à chaque nouvel index déployé (date + petit numéro).
-const APP_VERSION = { datetime: '2026-06-13T16:41', label: 'v13/06-16h41', affichage: 'samedi 13 juin 2026 à 16:41' };
+// ══ VERSION DE L'APPLICATION (AUTOMATIQUE) ══
+// Calculée automatiquement à partir de la date de dernière modification du fichier
+// (document.lastModified). Plus aucune mise à jour manuelle : à chaque déploiement
+// d'un nouvel index, la date et l'heure affichées se mettent à jour toutes seules.
+const APP_VERSION = (function(){
+  let d = new Date(document.lastModified);
+  if(isNaN(d.getTime())) d = new Date(); // repli si lastModified indisponible
+  const p2 = n => String(n).padStart(2,'0');
+  const an = d.getFullYear(), mo = d.getMonth()+1, jo = d.getDate();
+  const hh = d.getHours(), mi = d.getMinutes();
+  // datetime : format comparable "AAAA-MM-JJTHH:MM" (sert à détecter une version plus récente)
+  const datetime = `${an}-${p2(mo)}-${p2(jo)}T${p2(hh)}:${p2(mi)}`;
+  // label court : "vJJ/MM-HHhMM"
+  const label = `v${p2(jo)}/${p2(mo)}-${p2(hh)}h${p2(mi)}`;
+  // affichage lisible en français : "samedi 27 juin 2026 à 11:00"
+  let affichage;
+  try {
+    affichage = d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})
+              + ' à ' + d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  } catch(e){
+    affichage = `${p2(jo)}/${p2(mo)}/${an} à ${p2(hh)}:${p2(mi)}`;
+  }
+  return { datetime, label, affichage };
+})();
 
 // ══ DÉTECTION D'UNE NOUVELLE VERSION DÉPLOYÉE ══
-// Toutes les 5 min, recharge discrètement l'index en ligne et compare la date de version.
-// Si une version plus récente est en ligne, affiche un bandeau "nouvelle version".
+// Toutes les 5 min, on relit l'en-tête Last-Modified du fichier en ligne et on compare.
+// Si une version plus récente est en ligne, on affiche le bandeau "nouvelle version".
 async function checkNouvelleVersion(){
   try {
     const url = location.pathname + '?_v=' + Date.now(); // anti-cache
     const resp = await fetch(url, {cache:'no-store'});
     if(!resp.ok) return;
-    const txt = await resp.text();
-    const m = txt.match(/APP_VERSION\s*=\s*\{\s*datetime:\s*'([^']+)'/);
-    if(!m) return;
-    const enLigne = m[1];
-    if(enLigne && enLigne > APP_VERSION.datetime){
-      const b = document.getElementById('new-version-banner');
-      if(b) b.style.display = 'block';
+    // 1) On essaie l'en-tête HTTP Last-Modified (le plus fiable)
+    let enLigneDate = null;
+    const lm = resp.headers.get('Last-Modified');
+    if(lm){ const dd = new Date(lm); if(!isNaN(dd.getTime())) enLigneDate = dd; }
+    // 2) Repli : on cherche une éventuelle date écrite dans le HTML
+    if(!enLigneDate){
+      const txt = await resp.text();
+      const m = txt.match(/APP_VERSION[\s\S]{0,200}?datetime:\s*'([^']+)'/);
+      if(m){ const dd = new Date(m[1]); if(!isNaN(dd.getTime())) enLigneDate = dd; }
+    }
+    if(enLigneDate){
+      const localeDate = new Date(document.lastModified);
+      // marge de 60s pour éviter les faux positifs
+      if(!isNaN(localeDate.getTime()) && (enLigneDate.getTime() - localeDate.getTime()) > 60000){
+        const b = document.getElementById('new-version-banner');
+        if(b) b.style.display = 'block';
+      }
     }
   } catch(e){ /* hors-ligne ou erreur réseau : on ignore */ }
 }
@@ -6097,6 +6128,8 @@ function setSession(user) {
       vb.textContent = '✓ À jour — '+txt;
       vb.title = 'Version '+APP_VERSION.label;
     }
+    const sv = document.getElementById('sidebar-version');
+    if(sv) sv.textContent = 'version ' + (APP_VERSION.label||'') + ' · ' + (APP_VERSION.affichage||'');
   } catch(e){}
 
   // Badge + nom dans sidebar
