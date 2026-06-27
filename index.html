@@ -358,17 +358,18 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
   .content{padding:14px 12px 86px!important;}
   /* Topbar sur téléphone : passe sur plusieurs lignes, rien n'est coupé */
   .topbar{padding:10px 12px!important;flex-wrap:wrap!important;gap:8px!important;align-items:center;}
-  .topbar-title{font-size:14px;flex:0 0 auto;}
-  #app-version-badge{font-size:9px!important;padding:2px 6px!important;order:3;}
-  .topbar-right{order:2;margin-left:auto;gap:6px;}
-  .topbar-right .btn{padding:7px 10px;font-size:11px;}
-  /* Sélecteur de restaurant : sa propre ligne, pleine largeur, boutons tappables.
-     On NE force PAS l'affichage : le JS gère display:flex/none selon le rôle. */
-  #resto-switcher[style*="flex"]{order:5;flex:1 0 100%!important;width:100%!important;
+  /* La div intermédiaire (titre+badge+switcher) est dissoute pour permettre le retour à la ligne */
+  .topbar > div:not(#new-version-banner):not(.topbar-right){display:contents!important;}
+  .topbar-title{font-size:14px;flex:0 0 auto;order:1;}
+  #app-version-badge{display:none!important;}
+  .topbar-right{order:8;margin-left:0;gap:6px;flex:1 0 100%;justify-content:flex-start;padding-top:6px;}
+  .topbar-right .btn{padding:8px 12px;font-size:12px;}
+  /* Sélecteur de restaurant : juste sous le titre, pleine largeur, prioritaire */
+  #resto-switcher{order:3!important;flex:1 0 100%!important;width:100%!important;
     gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;
-    scrollbar-width:none;padding-top:8px;border-top:1px solid var(--border);}
+    scrollbar-width:none;padding-top:8px;margin-top:2px;border-top:1px solid var(--border);box-sizing:border-box;}
   #resto-switcher::-webkit-scrollbar{display:none;}
-  #resto-switcher .btn{flex:1 1 0;min-width:96px;padding:9px 8px!important;font-size:12px!important;white-space:nowrap;}
+  #resto-switcher .btn{flex:1 1 0;min-width:0;padding:10px 6px!important;font-size:12px!important;white-space:nowrap;}
   /* Rien ne déborde horizontalement */
   html,body{overflow-x:hidden;max-width:100vw;}
   .shell,.main,.content{max-width:100vw;}
