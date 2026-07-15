@@ -610,7 +610,15 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
       </div>
     </div>
     <div class="topbar-right">
-      <button class="btn" onclick="loadAll()">↺ Actualiser</button>
+      <div class="role-admin-only" id="voir-comme-wrap" style="display:none;position:relative">
+        <button class="btn" onclick="toggleVoirCommeMenu(event)" title="Voir l'application comme un directeur, un manager ou un superviseur">👁️ Voir comme</button>
+        <div id="voir-comme-menu" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:6px;min-width:225px;z-index:9999;box-shadow:0 10px 28px rgba(0,0,0,.45)">
+          <div style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;padding:4px 8px 6px">Voir l'app comme…</div>
+          <button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:4px;font-size:12px" onclick="voirCommeMenu('directeur')"><span class="role-badge role-directeur" style="margin-right:8px">Directeur</span> Comme un directeur</button>
+          <button class="btn" style="width:100%;justify-content:flex-start;margin-bottom:4px;font-size:12px" onclick="voirCommeMenu('manager')"><span class="role-badge" style="background:rgba(245,166,35,.2);color:var(--accent);margin-right:8px">Manager</span> Comme un manager</button>
+          <button class="btn" style="width:100%;justify-content:flex-start;font-size:12px" onclick="voirCommeMenu('superviseur')"><span class="role-badge role-superviseur" style="margin-right:8px">Superviseur</span> Comme un superviseur</button>
+        </div>
+      </div>
       <button class="btn btn-accent role-dir-only" id="btn-saisir-rapide" style="display:none" onclick="openModal()">+ Saisir</button>
     </div>
   </div>
@@ -714,9 +722,9 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
         <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-lv" checked onchange="loadHistorique()"> Livraison</label>
         <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-corr" checked onchange="loadHistorique()"> Corrections</label>
         <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-rem" checked onchange="loadHistorique()"> Remises</label>
-        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-annul" onchange="loadHistorique()"> Annulations</label>
-        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-co" onchange="loadHistorique()"> Cmd ouvertes</label>
-        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-emp" onchange="loadHistorique()"> Repas emp.</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-annul" checked onchange="loadHistorique()"> Annulations</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-co" checked onchange="loadHistorique()"> Cmd ouvertes</label>
+        <label style="font-size:11px;color:var(--muted2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="col-emp" checked onchange="loadHistorique()"> Repas emp.</label>
       </div>
       <div id="historique-content"></div>
     </section>
@@ -1239,8 +1247,8 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
 
     <!-- CONTRÔLE DES DÉPÔTS (section séparée, sous Ma journée) -->
     <section class="section" id="sec-controle-depots">
-      <div style="max-width:900px">
-        <div class="mgr-card" id="mgr-controle-depots">
+      <div style="max-width:100%">
+        <div class="mgr-card" id="mgr-controle-depots" style="max-width:100%">
           <div class="mgr-title">🗂️ Contrôle des dépôts</div>
           <div class="mgr-sub">Vérifie quels documents (Synthèse CA · SOS Drive · Ventes ¼h · Bons repas) ont bien été déposés, par jour.</div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0">
@@ -3798,7 +3806,7 @@ function nav(id) {
   const sec = document.getElementById('sec-'+id);
   if(sec) sec.classList.add('active');
   document.getElementById('page-title').textContent = TITLES[id]||id;
-  if(id==='historique') loadHistorique();
+  if(id==='historique'){ buildHistMoisSelect(); loadHistorique(); }
   if(id==='comparaison') renderComparaison();
   if(id==='journee') buildJourneeSelect();
   if(id==='seuils') renderSeuils();
@@ -4382,8 +4390,22 @@ async function loadAll() {
     });
     // Récupérer les journées réellement déposées (toutes dates) et les fusionner
     try {
-      const { data, error } = await SB.from('journees').select('*');
-      if(!error && data && data.length){
+      // Lecture PAGINÉE : la table journees dépasse 1000 lignes (PostgREST
+      // tronque silencieusement toute requête à 1000 lignes). Sans pagination,
+      // les journées les plus récentes n'étaient pas chargées → vue Journée,
+      // dashboard et historique apparaissaient vides sur les dernières semaines
+      // alors que la donnée existe bien en base (le Suivi des dépôts, lui,
+      // pagine déjà et voyait donc « rien ne manque »).
+      let data = []; { const PAGE = 1000; let offset = 0;
+        for(let garde=0; garde<200; garde++){
+          const { data:page, error:ePage } = await SB.from('journees').select('*')
+            .order('date',{ascending:true}).range(offset, offset+PAGE-1);
+          if(ePage){ console.error('[loadAll journees]', ePage); break; }
+          const rows = page||[]; data = data.concat(rows);
+          if(rows.length < PAGE) break; offset += PAGE;
+        }
+      }
+      if(data && data.length){
         // Sécurité : toute donnée mal rangée sous 'ALL' est rattachée à BK526 (Administration n'existe pas)
         data.forEach(d=>{ if(d.restaurant==='ALL'||d.restaurant==='Administration') d.restaurant='BK526'; });
         const sb26 = data.filter(d=> (d.date||'').slice(0,4)==='2026');
@@ -4477,60 +4499,109 @@ async function checkFichiersManquants(){
     while(d<=fin){ jours.push(d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())); d.setDate(d.getDate()+1); }
 
     // Pour chaque resto, repérer les jours incomplets (manque 1 à 4 documents)
-    const parResto = {};
+    // ── Regroupement par CATÉGORIE, puis par restaurant ──
+    //   synthese[rt] = [jour…]                         (Synthèse CA manquante)
+    //   annul[rt]    = [{jour, nb, mnt}…]              (annulations à déclarer)
+    //   caisse[rt]   = [{jour, ec}…]                   (erreurs caisse à déclarer)
+    //   autres[rt]   = [{jour, docs:[clé…]}…]          (SOS Drive · Ventes ¼h · Bons repas)
+    const cat = { synthese:{}, annul:{}, caisse:{}, autres:{} };
     restos.forEach(rt=>{
-      const incomplets = [];
+      cat.synthese[rt]=[]; cat.annul[rt]=[]; cat.caisse[rt]=[]; cat.autres[rt]=[];
       jours.forEach(jour=>{
         const key = rt+'|'+jour;
-        const manque = Object.keys(labels).filter(t=>!has[t].has(key));
+        // Synthèse CA manquante
+        if(!has.synthese.has(key)) cat.synthese[rt].push(jour);
+        // Autres dépôts manquants (SOS Drive · Ventes ¼h · Bons repas)
+        const autresDocs = ['sos','ventes','repas'].filter(t=>!has[t].has(key));
+        if(autresDocs.length) cat.autres[rt].push({jour, docs:autresDocs});
         // Annulations vues par la caisse mais non (toutes) déclarées
         const aInfo = annulCaisse[key]||{nb:0,mnt:0};
         const nbCaisse = aInfo.nb||0, nbDecl = declAnnul[key]||0;
-        if(nbCaisse>nbDecl) manque.push('annul:'+(nbCaisse-nbDecl)+':'+(aInfo.mnt||0));
+        if(nbCaisse>nbDecl) cat.annul[rt].push({jour, nb:(nbCaisse-nbDecl), mnt:(aInfo.mnt||0)});
         // Erreur caisse > seuil sans déclaration
         const ec = ecartCaisse[key], nbEcDecl = declErrCais[key]||0;
-        if(ec!=null && Math.abs(ec)>SEUIL_EC && nbEcDecl===0) manque.push('caisse:'+Math.round(ec));
-        if(manque.length>0) incomplets.push({jour, manque});
+        if(ec!=null && Math.abs(ec)>SEUIL_EC && nbEcDecl===0) cat.caisse[rt].push({jour, ec:Math.round(ec)});
       });
-      parResto[rt] = incomplets; // toujours une entrée par resto, même vide
     });
 
-    // Construire l'alerte — un bloc par restaurant, les 3 affichés ensemble
-    let html = `<div style="background:rgba(248,113,113,.06);border:1px solid var(--border2);border-radius:var(--radius);padding:14px 16px">
+    // Helpers d'affichage
+    const jourLbl = j => formatDate(j)+' '+jourSemaine(new Date(j));
+    const respLine = (rt,jour)=>{
+      const k=rt+'|'+jour, mO=mgrOuv[k]||'', mF=mgrFer[k]||'';
+      return (mO||mF) ? `<div style="font-size:10px;color:var(--muted2);margin-top:2px">🔑 ${mO||'—'} · 🔒 ${mF||'—'}</div>` : '';
+    };
+    const row = txt => `<div style="font-size:11px;padding:5px 10px;background:var(--bg3);border-radius:6px;border-left:2px solid var(--red)">${txt}</div>`;
+
+    // Construit une colonne : un sous-groupe par restaurant + compteur
+    // Replie les jours au-delà de 2 dans un déroulant natif (gain de place)
+    const pliRows = rowsArr => {
+      if(rowsArr.length<=2) return rowsArr.join('');
+      return rowsArr.slice(0,2).join('') +
+        `<details style="margin-top:2px"><summary style="cursor:pointer;font-size:10px;color:var(--accent2);padding:3px 2px;user-select:none">▾ ${rowsArr.length-2} autre(s) jour(s)</summary>`+
+        `<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">${rowsArr.slice(2).join('')}</div></details>`;
+    };
+
+    function colonne(titre, emoji, accent, dataParResto, rowFn){
+      let total = 0; restos.forEach(rt=>{ total += (dataParResto[rt]||[]).length; });
+      let inner = '';
+      restos.forEach(rt=>{
+        const list = (dataParResto[rt]||[]).slice().reverse();
+        if(!list.length) return;
+        inner += `<div style="margin-bottom:10px">
+          <div style="font-size:10px;font-weight:600;color:var(--accent2);margin-bottom:4px">${RESTAURANTS[rt]?.nom||rt}</div>
+          <div style="display:flex;flex-direction:column;gap:4px">${pliRows(list.map(rowFn(rt)))}</div>
+        </div>`;
+      });
+      if(!total) inner = `<div style="font-size:11px;padding:6px 10px;background:rgba(62,207,142,.08);border-radius:6px;border-left:2px solid var(--green);color:var(--green)">✅ Rien à signaler</div>`;
+      return `<div style="flex:1 1 240px;min-width:240px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:15px">${emoji}</span>
+          <span style="font-weight:600;font-size:12px;color:${accent}">${titre}</span>
+          <span style="margin-left:auto;font-size:10px;color:var(--muted2);background:var(--bg3);border-radius:10px;padding:1px 8px">${total}</span>
+        </div>${inner}</div>`;
+    }
+
+    // Colonne 1 — Synthèses CA manquantes
+    const colSynthese = colonne('Synthèses CA manquantes','🧾','var(--accent)', cat.synthese,
+      rt => j => row(`<span style="color:var(--accent)">${jourLbl(j)}</span> — <span style="color:var(--red);font-weight:500">Synthèse CA manquante</span>${respLine(rt,j)}`));
+
+    // Colonne 2 — Annulations à déclarer
+    const colAnnul = colonne('Annulations à déclarer','🚫','var(--red)', cat.annul,
+      rt => o => row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — <span style="color:var(--red);font-weight:500">${o.nb} annulation(s)${o.mnt?` (${fmt(o.mnt)} €)`:''}</span>${respLine(rt,o.jour)}`));
+
+    // Colonne 3 — Erreurs caisse à déclarer
+    const colCaisse = colonne('Erreurs caisse à déclarer','💰','var(--red)', cat.caisse,
+      rt => o => row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — <span style="color:var(--red);font-weight:500">écart ${o.ec>0?'+':''}${o.ec} € à déclarer</span>${respLine(rt,o.jour)}`));
+
+    // Bloc secondaire — Autres dépôts manquants (SOS Drive · Ventes ¼h · Bons repas)
+    let autresTotal = 0; restos.forEach(rt=>{ autresTotal += cat.autres[rt].length; });
+    let autresHtml = '';
+    if(autresTotal){
+      let inner = '';
+      restos.forEach(rt=>{
+        const list = cat.autres[rt].slice().reverse();
+        if(!list.length) return;
+        inner += `<div style="margin-bottom:8px">
+          <div style="font-size:10px;font-weight:600;color:var(--accent2);margin-bottom:4px">${RESTAURANTS[rt]?.nom||rt}</div>
+          <div style="display:flex;flex-direction:column;gap:4px">${pliRows(list.map(o=>row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — manque : <span style="color:var(--red);font-weight:500">${o.docs.map(t=>labels[t]).join(', ')}</span>${respLine(rt,o.jour)}`)))}</div>
+        </div>`;
+      });
+      autresHtml = `<div style="margin-top:12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:15px">📁</span>
+          <span style="font-weight:600;font-size:12px;color:var(--accent2)">Autres dépôts manquants — SOS Drive · Ventes ¼h · Bons repas</span>
+          <span style="margin-left:auto;font-size:10px;color:var(--muted2);background:var(--bg3);border-radius:10px;padding:1px 8px">${autresTotal}</span>
+        </div>${inner}</div>`;
+    }
+
+    const html = `<div style="background:rgba(248,113,113,.06);border:1px solid var(--border2);border-radius:var(--radius);padding:14px 16px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
         <span style="font-size:18px">📋</span>
         <span style="font-weight:600;font-size:13px">Suivi des dépôts depuis le ${formatDate(SUIVI_DATE_DEBUT)}</span>
-      </div>`;
-    restos.forEach(rt=>{
-      const inc = parResto[rt];
-      if(!inc.length){
-        html += `<div style="margin-bottom:10px">
-          <div style="font-size:11px;font-weight:600;color:var(--accent2);margin-bottom:4px">${RESTAURANTS[rt]?.nom||rt}</div>
-          <div style="font-size:11px;padding:5px 10px;background:rgba(62,207,142,.1);border-radius:6px;border-left:2px solid var(--green);color:var(--green)">✅ Tous les fichiers sont à jour</div>
-        </div>`;
-        return;
-      }
-      html += `<div style="margin-bottom:12px">
-        <div style="font-size:11px;font-weight:600;color:var(--accent2);margin-bottom:6px">${RESTAURANTS[rt]?.nom||rt} — ${inc.length} jour(s) incomplet(s)</div>
-        <div style="display:flex;flex-direction:column;gap:4px">`;
-      inc.slice().reverse().forEach(it=>{
-        const jourLbl = formatDate(it.jour)+' '+jourSemaine(new Date(it.jour));
-        const k = rt+'|'+it.jour;
-        const mO = mgrOuv[k]||'', mF = mgrFer[k]||'';
-        const respLine = (mO||mF)
-          ? `<div style="font-size:10px;color:var(--muted2);margin-top:3px">🔑 Ouv : ${mO||'—'} &nbsp;·&nbsp; 🔒 Ferm : ${mF||'—'}</div>`
-          : '<div style="font-size:10px;color:var(--muted);margin-top:3px">Responsables non renseignés (synthèse manquante ?)</div>';
-        const docsManquants = it.manque.map(t=>{
-          if(t.startsWith('annul:')){ const p=t.split(':'); const n=p[1]; const m=parseFloat(p[2]||'0'); return `<span style="color:var(--red);font-weight:500">${n} annulation(s) à déclarer${m?` (${fmt(m)} €)`:''}</span>`; }
-          if(t.startsWith('caisse:')){ const v=parseInt(t.slice(7),10); return `<span style="color:var(--red);font-weight:500">erreur caisse ${v>0?'+':''}${v} € à déclarer</span>`; }
-          return `<span style="color:var(--red);font-weight:500">${labels[t]}</span>`;
-        }).join(', ');
-        html += `<div style="font-size:11px;padding:5px 10px;background:var(--bg3);border-radius:6px;border-left:2px solid var(--red)">
-          <span style="color:var(--accent)">${jourLbl}</span> — manque : ${docsManquants}${respLine}</div>`;
-      });
-      html += `</div></div>`;
-    });
-    html += `</div>`;
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:stretch">${colSynthese}${colAnnul}${colCaisse}</div>
+      ${autresHtml}
+    </div>`;
     box.innerHTML = html;
   } catch(err){
     console.warn('checkFichiersManquants', err);
@@ -4874,37 +4945,37 @@ function renderCharts() {
     }
   });
 
-  // Graphique CA
+  // Graphique CA — barres (colonnes) 2026 vs 2025
   CH.ca = new Chart(document.getElementById('chart-ca'),{
-    type:'line',
+    type:'bar',
     data:{labels,datasets:[
-      {label:'2026',data:v26_ca,borderColor:'#3ecf8e',backgroundColor:'rgba(62,207,142,.10)',tension:.35,pointRadius:G==='mois'?5:2,pointHoverRadius:7,fill:true,borderWidth:2},
-      {label:'2025',data:v25_ca,borderColor:'#60a5fa',backgroundColor:'transparent',tension:.35,pointRadius:G==='mois'?5:2,pointHoverRadius:7,fill:false,borderWidth:2,borderDash:[5,4]}
+      {label:'2026',data:v26_ca,backgroundColor:'#3ecf8e',borderRadius:3,borderSkipped:false},
+      {label:'2025',data:v25_ca,backgroundColor:'rgba(96,165,250,.55)',borderRadius:3,borderSkipped:false}
     ]},
     options:commonOpts(g26_ca,'€')
   });
 
-  // Graphique Drive
+  // Graphique Drive — barres (colonnes) 2026 vs 2025
   CH.drive = new Chart(document.getElementById('chart-drive'),{
-    type:'line',
+    type:'bar',
     data:{labels,datasets:[
-      {label:'2026',data:v26_dr,borderColor:'#3ecf8e',backgroundColor:'rgba(62,207,142,.10)',tension:.35,pointRadius:G==='mois'?5:2,pointHoverRadius:7,fill:true,borderWidth:2},
-      {label:'2025',data:v25_dr,borderColor:'#60a5fa',backgroundColor:'transparent',tension:.35,pointRadius:G==='mois'?5:2,pointHoverRadius:7,fill:false,borderWidth:2,borderDash:[5,4]}
+      {label:'2026',data:v26_dr,backgroundColor:'#3ecf8e',borderRadius:3,borderSkipped:false},
+      {label:'2025',data:v25_dr,backgroundColor:'rgba(96,165,250,.55)',borderRadius:3,borderSkipped:false}
     ]},
     options:commonOpts(g26_dr,'voit')
   });
 
-  // Graphique Corrections & Remises
+  // Graphique Corrections & Remises — barres (colonnes)
   CH.corr = new Chart(document.getElementById('chart-corr'),{
-    type:'line',
+    type:'bar',
     data:{labels:g26_co.map(w=>w.label),datasets:[
-      {label:'Corrections',data:g26_co.map(w=>w.value!==null?parseFloat(w.value.toFixed(2)):null),borderColor:'#f87171',backgroundColor:'rgba(248,113,113,.08)',tension:.3,pointRadius:G==='mois'?5:2,fill:true},
-      {label:'Remises',data:g26_re.map(w=>w.value!==null?parseFloat(w.value.toFixed(2)):null),borderColor:'#fbbf24',tension:.3,pointRadius:G==='mois'?5:2,borderDash:[4,3]}
+      {label:'Corrections',data:g26_co.map(w=>w.value!==null?parseFloat(w.value.toFixed(2)):null),backgroundColor:'#f87171',borderRadius:3,borderSkipped:false},
+      {label:'Remises',data:g26_re.map(w=>w.value!==null?parseFloat(w.value.toFixed(2)):null),backgroundColor:'#fbbf24',borderRadius:3,borderSkipped:false}
     ]},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y?.toFixed(1)||'—')+'%'}}},
+      plugins:{legend:{display:true,labels:{color:'#9d9daa',font:{size:10},boxWidth:20}},tooltip:{callbacks:{label:c=>c.dataset.label+': '+(c.parsed.y?.toFixed(1)||'—')+'%'}}},
       scales:{x:{ticks:{color:TC,font:{size:G==='semaine'?8:10},maxRotation:G==='semaine'?45:0},grid:{display:false}},
-              y:{ticks:{color:TC,font:{size:9},callback:v=>v+'%'},grid:{color:GC},min:2,max:12}}}
+              y:{ticks:{color:TC,font:{size:9},callback:v=>v+'%'},grid:{color:GC},beginAtZero:true,suggestedMax:12}}}
   });
 }
 
@@ -5138,6 +5209,35 @@ function exportPDF(dateStr) {
 }
 
 // ══ HISTORIQUE ══
+// Remplit le menu déroulant des mois à partir des données réelles (2026 = DATA,
+// 2025 = DATA25) + le mois en cours. Du plus récent au plus ancien. Ainsi juillet
+// 2026 et les mois suivants apparaissent automatiquement au fil de l'année, sans
+// liste codée en dur.
+function buildHistMoisSelect(){
+  const sel = document.getElementById('hist-mois');
+  if(!sel) return;
+  const moisNoms = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const set = new Set();
+  (DATA||[]).forEach(d=>{ if(d.date) set.add(d.date.slice(0,7)); });
+  (DATA25||[]).forEach(d=>{ if(d.date) set.add(d.date.slice(0,7)); });
+  const now = new Date();
+  set.add(now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')); // toujours proposer le mois courant
+  const mois = [...set].filter(Boolean).sort().reverse(); // plus récent d'abord
+  const prev = sel.value;
+  let html=''; let lastYear=null;
+  mois.forEach(mm=>{
+    const y = mm.slice(0,4), m = parseInt(mm.slice(5,7));
+    if(lastYear!==null && y!==lastYear) html += `<option disabled>── ${y} ──</option>`;
+    html += `<option value="${mm}">${moisNoms[m]} ${y}</option>`;
+    lastYear = y;
+  });
+  sel.innerHTML = html;
+  // Restaurer la sélection si toujours dispo, sinon le mois le plus récent AVEC des données
+  const aDesDonnees = mm => (DATA||[]).some(d=>d.date&&d.date.startsWith(mm)) || (DATA25||[]).some(d=>d.date&&d.date.startsWith(mm));
+  if(prev && mois.includes(prev)) sel.value = prev;
+  else { const avec = mois.filter(aDesDonnees); sel.value = avec[0] || mois[0]; }
+}
+
 function loadHistorique() {
   const mois = document.getElementById('hist-mois').value;
   const filtre = document.getElementById('hist-filtre').value;
@@ -5173,6 +5273,34 @@ function loadHistorique() {
   // Champs HT calculés pour le graphe/tableau historique
   fd.forEach(d=>{ d._caht = caHT(d); d._lvht = canalHT(d,'livraison'); });
   fdN1.forEach(d=>{ d._caht = caHT_n1(d); d._lvht = canalHT(d,'livraison'); });
+
+  // ── Jours du mois : on inclut aussi les jours SANS données pour les marquer
+  // « manquants » (uniquement sur la période réellement suivie, à partir de
+  // SUIVI_DATE_DEBUT). Pour les mois antérieurs / 2025, comportement inchangé. ──
+  const _suivi = (typeof SUIVI_DATE_DEBUT!=='undefined')?SUIVI_DATE_DEBUT:'2026-05-17';
+  const _pad = n=>String(n).padStart(2,'0');
+  const fdByDate = {}; fd.forEach(d=>{ fdByDate[d.date]=d; });
+  const trackMissing = (mois >= _suivi.slice(0,7)); // comparaison 'YYYY-MM' lexicale
+  let joursMois;
+  if(trackMissing){
+    const Y=parseInt(yr), Mo=parseInt(mm);
+    const finMois = new Date(Y, Mo, 0).getDate();
+    const now = new Date();
+    const estMoisCourant = (Y===now.getFullYear() && Mo===now.getMonth()+1);
+    const estFutur = (Y>now.getFullYear()) || (Y===now.getFullYear() && Mo>now.getMonth()+1);
+    let dernierJour = finMois;
+    if(estMoisCourant) dernierJour = now.getDate()-1; // jusqu'à hier (aujourd'hui pas encore dû)
+    if(estFutur) dernierJour = 0;
+    const premierJour = (mois===_suivi.slice(0,7)) ? parseInt(_suivi.slice(8,10)) : 1;
+    joursMois = [];
+    for(let day=premierJour; day<=dernierJour; day++) joursMois.push(`${yr}-${mm}-${_pad(day)}`);
+    fd.forEach(d=>{ if(!joursMois.includes(d.date)) joursMois.push(d.date); }); // sécurité
+    joursMois.sort();
+  } else {
+    joursMois = fd.map(d=>d.date).sort();
+  }
+  // Nb de colonnes « indicateur » (pour le colspan des lignes manquantes)
+  const nMetricCols = (colCA?3:0)+(colDrive?3:0)+(colLv?3:0)+(colCorr?2:0)+(colRem?2:0)+(colAnnul?2:0)+(colCO?2:0)+(colEmp?2:0);
 
   // Totaux pour le résumé
   const totCA = fd.reduce((a,b)=>a+caHT(b),0);
@@ -5268,7 +5396,16 @@ function loadHistorique() {
         </tr>
       </thead>
       <tbody>
-        ${fd.map(d=>{
+        ${joursMois.map(_dt=>{
+          const d = fdByDate[_dt];
+          if(!d){
+            return `<tr style="background:rgba(248,113,113,.07)">
+              <td style="color:var(--red);font-weight:600">${formatDate(_dt)}</td>
+              <td style="color:var(--muted2)">${jourSemaine(_dt)}</td>
+              <td colspan="${nMetricCols}" style="text-align:center;color:var(--red);font-size:11px">❌ Journée manquante — à déposer</td>
+              <td>❌</td>
+            </tr>`;
+          }
           const jourKey = d.date.slice(5); // MM-DD
           const n1 = n1Map[jourKey];
           const ecCA2 = caHT_n1(n1||{}) ? ((caHT(d)-caHT_n1(n1))/caHT_n1(n1)*100) : null;
@@ -5338,9 +5475,9 @@ function loadHistorique() {
 
   // Graphique double barre
   killChart('hist');
-  const labels26 = fd.map(d=>d.date.slice(8));
-  const vals26 = fd.map(d=>d[fmap[filtre]]||0);
-  const vals25 = fd.map(d=>{ const n1=n1Map[d.date.slice(5)]; return n1?(n1[fmap[filtre]]||0):null; });
+  const labels26 = joursMois.map(dt=>dt.slice(8));
+  const vals26 = joursMois.map(dt=>{ const d=fdByDate[dt]; return d?(d[fmap[filtre]]||0):null; }); // null = jour manquant → trou dans les barres
+  const vals25 = joursMois.map(dt=>{ const n1=n1Map[dt.slice(5)]; return n1?(n1[fmap[filtre]]||0):null; });
   CH.hist = new Chart(document.getElementById('chart-hist'),{
     type:'bar',
     data:{labels:labels26,datasets:[
@@ -5481,15 +5618,50 @@ function renderComparaison() {
   const n25=DATA25p.filter(d=>caHT(d)>0).length || DATA25p.length;
   const n26=DATA.filter(d=>caHT(d)>0).length || DATA.length;
 
-  // Tableau comparaison par mois — tous indicateurs
+  // Tableau détaillé — la granularité des LIGNES suit le mode choisi :
+  // jour → une ligne par jour, semaine → par semaine, mois → par mois, année → par an.
   const moisNoms = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
   const allMonths = [...new Set([...Object.keys(m25),...Object.keys(m26)])].sort();
 
+  let detailTitle = 'Comparaison mensuelle complète — 2025 vs 2026';
+  let detailCol1  = 'Mois';
+  let detailGroups;
+  if(mode==='jour'){
+    detailTitle = 'Comparaison jour par jour — 2025 vs 2026 (réf. même jour de semaine N-1)';
+    detailCol1  = 'Jour';
+    detailGroups = DATA.filter(d=>d.date.startsWith('2026'))
+      .slice().sort((a,b)=>a.date.localeCompare(b.date))
+      .map(d=>{ const ref=findN1(d); return {label: formatDate(d.date)+' '+jourSemaine(new Date(d.date)), d26:[d], d25: ref?[ref]:[]}; });
+  } else if(mode==='semaine'){
+    detailTitle = 'Comparaison semaine par semaine — 2025 vs 2026';
+    detailCol1  = 'Semaine';
+    const w26={}, w25={};
+    DATA.filter(d=>d.date.startsWith('2026')).forEach(d=>{ const w=isoWeek(d.date); (w26[w]=w26[w]||[]).push(d); });
+    DATA25.forEach(d=>{ const w=isoWeek(d.date); (w25[w]=w25[w]||[]).push(d); });
+    const weeks=[...new Set([...Object.keys(w26),...Object.keys(w25)])].map(Number).sort((a,b)=>a-b);
+    detailGroups = weeks.map(w=>({label:'Semaine '+w, d26:w26[w]||[], d25:w25[w]||[]}));
+  } else if(mode==='annee'){
+    detailTitle = 'Comparaison annuelle — 2025 vs 2026 (même période)';
+    detailCol1  = 'Année';
+    const lastMMDD = allDates26.length?allDates26[allDates26.length-1].slice(5):'12-31';
+    detailGroups = [{label:'2026 à date', d26: DATA.filter(d=>d.date.startsWith('2026')), d25: DATA25.filter(d=>d.date.slice(5)<=lastMMDD)}];
+  } else if(mode==='periode'){
+    detailTitle = 'Comparaison par mois (période sélectionnée) — 2025 vs 2026';
+    detailCol1  = 'Mois';
+    const mm26={}, mm25={};
+    D26.forEach(d=>{ const k=d.date.slice(5,7); (mm26[k]=mm26[k]||[]).push(d); });
+    D25.forEach(d=>{ const k=d.date.slice(5,7); (mm25[k]=mm25[k]||[]).push(d); });
+    const ms=[...new Set([...Object.keys(mm26),...Object.keys(mm25)])].sort();
+    detailGroups = ms.map(m=>({label: moisNoms[parseInt(m)-1], d26:mm26[m]||[], d25:mm25[m]||[]}));
+  } else {
+    detailGroups = allMonths.map(m=>({label: moisNoms[parseInt(m)-1], d26:m26[m]||[], d25:m25[m]||[]}));
+  }
+
   let rowsHtml = '';
-  allMonths.forEach(m => {
-    const d25 = m25[m]||[], d26 = m26[m]||[];
+  detailGroups.forEach(g => {
+    const d25 = g.d25||[], d26 = g.d26||[];
     if(!d25.length && !d26.length) return;
-    const label = moisNoms[parseInt(m)-1];
+    const label = g.label;
     const ca_25=sumHT(d25), ca_26=sumHT(d26);
     const t_25=sum(d25,'tickets_nb'), t_26=sum(d26,'tickets_nb');
     const dr_25=sumCanal(d25,'drive'), dr_26=sumCanal(d26,'drive');
@@ -5590,13 +5762,13 @@ function renderComparaison() {
   <!-- Tableau mensuel complet -->
   <div class="table-card">
     <div class="table-header">
-      <span class="table-title">Comparaison mensuelle complète — 2025 vs 2026</span>
+      <span class="table-title">${detailTitle}</span>
       <span style="font-size:10px;color:var(--muted)">Écarts CA et TM sur base journalière • Drive & Livraison sur base journalière</span>
     </div>
-    <div class="table-wrap"><table>
+    <div class="table-wrap" style="max-height:620px;overflow:auto"><table>
       <thead>
         <tr>
-          <th rowspan="2">Mois</th>
+          <th rowspan="2">${detailCol1}</th>
           <th colspan="5" style="text-align:center;border-bottom:1px solid var(--border)">CA HT</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Ticket moyen HT</th>
           <th colspan="3" style="text-align:center;border-bottom:1px solid var(--border)">Drive</th>
@@ -6237,8 +6409,27 @@ function quitterApercu(){
   if(banner) banner.style.display = 'none';
   document.body.style.paddingTop = '';
   applyRoleUI(CURRENT_ROLE);                 // ré-appliquer la vraie vue
-  setTimeout(()=>nav('voir-comme'), 80);     // revenir sur la page Voir comme
+  setTimeout(()=>nav('dashboard'), 80);      // revenir à la vue normale
 }
+
+// ── Petit menu déroulant de l'œil « Voir comme » (topbar) ──
+function toggleVoirCommeMenu(e){
+  if(e){ e.stopPropagation(); }
+  const m=document.getElementById('voir-comme-menu');
+  if(!m) return;
+  const ouvert = (m.style.display && m.style.display!=='none');
+  m.style.display = ouvert ? 'none' : 'block';
+}
+function voirCommeMenu(role){
+  const m=document.getElementById('voir-comme-menu'); if(m) m.style.display='none';
+  if(typeof voirComme==='function') voirComme(role);
+}
+// Fermer le menu si on clique ailleurs
+document.addEventListener('click', function(ev){
+  const wrap=document.getElementById('voir-comme-wrap');
+  const m=document.getElementById('voir-comme-menu');
+  if(m && m.style.display==='block' && wrap && !wrap.contains(ev.target)) m.style.display='none';
+});
 
 function showMgrSection(section) {
   // Afficher le bon panneau dans l'interface manager  document.getElementById('mgr-home').style.display             = section==='home'       ? 'block' : 'none';
