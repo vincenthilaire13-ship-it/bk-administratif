@@ -1300,13 +1300,6 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
           <button class="an-preset" style="padding:6px 10px" onclick="anJourStep(1)" title="Jour suivant">▶</button>
           <span id="an-jour-label" style="font-size:12px;color:var(--muted2)"></span>
         </div>
-        <div class="an-restos" id="an-restos">
-          <span class="lbl">Restaurant :</span>
-          <button class="an-resto-btn active" data-r="" onclick="anSetResto('',this)">Tous</button>
-          <button class="an-resto-btn" data-r="BK500" style="--c:#1D9E75" onclick="anSetResto('BK500',this)">BK 500 · Arènes</button>
-          <button class="an-resto-btn" data-r="BK509" style="--c:#378ADD" onclick="anSetResto('BK509',this)">BK 509 · St-Jean</button>
-          <button class="an-resto-btn" data-r="BK526" style="--c:#BA7517" onclick="anSetResto('BK526',this)">BK 526 · St-Clément</button>
-        </div>
       </div>
       <div id="an-content">
         <div class="empty"><div class="empty-icon">📊</div><div class="empty-title">Analyses</div><div class="empty-sub">Chargement…</div></div>
@@ -5917,7 +5910,7 @@ async function upsert(row, okId, errId) {
 // ══ HELPERS ══
 const pf = id => { const v=parseFloat(document.getElementById(id)?.value); return isNaN(v)?null:v; };
 const pi = id => { const v=parseInt(document.getElementById(id)?.value); return isNaN(v)?null:v; };
-const fmt = v => v?Math.round(v).toLocaleString('fr-FR'):'0';
+const fmt = v => (v||v===0)?Number(v).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}):'0';
 // ══ HELPERS HT ══ (hors taxes UNIQUEMENT — aucune conversion, aucun TTC)
 const caHT = d => (d.ca_ht!=null ? d.ca_ht : 0);
 const caHT_n1 = d => (d.ca_ht_n1!=null ? d.ca_ht_n1 : (d.ca_ht!=null ? d.ca_ht : 0));
@@ -6638,12 +6631,24 @@ async function enregistrerErreurCaisse(){
   if(!SB){ show('Base non connectée.', 'var(--red)'); return; }
 
   const resto = restoReel();
+  // Upload du justificatif (PDF ou photo) vers Dropbox si présent → on ne garde que le lien en base
+  let photoUrl = null;
+  if(EC_FILE){
+    try{
+      const ext = (EC_FILE.name||'').toLowerCase().endsWith('.pdf') ? 'pdf' : 'jpg';
+      const path = `/BK Administratif/Erreurs caisse/${resto||'NA'}/${date||'na'}/ecart-${Date.now()}.${ext}`;
+      const up = await dropboxUpload(EC_FILE, path);
+      if(up && up.url) photoUrl = up.url;
+    }catch(e){ console.warn('upload justificatif erreur caisse', e); }
+  }
   const ligne = { restaurant:resto, date, heure, montant:Math.abs(montant), sens, manager, equipier, commentaire:comment };
+  if(photoUrl) ligne.photo_url = photoUrl;
   try {
     let { error } = await SB.from('erreurs_caisse').insert(ligne);
-    if(error){ // si la colonne heure n'existe pas encore, réessayer sans
-      const sansHeure = {...ligne}; delete sansHeure.heure;
-      const r2 = await SB.from('erreurs_caisse').insert(sansHeure); error = r2.error;
+    if(error){ // colonnes manquantes (photo_url / heure) → réessais dégressifs
+      const l2={...ligne}; delete l2.photo_url;
+      let r2 = await SB.from('erreurs_caisse').insert(l2); error = r2.error;
+      if(error){ const l3={...l2}; delete l3.heure; const r3 = await SB.from('erreurs_caisse').insert(l3); error = r3.error; }
     }
     if(error){ show('Erreur : '+(error.message||error), 'var(--red)'); return; }
     // Système vivant : créer manager et équipier dans la liste équipiers
@@ -6734,9 +6739,10 @@ async function renderErreurCaisseHistorique(){
       <td class="num" style="font-weight:600;color:${r.sens==='excedent'?'var(--green)':'var(--red)'}">${r.sens==='excedent'?'+':'−'}${fmt(Math.abs(r.montant||0))} €</td>
       <td>${r.manager||'—'}</td>
       <td style="color:var(--muted2)">${r.equipier||'—'}</td>
+      <td>${r.photo_url?dbxThumb(r.photo_url,'justificatif'):'<span style="color:var(--muted2)">—</span>'}</td>
       <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td>
     </tr>`).join('');
-    el.innerHTML = `<table><thead><tr><th>Date</th><th class="num">Écart</th><th>Manager</th><th>Équipier</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
+    el.innerHTML = `<table><thead><tr><th>Date</th><th class="num">Écart</th><th>Manager</th><th>Équipier</th><th>Justif.</th><th>Note</th></tr></thead><tbody>${rows}</tbody></table>`;
   } catch(e){ el.innerHTML='<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Erreur de chargement</div></div>'; }
 }
 
@@ -9061,9 +9067,24 @@ function sosFilterDirPeriode(rows){
 function sosSetDirPreset(p){ SOS_DIR_PRESET=p; if(p!=='custom') anRender(); else anRender(); }
 function sosDirCustomChange(){ SOS_DIR_FROM=document.getElementById('sos-dir-from')?.value||''; SOS_DIR_TO=document.getElementById('sos-dir-to')?.value||''; anRender(); }
 
+// Filtre une liste de lignes (avec .date au format ISO AAAA-MM-JJ) sur la plage
+// de dates choisie en haut d'Analyses (Un jour / Une semaine / Un mois / Personnalisé).
+function anEnPeriode(rows){
+  const from = document.getElementById('an-date-from')?.value || '';
+  const to   = document.getElementById('an-date-to')?.value   || '';
+  if(!from && !to) return rows;
+  return rows.filter(r=>{
+    const d = (r && r.date) ? r.date : '';
+    if(!d) return true;            // ligne sans date : on la garde
+    if(from && d < from) return false;
+    if(to   && d > to)   return false;
+    return true;
+  });
+}
+
 // ───────── BONS REPAS — détection abus (doublons + total élevé) ─────────
 function anRenderRepas(){
-  const rows = AN_DATA.repasTout || AN_DATA.repas || [];
+  const rows = anEnPeriode(AN_DATA.repasTout || AN_DATA.repas || []);
   if(!rows.length) return _anEmpty('🍔','Aucun bon repas enregistré','Importez un PDF « Repas employés » dans Saisie — les équipiers apparaîtront ici.');
 
   const jours = [...new Set(rows.map(r=>r.date))];
@@ -9186,152 +9207,209 @@ function anRepasParPeriode(rows){
 
 // ───────── ANNULATIONS — classement manager + équipier ─────────
 function anRenderAnnulations(){
-  // ⚠️ Annulations : on prend TOUTES les journées (historique complet), pas la fenêtre de dates.
-  let rows = [...(AN_DATA.annulationsTout || AN_DATA.annulations || [])];
+  // ── Déclarations managers (photos des tickets) : table `annulations` (hors pdf_caisse) + saisies locales ──
+  // NB : on travaille sur des COPIES (…map(r=>({...r}))) pour pouvoir corriger la date sans toucher AN_DATA.
+  let decl = [...(AN_DATA.annulationsTout || AN_DATA.annulations || [])].map(r=>({...r}));
   try {
     const local = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
     let resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null); if(resto==='ALL'||resto==='Administration')resto=null;
-    const seen=new Set(rows.map(r=>r.id));
     local.forEach(a=>{
       const dISO = a.date && a.date.includes('/') ? a.date.split('/').reverse().join('-') : a.date;
       if(resto&&a.restaurant!==resto) return;
-      rows.push({date:dISO, heure:a.heure, montant:a.montant, manager:a.manager, equipier:a.equipier, commentaire:a.comment, photo:a.photo, _local:true});
+      decl.push({date:dISO, heure:a.heure, montant:a.montant, manager:a.manager, equipier:a.equipier, commentaire:a.comment, photo:a.photo, _local:true});
     });
   } catch(e){}
 
-  rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  // ── Journée fiscale : une annulation faite entre 00:00 et 05:00 appartient à la VEILLE ──
+  // (ex. 06/07 01:25 → rattachée au 05/07). On garde la date/heure réelles pour l'affichage.
+  const ANNUL_FISCAL_CUTOFF_H = 5;
+  decl.forEach(r=>{
+    const h = r.heure ? parseInt(String(r.heure).split(':')[0],10) : NaN;
+    if(!isNaN(h) && h < ANNUL_FISCAL_CUTOFF_H && r.date){
+      const dt = new Date(r.date+'T12:00:00');
+      if(!isNaN(dt.getTime())){
+        r._realdate = r.date;
+        dt.setDate(dt.getDate()-1);
+        r.date = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+        r._nuit = true;
+      }
+    }
+  });
 
-  // ── Séparation des sources ──
-  // • lignes PDF caisse (source de vérité, avec montant réel + flag photographiable)
-  // • déclarations photos managers (saisies via « Déclarer une annulation », montant souvent 0)
-  const isPdf = r => r.source==='pdf_caisse';
-  const isUber = r => isPdf(r) && r.photographiable===false;        // annulé par Uber/appli → pas de photo possible
-  const pdfRows   = rows.filter(isPdf);
-  const declRows  = rows.filter(r=>!isPdf(r));                       // déclarations photos managers + saisies locales
-  const uberRows  = pdfRows.filter(r=>r.photographiable===false);
-  const photoRows = pdfRows.filter(r=>r.photographiable!==false);   // PDF photographiables
+  decl = anEnPeriode(decl);
+  const declRows = decl.filter(r=>r.source!=='pdf_caisse').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
-  // KPIs basés sur le PDF caisse (vérité). Montant total = somme PDF.
-  const totMontant = pdfRows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
-  const nb = pdfRows.length;
-  const nbUber = uberRows.length;
-  const montantUber = uberRows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
+  // ── Source de vérité : nb + montant d'annulations par jour, depuis la Synthèse CA (table journees) ──
+  // (même donnée que le Contrôle des dépôts : journees.annulations_nb / annulations_montant)
+  const allJ = anJourneesPeriode();
+  const jByKey = {}; allJ.forEach(d=>{ jByKey[(d.restaurant||'')+'|'+d.date]=d; });
+  const journees = allJ.filter(d=>(d.annulations_nb||0)>0 || (d.annulations_montant||0)!=0);
+  const declParJour = {};
+  declRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!declParJour[k]) declParJour[k]={nb:0,rows:[]}; declParJour[k].nb++; declParJour[k].rows.push(r); });
 
-  // ── RAPPROCHEMENT PHOTOS (à partir du 17/05/2026) ──
-  // L'attendu PHOTOGRAPHIABLE provient du PDF caisse (lignes non-Uber).
-  // Les annulations « Annulé par Uber » sont exclues : aucune photo n'est possible.
-  const DATE_DEBUT_PHOTOS = '2026-06-11';
-  // attendu photographiable par journée (restaurant|date), depuis le PDF caisse
-  const attenduJour = {};
-  photoRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!attenduJour[k])attenduJour[k]={nb:0,montant:0}; attenduJour[k].nb++; attenduJour[k].montant+=Math.abs(r.montant||0); });
-  // déclarations photos managers par journée
-  const declJour = {};
-  declRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!declJour[k])declJour[k]={nb:0,montant:0}; declJour[k].nb++; declJour[k].montant+=Math.abs(r.montant||0); });
-  // Uber par journée (info affichée séparément)
-  const uberJour = {};
-  uberRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!uberJour[k])uberJour[k]={nb:0,montant:0}; uberJour[k].nb++; uberJour[k].montant+=Math.abs(r.montant||0); });
+  // Montant attribué à chaque déclaration = part du montant du jour (Synthèse) / nb d'annulations caisse
+  // du jour (le montant par annulation n'existe pas ligne à ligne, on répartit le total du jour).
+  declRows.forEach(r=>{
+    const jd = jByKey[(r.restaurant||'')+'|'+r.date];
+    const dayM = jd ? Math.abs(jd.annulations_montant||0) : 0;
+    const nbC  = jd ? (jd.annulations_nb||0) : 0;
+    r._mntAttr = nbC>0 ? (dayM/nbC) : Math.abs(r.montant||0);
+  });
 
-  const clefsJour = Array.from(new Set([...Object.keys(attenduJour), ...Object.keys(declJour)]))
-    .filter(k=> k.split('|')[1] >= DATE_DEBUT_PHOTOS);
-  const suivi = clefsJour.map(k=>{
-      const [restaurant,date]=k.split('|');
-      const attendu = attenduJour[k]?.nb||0;                 // nb photographiable attendu (PDF)
-      const montantPDF = attenduJour[k]?.montant||0;
-      const photographiees = declJour[k]?.nb||0;             // nb déclaré par managers
-      const montantDecl = declJour[k]?.montant||0;
-      const nbUberJ = uberJour[k]?.nb||0;
-      const manque = Math.max(0, attendu - photographiees);
-      let statut, col, ico;
-      if(attendu===0){ statut='Aucune annulation à photographier'; col='var(--green)'; ico='✓'; }
-      else if(photographiees>=attendu){ statut='Complet ('+photographiees+'/'+attendu+')'; col='var(--green)'; ico='✓'; }
-      else if(photographiees===0){ statut='Aucune photo ('+photographiees+'/'+attendu+')'; col='var(--red)'; ico='⛔'; }
-      else { statut='Incomplet ('+photographiees+'/'+attendu+')'; col='var(--yellow)'; ico='⚠️'; }
-      return {date, restaurant, attendu, photographiees, manque, statut, col, ico, montantPDF, montantDecl, nbUberJ};
-    })
-    .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  // Suivi par jour : caisse (Synthèse) vs déclarations managers.
+  // Responsables du jour = manager d'ouverture (🔑) + manager de fermeture (🔒), depuis la Synthèse.
+  // Vert = cette personne a bien déclaré ; Rouge = responsable mais n'a pas déclaré.
+  const suivi = journees.map(d=>{
+    const k=(d.restaurant||'')+'|'+d.date;
+    const nbCaisse = d.annulations_nb||0;
+    const mnt = Math.abs(d.annulations_montant||0);
+    const rowsJ = declParJour[k]?.rows||[];
+    const nbDecl = rowsJ.length;
+    const manque = Math.max(0, nbCaisse - nbDecl);
+    const declNames = new Set(rowsJ.map(r=>(r.manager||'').trim().toLowerCase()).filter(Boolean));
+    // Responsables : ouverture + fermeture (une seule fois si c'est la même personne),
+    // puis tout déclarant supplémentaire (équipier / autre manager).
+    const resp = [];
+    const pushResp = (ico,nom)=>{
+      if(!nom) return; nom=String(nom).trim(); if(!nom) return;
+      const ex = resp.find(x=>x.nom.toLowerCase()===nom.toLowerCase());
+      if(ex){ if(!ex.ico.includes(ico)) ex.ico += ico; }   // même personne ouverture + fermeture → on cumule les icônes
+      else resp.push({ico, nom});
+    };
+    pushResp('🔑', d.manager_ouverture);
+    pushResp('🔒', d.manager_fermeture);
+    rowsJ.forEach(r=> pushResp('📸', r.manager) );
+    const respHtml = resp.length ? resp.map(p=>{
+      const aDecl = declNames.has(p.nom.trim().toLowerCase());
+      const cc = aDecl ? 'var(--green)' : 'var(--red)';
+      return `<span style="color:${cc};font-weight:600">${p.ico} ${p.nom}${aDecl?' ✓':''}</span>`;
+    }).join(' · ') : '<span style="color:var(--muted)">—</span>';
+    let statut,col,ico;
+    if(nbCaisse===0){ statut='—'; col='var(--muted)'; ico='—'; }
+    else if(nbDecl>=nbCaisse){ statut='Déclaré ('+nbDecl+'/'+nbCaisse+')'; col='var(--green)'; ico='✓'; }
+    else if(nbDecl===0){ statut=nbCaisse+' à déclarer'; col='var(--red)'; ico='⛔'; }
+    else { statut='Incomplet ('+nbDecl+'/'+nbCaisse+')'; col='var(--yellow)'; ico='⚠️'; }
+    return {date:d.date, restaurant:d.restaurant, nbCaisse, mnt, nbDecl, manque, statut, col, ico, respHtml};
+  });
 
-  const totAttendu = suivi.reduce((a,b)=>a+b.attendu,0);
-  const totPhoto = suivi.reduce((a,b)=>a+b.photographiees,0);
+  // ── Déclarations « orphelines » : déclarées un jour où la Synthèse CA ne voit AUCUNE annulation ──
+  // (le plus souvent un décalage de date : annulation de nuit datée du lendemain alors qu'elle
+  //  appartient à la journée fiscale de la veille). On les rend visibles au lieu de les cacher.
+  const suiviKeys = new Set(journees.map(d=>(d.restaurant||'')+'|'+d.date));
+  let nbOrphelins = 0;
+  Object.keys(declParJour).forEach(k=>{
+    if(suiviKeys.has(k)) return;
+    const [restaurant,date]=k.split('|');
+    const rowsJ=declParJour[k].rows;
+    const jd=jByKey[k]||{};
+    const resp=[];
+    const pr=(ico,nom)=>{ if(!nom)return; nom=String(nom).trim(); if(!nom)return; const ex=resp.find(x=>x.nom.toLowerCase()===nom.toLowerCase()); if(ex){if(!ex.ico.includes(ico))ex.ico+=ico;} else resp.push({ico,nom}); };
+    pr('🔑',jd.manager_ouverture); pr('🔒',jd.manager_fermeture); rowsJ.forEach(r=>pr('📸',r.manager));
+    const respHtml = resp.length ? resp.map(p=>`<span style="color:var(--yellow);font-weight:600">${p.ico} ${p.nom}</span>`).join(' · ') : '<span style="color:var(--muted)">—</span>';
+    const mntDecl = rowsJ.reduce((a,b)=>a+Math.abs(b.montant||0),0);
+    nbOrphelins += rowsJ.length;
+    suivi.push({date, restaurant, nbCaisse:0, mnt:mntDecl, nbDecl:rowsJ.length, manque:0, statut:'Déclaration sans annulation caisse (date ?)', col:'var(--yellow)', ico:'⚠️', respHtml, orphan:true});
+  });
+  suivi.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+
+  // ── KPIs (basés sur la Synthèse CA — fiable) ──
+  const totNb = suivi.reduce((a,b)=>a+b.nbCaisse,0);
+  const totMontant = suivi.reduce((a,b)=>a+(b.orphan?0:b.mnt),0);
+  const totDecl = suivi.reduce((a,b)=>a+Math.min(b.nbDecl,b.nbCaisse),0);
   const totManque = suivi.reduce((a,b)=>a+b.manque,0);
   const joursIncomplets = suivi.filter(s=>s.manque>0).length;
 
   const kpis = `
   <div class="kpi-grid">
-    <div class="kpi bad"><div class="kpi-label">Total annulations (PDF caisse)</div><div class="kpi-val">${nb}</div></div>
+    <div class="kpi bad"><div class="kpi-label">Total annulations (caisse)</div><div class="kpi-val">${totNb}</div><div style="font-size:10px;color:var(--muted2)">${suivi.length} jour(s) concerné(s)</div></div>
     <div class="kpi bad"><div class="kpi-label">Montant total</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
-    <div class="kpi ${totManque>0?'bad':'ok'}"><div class="kpi-label">Photos manquantes (depuis 17/05)</div><div class="kpi-val">${totManque}</div></div>
-    <div class="kpi"><div class="kpi-label">Dont annulé par webuser (considéré fait)</div><div class="kpi-val">${nbUber} · ${fmt(montantUber)} €</div></div>
+    <div class="kpi ${totManque>0?'bad':'ok'}"><div class="kpi-label">À déclarer (tickets manquants)</div><div class="kpi-val">${totManque}</div><div style="font-size:10px;color:var(--muted2)">${joursIncomplets} jour(s)</div></div>
+    <div class="kpi ${totDecl>=totNb&&totNb>0?'ok':'warn'}"><div class="kpi-label">Déclarées (photos faites)</div><div class="kpi-val">${totDecl}/${totNb}</div></div>
   </div>`;
 
-  // Tableau de rapprochement photos
-  const suiviRows = suivi.slice(0,120).map(s=>`
+  // ── Tableau par jour (caisse vs déclarations) ──
+  const suiviRows = suivi.slice(0,200).map(s=>`
     <tr>
-      <td style="color:var(--accent)">${formatDate(s.date)}</td>
-      <td class="num">${s.attendu}</td>
-      <td class="num">${s.photographiees}</td>
+      <td style="color:var(--accent)">${formatDate(s.date)} ${jourSemaine(new Date(s.date))}</td>
+      <td class="num" style="font-weight:600">${s.nbCaisse}</td>
+      <td class="num" style="color:var(--red);font-weight:600">${fmt(s.mnt)} €</td>
+      <td class="num">${s.nbDecl}</td>
       <td class="num" style="font-weight:600;color:${s.manque>0?'var(--red)':'var(--green)'}">${s.manque>0?s.manque:'0'}</td>
-      <td class="num" style="color:var(--muted2)">${s.nbUberJ||'—'}</td>
-      <td class="num" style="color:var(--muted2)">${fmt(s.montantPDF)} €</td>
-      <td class="num" style="color:var(--muted2)">${fmt(s.montantDecl)} €</td>
       <td><span style="color:${s.col};font-weight:600">${s.ico} ${s.statut}</span></td>
+      <td style="font-size:11px">${s.respHtml}</td>
     </tr>`).join('');
   const suiviTbl = suivi.length ? `
   <div class="table-card" style="margin-top:16px">
-    <div class="table-header"><span class="table-title">📸 Rapprochement — annulations (depuis le 17/05/2026)</span><span style="font-size:10px;color:var(--muted)">${totPhoto}/${totAttendu} déclarées</span></div>
-    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">L'attendu = annulations <strong>à photographier</strong> (annulé par un manager). Les annulations <strong>« annulé par webuser »</strong> sont considérées comme faites (aucune photo requise) et affichées dans la colonne « webuser » pour info. Comparé aux annulations déclarées par les managers. ⚠️ ou ⛔ = des photos manquent.</div>
-    <div class="table-wrap" style="max-height:320px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">À photographier</th><th class="num">Déclarées</th><th class="num">Manque</th><th class="num">webuser</th><th class="num">Montant PDF</th><th class="num">Montant déclaré</th><th>Statut</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
-  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Le rapprochement démarre le 17/05/2026. Aucune journée concernée pour l'instant (ou PDF des annulations non importé).</div></div>`;
+    <div class="table-header"><span class="table-title">📅 Annulations par jour — caisse vs déclarations</span><span style="font-size:10px;color:var(--muted)">${totDecl}/${totNb} déclarées</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">« Nb caisse » et « Montant » = annulations vues sur la <strong>Synthèse CA</strong> du jour. « Déclarées » = déclarations (photos des 3 tickets) faites par les managers. Colonne <strong>Responsables</strong> : 🔑 ouverture · 🔒 fermeture — <span style="color:var(--green);font-weight:600">vert = a déclaré ✓</span>, <span style="color:var(--red);font-weight:600">rouge = n'a pas déclaré</span>. <span style="color:var(--muted)">🌙 Les annulations déclarées avant 05:00 sont rattachées à la journée fiscale de la veille.</span>${nbOrphelins>0?`<br><span style="color:var(--yellow)">⚠️ ${nbOrphelins} déclaration(s) tombent un jour sans annulation en caisse (ligne « Nb caisse = 0 ») — à vérifier (mauvaise date de saisie ?).</span>`:''}</div>
+    <div class="table-wrap" style="max-height:360px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb caisse</th><th class="num">Montant</th><th class="num">Déclarées</th><th class="num">À déclarer</th><th>Statut</th><th>Responsables (🔑 ouv · 🔒 ferm)</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
+  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune annulation sur la période sélectionnée (d'après la Synthèse CA). Élargis la période en haut.</div></div>`;
 
-  // Par responsable (manager) — uniquement lignes PDF photographiables (Uber exclu : pas de responsable)
-  // + déclarations photos managers, pour couvrir l'historique antérieur aux PDF.
-  const baseClt = [...photoRows, ...declRows];
-  const byMgr={}; baseClt.forEach(r=>{const m=r.manager||'(non renseigné)'; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0);});
-  const cltMgr=Object.values(byMgr).sort((a,b)=>b.montant-a.montant);
-  const byEq={}; baseClt.forEach(r=>{ if(!r.equipier)return; const e=r.equipier; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=Math.abs(r.montant||0);});
-  const cltEq=Object.values(byEq).sort((a,b)=>b.montant-a.montant);
+  // ── Topo par responsable : présence sur des jours à annulations + combien il en déclare ──
+  // Un jour à annulations est rattaché à l'ouverture ET à la fermeture (une seule fois si c'est
+  // la même personne). On ne « blâme » personne quand rien n'est déclaré : on montre le positif
+  // (jours de service avec annulations, nb d'annulations, et combien la personne a déclaré).
+  const byResp={};
+  journees.forEach(d=>{
+    const nbC=d.annulations_nb||0; if(nbC<=0) return;
+    const k=(d.restaurant||'')+'|'+d.date;
+    const rowsJ=declParJour[k]?.rows||[];
+    const declNames=new Set(rowsJ.map(r=>(r.manager||'').trim().toLowerCase()).filter(Boolean));
+    const mnt=Math.abs(d.annulations_montant||0);
+    const resps=[...new Set([d.manager_ouverture, d.manager_fermeture].filter(Boolean).map(n=>String(n).trim()))];
+    resps.forEach(nom=>{
+      if(!byResp[nom]) byResp[nom]={nom, jours:0, nbAnnul:0, montant:0, decl:0};
+      byResp[nom].jours++; byResp[nom].nbAnnul+=nbC; byResp[nom].montant+=mnt;
+      if(declNames.has(nom.toLowerCase())) byResp[nom].decl++;
+    });
+  });
+  const respList=Object.values(byResp).sort((a,b)=>b.nbAnnul-a.nbAnnul || b.jours-a.jours);
 
-  const cltMgrTbl = cltMgr.length ? anClassement('🏆 Classement — annulé par (pire → meilleur)', cltMgr.length+' personnes',
+  // Classement équipiers (qui a physiquement fait l'annulation, si saisi) — avec montant réparti
+  const byEq={}; declRows.forEach(r=>{ if(!r.equipier)return; const e=r.equipier; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=(r._mntAttr||0);});
+  const cltEq=Object.values(byEq).sort((a,b)=>b.montant-a.montant || b.nb-a.nb);
+
+  const cltMgrTbl = respList.length ? anClassement('👔 Topo responsables — présence sur les annulations & déclarations faites', respList.length+' managers · trié par nb d\'annulations',
     [
       {label:'#', render:(l,i)=>anBadge(i)},
-      {label:'Annulé par', key:'nom'},
-      {label:'Nb', num:true, key:'nb'},
-      {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,30,80,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
-    ], cltMgr) : '';
+      {label:'Manager', key:'nom'},
+      {label:'Jours avec annul.', num:true, key:'jours'},
+      {label:'Nb annulations', num:true, render:l=>{const f=anFeu(l.nbAnnul,4,8,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${l.nbAnnul}</span>`;}},
+      {label:'Montant', num:true, render:l=>fmt(l.montant)+' €'},
+      {label:'Jours déclarés', num:true, render:l=>`<span style="color:${l.decl>0?'var(--green)':'var(--muted2)'};font-weight:600">${l.decl}/${l.jours}</span>`},
+    ], respList) : '';
 
-  const cltEqTbl = cltEq.length ? anClassement('🧑‍🍳 Classement équipiers — annulations (pire → meilleur)', cltEq.length+' équipiers identifiés',
+  const cltEqTbl = cltEq.length ? anClassement('🧑‍🍳 Classement équipiers — annulations', cltEq.length+' équipiers · montant = part du total du jour',
     [
       {label:'#', render:(l,i)=>anBadge(i)},
       {label:'Équipier', key:'nom'},
-      {label:'Nb', num:true, key:'nb'},
-      {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,30,80,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
-    ], cltEq) : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun équipier renseigné sur les annulations. Saisissez le nom de l'équipier lors de la déclaration pour suivre les responsabilités individuelles.</div></div>`;
+      {label:'Nb annulations', num:true, render:l=>{const f=anFeu(l.nb,3,6,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${l.nb}</span>`;}},
+      {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,40,100,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
+    ], cltEq) : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun équipier renseigné sur les annulations déclarées. Saisissez le nom de l'équipier lors de la déclaration.</div></div>`;
 
-  // Détail : PDF caisse + déclarations, avec canal + tag Uber
-  const detailSrc = [...pdfRows, ...declRows].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-  const detail = detailSrc.slice(0,200).map(r=>{
-    const uber = isUber(r);
-    const par = uber ? '<span style="color:var(--blue)">🌐 webuser</span>' : (r.manager||'—');
-    return `
-    <tr><td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
+  // ── Détail des déclarations (qui, photo, note) ──
+  const detail = declRows.slice(0,200).map(r=>`
+    <tr><td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}${r._nuit?` <span title="Annulation de nuit (réelle : ${r._realdate?formatDate(r._realdate):''} à ${r.heure||''}) — rattachée à la journée fiscale de la veille" style="color:var(--yellow)">🌙</span>`:''}</td>
       <td style="color:var(--muted2)">${r.heure||'—'}</td>
-      <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
-      <td>${par}</td>
+      <td class="num" style="color:${(r._mntAttr||0)>0?'var(--red)':'var(--muted2)'};font-weight:600">${(r._mntAttr||0)>0?fmt(r._mntAttr)+' €':'—'}</td>
+      <td>${r.manager||'—'}</td>
       <td style="color:var(--muted2)">${r.canal||r.equipier||'—'}</td>
-      <td>${uber?'<span style="color:var(--muted)">— (considéré fait)</span>':(r.photo||!isPdf(r)?'<span style="color:var(--green)">📸 oui</span>':'<span style="color:var(--yellow)">à photographier</span>')}</td>
-      <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`;}).join('');
-  const detailTbl = detailSrc.length ? `
+      <td>${(dbxThumb(r.photo_bad_url,'ticket erreur')+dbxThumb(r.photo_annul_url,'ticket annulation')+dbxThumb(r.photo_good_url,'ticket corrigé')) || ((r.photo||r._local)?'<span style="color:var(--green)">📸 oui</span>':'<span style="color:var(--muted2)">—</span>')}</td>
+      <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`).join('');
+  const detailTbl = declRows.length ? `
   <div class="table-card" style="margin-top:16px">
-    <div class="table-header"><span class="table-title">Détail des annulations (PDF caisse + déclarations)</span><span style="font-size:10px;color:var(--muted)">${detailSrc.length} lignes</span></div>
-    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Annulé par</th><th>Canal / caisse</th><th>Photo</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
-  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune annulation détaillée enregistrée.</div></div>`;
+    <div class="table-header"><span class="table-title">Détail des annulations déclarées</span><span style="font-size:10px;color:var(--muted)">${declRows.length} déclaration(s)</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Le <strong>montant</strong> est la part du montant du jour (Synthèse CA) répartie sur les annulations de la journée — le ticket ne donne pas le montant ligne à ligne. 🌙 = annulation de nuit rattachée à la veille.</div>
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Annulé / déclaré par</th><th>Équipier / caisse</th><th>Photo</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
+  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune déclaration d'annulation sur la période (avec le détail des tickets / équipiers).</div></div>`;
 
-  return kpis + suiviTbl + `<div style="height:16px"></div>` + cltMgrTbl + (cltMgr.length?`<div style="height:16px"></div>`:'') + cltEqTbl + detailTbl;
+  return kpis + suiviTbl + `<div style="height:16px"></div>` + cltMgrTbl + (respList.length?`<div style="height:16px"></div>`:'') + cltEqTbl + detailTbl;
 }
 
 // ───────── ERREURS DE CAISSE — suivi & classements ─────────
 function anRenderErreursCaisse(){
-  const rows = [...(AN_DATA.erreursCaisseTout || [])];
-  if(!rows.length) return _anEmpty('💶','Aucune erreur de caisse','Déclarez les erreurs via le menu « Erreur caisse » — elles apparaîtront ici.');
+  const rows = anEnPeriode([...(AN_DATA.erreursCaisseTout || [])]);
+  if(!rows.length) return _anEmpty('💶','Aucune erreur de caisse sur la période','Change la période en haut, ou déclare les erreurs via le menu « Erreur caisse ».');
   rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
   const totMontant = rows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
@@ -9377,11 +9455,12 @@ function anRenderErreursCaisse(){
       <td class="num" style="font-weight:600;color:${r.sens==='excedent'?'var(--green)':'var(--red)'}">${r.sens==='excedent'?'+':'−'}${fmt(Math.abs(r.montant||0))} €</td>
       <td>${r.manager||'—'}</td>
       <td style="color:var(--muted2)">${r.equipier||'—'}</td>
+      <td>${r.photo_url?dbxThumb(r.photo_url,'justificatif'):'<span style="color:var(--muted2)">—</span>'}</td>
       <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`).join('');
   const detailTbl = `
   <div class="table-card" style="margin-top:16px">
     <div class="table-header"><span class="table-title">Détail des erreurs de caisse</span><span style="font-size:10px;color:var(--muted)">${nb} erreurs</span></div>
-    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Écart</th><th>Manager</th><th>Équipier</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
+    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Écart</th><th>Manager</th><th>Équipier</th><th>Justificatif</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
   </div>`;
 
   return kpis + cltEqTbl + `<div style="height:16px"></div>` + cltMgrTbl + detailTbl;
@@ -9415,7 +9494,7 @@ function anRenderCorrections(){
   <div class="kpi-grid">
     <div class="kpi ${avgPct<=seuil?'ok':'bad'}"><div class="kpi-label">% moyen / CA</div><div class="kpi-val">${avgPct.toFixed(2)}%</div><div style="font-size:10px;color:var(--muted2)">seuil ${seuil}%</div></div>
     <div class="kpi neutral"><div class="kpi-label">Montant total</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
-    <div class="kpi neutral"><div class="kpi-label">Nb corrections</div><div class="kpi-val">${fmt(totNb)}</div><div style="font-size:10px;color:var(--muted2)">${rows.length} jours</div></div>
+    <div class="kpi neutral"><div class="kpi-label">Nb corrections</div><div class="kpi-val">${(totNb||0).toLocaleString('fr-FR')}</div><div style="font-size:10px;color:var(--muted2)">${rows.length} jours</div></div>
   </div>
   <div class="chart-card full" style="margin-bottom:16px">
     <div class="chart-label">% corrections / CA par jour</div>
@@ -9902,6 +9981,81 @@ let ANN_PHOTOS = {bad:null, annul:null, good:null};
 
 
 
+// ══════════════════════════════════════════════════════════════
+//  DROPBOX — photos des annulations & erreurs caisse
+//  Le jeton vient du serveur (/api/dropbox-token) : aucun secret dans ce fichier.
+//  (même mécanisme que BK Technique)
+// ══════════════════════════════════════════════════════════════
+async function _fetchTimeout(url, options={}, ms=30000){
+  const ctrl=new AbortController(); const t=setTimeout(()=>ctrl.abort(), ms);
+  try{ return await fetch(url,{...options, signal:ctrl.signal}); } finally{ clearTimeout(t); }
+}
+let _dbxTok=null, _dbxExp=0;
+async function getDbxToken(){
+  if(_dbxTok && Date.now() < _dbxExp-60000) return _dbxTok;
+  const res=await _fetchTimeout('/api/dropbox-token',{method:'POST'},20000);
+  if(!res.ok) throw new Error('token dropbox: '+res.status);
+  const d=await res.json(); _dbxTok=d.access_token; _dbxExp=Date.now()+((d.expires_in||14400)*1000); return _dbxTok;
+}
+async function dropboxUpload(file, path){
+  let tok=await getDbxToken();
+  const up=(t)=>_fetchTimeout('https://content.dropboxapi.com/2/files/upload',{method:'POST',headers:{'Authorization':'Bearer '+t,'Dropbox-API-Arg':JSON.stringify({path,mode:'add',autorename:true}),'Content-Type':'application/octet-stream'},body:file},45000);
+  let r; try{ r=await up(tok); }catch(e){ _dbxTok=null;_dbxExp=0; tok=await getDbxToken(); r=await up(tok); }
+  if(!r.ok){ if(r.status===401){ _dbxTok=null;_dbxExp=0; tok=await getDbxToken(); r=await up(tok);} if(!r.ok) throw new Error('upload dropbox '+r.status); }
+  const uploaded=await r.json();
+  let shareUrl='';
+  const sh=await _fetchTimeout('https://api.dropboxapi.com/2/sharing/create_shared_link_with_settings',{method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({path:uploaded.path_lower,settings:{requested_visibility:'public'}})},20000);
+  if(sh.ok){ const sd=await sh.json(); shareUrl=(sd.url||'').replace('?dl=0','?raw=1'); }
+  else { const ls=await _fetchTimeout('https://api.dropboxapi.com/2/sharing/list_shared_links',{method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({path:uploaded.path_lower})},20000); if(ls.ok){ const ld=await ls.json(); shareUrl=((ld.links||[])[0]?.url||'').replace('?dl=0','?raw=1'); } }
+  return { name:uploaded.name, url:shareUrl, path:uploaded.path_display };
+}
+// Transforme un lien de partage Dropbox en URL d'affichage direct
+function dbxImg(url){ if(!url) return ''; if(url.startsWith('data:')) return url; let d=url.replace('www.dropbox.com','dl.dropboxusercontent.com'); if(d.includes('dl=0'))d=d.replace('dl=0','raw=1'); else if(d.includes('dl=1'))d=d.replace('dl=1','raw=1'); else if(!d.includes('raw=1'))d+=(d.includes('?')?'&':'?')+'raw=1'; return d; }
+// Ouvre une photo/document en plein écran (dans l'app, sans télécharger)
+function dbxOpen(url){
+  if(!url) return; const src=dbxImg(url);
+  const lower=(url.split('?')[0]||'').toLowerCase();
+  const isImg=src.startsWith('data:image')||/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(lower);
+  const inner = (isImg||src.startsWith('data:'))
+    ? `<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px">`
+    : `<iframe src="https://docs.google.com/viewer?url=${encodeURIComponent(src)}&embedded=true" style="width:92%;height:88%;border:none;border-radius:8px;background:#fff"></iframe>`;
+  const ov=document.createElement('div'); ov.id='dbx-ov';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out';
+  ov.onclick=(e)=>{ if(e.target===ov||e.target.id==='dbx-close') ov.remove(); };
+  ov.innerHTML=`<button id="dbx-close" style="position:absolute;top:12px;right:16px;background:rgba(255,255,255,.15);border:none;color:#fff;padding:8px 16px;border-radius:20px;cursor:pointer;font-weight:700">✕ Fermer</button>${inner}`;
+  document.body.appendChild(ov);
+}
+// Petite vignette cliquable (ou un tiret si pas de photo)
+function dbxThumb(url, label){
+  if(!url) return '';
+  return `<img src="${dbxImg(url)}" title="${label||'photo'}" onclick="dbxOpen('${String(url).replace(/'/g,"\\'")}')" style="width:34px;height:34px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid var(--border2);margin-right:3px" onerror="this.style.display='none'">`;
+}
+
+// Enregistre l'annulation dans Supabase APRÈS avoir tenté d'uploader les photos vers Dropbox.
+async function persistAnnulationSupabase(base, equipier, photos){
+  try{
+    const urls={};
+    const map=[['bad','photo_bad_url','ticket-erreur'],['annul','photo_annul_url','ticket-annulation'],['good','photo_good_url','ticket-corrige']];
+    for(const [k,col,tag] of map){
+      if(photos && photos[k]){
+        try{
+          const path=`/BK Administratif/Annulations/${base.restaurant||'NA'}/${base.date||'na'}/${tag}-${Date.now()}.jpg`;
+          const up=await dropboxUpload(photos[k], path);
+          if(up && up.url) urls[col]=up.url;
+        }catch(e){ console.warn('upload photo annulation '+k, e); }
+      }
+    }
+    const full={...base, ...urls, equipier};
+    // Cascade de repli : si des colonnes n'existent pas encore en base, on retire d'abord les photos, puis l'équipier.
+    const attempts=[full, {...base, ...urls}, {...base, equipier}, base];
+    for(const rec of attempts){
+      const {error}=await SB.from('annulations').insert(rec);
+      if(!error) return;
+      console.warn('insert annulation (repli)', error.message||error);
+    }
+  }catch(e){ console.warn('persistAnnulationSupabase', e); }
+}
+
 function sauvegarderAnnulation() {
   if(ANN_PHOTOS_COUNT === 0 && !document.getElementById('chk-miss-bad')?.checked
      && !document.getElementById('chk-miss-annul')?.checked
@@ -9950,13 +10104,9 @@ function sauvegarderAnnulation() {
         ticket_annul_manquant: missAnnul||null,
         ticket_good_manquant: missGood||null
       };
-      // Tente avec equipier ; si la colonne n'existe pas encore en base, réessaie sans (l'équipier reste dans localStorage)
-      SB.from('annulations').insert({...base, equipier: equipier}).then(({error})=>{
-        if(error){
-          console.warn('SB annulation (1er essai)', error);
-          SB.from('annulations').insert(base).then(({error:e2})=>{ if(e2) console.warn('SB annulation (sans equipier)', e2); });
-        }
-      });
+      // Upload des photos vers Dropbox puis insertion Supabase (avec repli si colonnes manquantes)
+      const photos = { bad:ANN_PHOTOS.bad, annul:ANN_PHOTOS.annul, good:ANN_PHOTOS.good };
+      persistAnnulationSupabase(base, equipier, photos);
       // Système vivant : tout nom mentionné (équipier ET manager) est créé dans la liste équipiers s'il n'existe pas
       const restoAnn = CURRENT_USER?.resto||'BK526';
       const dISO2 = date && date.includes('/') ? date.split('/').reverse().join('-') : date;
