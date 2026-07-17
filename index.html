@@ -579,6 +579,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires')"><span>🗓️</span><span>Horaires</span></div>
     <div class="nav-item role-full-only" style="display:none" onclick="nav('horaires-import')"><span>📥</span><span>Importer ventes ¼h</span></div>
     <div class="nav-section role-admin-only" style="display:none">Config</div>
+    <div class="nav-item role-admin-only" style="display:none" onclick="nav('admin-import')"><span>📥</span><span>Importer des documents</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('seuils')"><span>⚙️</span><span>Seuils d'alerte</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('setup')"><span>🔧</span><span>Configuration</span></div>
     <div class="nav-item role-admin-only" style="display:none" onclick="nav('acces')"><span>🔑</span><span>Gestion accès</span></div>
@@ -888,6 +889,30 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
           </div>
         </div>
 
+      </div>
+    </section>
+
+        <!-- IMPORT ADMIN (document par document) -->
+    <section class="section" id="sec-admin-import">
+      <div style="max-width:860px">
+        <div class="table-card" style="margin-bottom:16px">
+          <div class="table-header"><span class="table-title">📥 Importer des documents</span></div>
+          <div style="padding:14px 16px;font-size:12px;color:var(--muted2);line-height:1.6">
+            Espace réservé à l'administrateur : dépose <strong>un document à la fois</strong>, quand tu veux, pour remplir l'application (sans passer par « Ma journée »). L'appli reconnaît automatiquement le type de fichier.<br>
+            ✅ Pris en charge ici : <strong>Rapport des annulations</strong> (PDF, journalier <em>ou</em> mensuel) · <strong>Déclaration de caisse</strong> (CSV, mensuel → écarts caisse par salarié).<br>
+            <span style="color:var(--muted)">🔜 Synthèse CA · SOS Drive · Ventes ¼h · Bons repas : à ajouter ici ensuite.</span>
+          </div>
+          <div style="padding:0 16px 16px">
+            <div id="adm-drop" class="drop-zone" style="border:2px dashed var(--border2);border-radius:12px;padding:26px;text-align:center;cursor:pointer"
+                 ondragover="event.preventDefault();this.classList.add('drag-over')" ondragleave="this.classList.remove('drag-over')" ondrop="admImportDrop(event)" onclick="document.getElementById('adm-file').click()">
+              <div style="font-size:30px">📄</div>
+              <div style="font-weight:600;margin-top:6px">Glisser un ou plusieurs fichiers ici, ou cliquer pour choisir</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:4px">PDF (Rapport des annulations) ou CSV (Déclaration de caisse)</div>
+            </div>
+            <input type="file" id="adm-file" accept="application/pdf,.pdf,.csv,text/csv" multiple style="display:none" onchange="admImportFiles(this.files)">
+          </div>
+        </div>
+        <div id="adm-import-result"></div>
       </div>
     </section>
 
@@ -1299,6 +1324,18 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
           <input type="date" id="an-jour-date" onchange="anJourChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--card);color:var(--text);font-size:13px;font-family:var(--font-mono)">
           <button class="an-preset" style="padding:6px 10px" onclick="anJourStep(1)" title="Jour suivant">▶</button>
           <span id="an-jour-label" style="font-size:12px;color:var(--muted2)"></span>
+        </div>
+        <div class="an-jour" id="an-semaine" style="display:none;align-items:center;gap:8px;margin-bottom:10px">
+          <button class="an-preset" style="padding:6px 10px" onclick="anSemaineStep(-1)" title="Semaine précédente">◀</button>
+          <select id="an-semaine-sel" onchange="anSemaineChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--card);color:var(--text);font-size:13px"></select>
+          <button class="an-preset" style="padding:6px 10px" onclick="anSemaineStep(1)" title="Semaine suivante">▶</button>
+          <span id="an-semaine-label" style="font-size:12px;color:var(--muted2)"></span>
+        </div>
+        <div class="an-jour" id="an-mois" style="display:none;align-items:center;gap:8px;margin-bottom:10px">
+          <button class="an-preset" style="padding:6px 10px" onclick="anMoisStep(-1)" title="Mois précédent">◀</button>
+          <select id="an-mois-sel" onchange="anMoisChange()" style="padding:6px 10px;border-radius:7px;border:1px solid var(--border2);background:var(--card);color:var(--text);font-size:13px"></select>
+          <button class="an-preset" style="padding:6px 10px" onclick="anMoisStep(1)" title="Mois suivant">▶</button>
+          <span id="an-mois-label" style="font-size:12px;color:var(--muted2)"></span>
         </div>
       </div>
       <div id="an-content">
@@ -3450,7 +3487,7 @@ const SEED_BK500_2026 = [
 // DATA = 2026 par défaut, avec accès à SEED_2025 pour comparaison
 const SEED = SEED_2026;
 // ══ NAVIGATION ══
-const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès','voir-comme':'Voir comme',managers:'Suivi managers',analyses:'Analyses',equipiers:'Équipiers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)',imports:'Imports — contrôle des PDF',retours:'Correctifs & demandes'};
+const TITLES = {dashboard:'Dashboard',journee:'Journée détaillée',historique:'Historique',comparaison:'Comparaison N-1',saisie:'Importer une journée (PDF)','admin-import':'Importer des documents',seuils:'Seuils d\'alerte',setup:'Configuration',manager:'Ma journée',acces:'Gestion des accès','voir-comme':'Voir comme',managers:'Suivi managers',analyses:'Analyses',equipiers:'Équipiers',ventes:'Ventes par demi-heure',annulations:'Annulations',horaires:'Horaires & Planning','horaires-import':'Importer les horaires','import-masse':'Import massif (Admin)',imports:'Imports — contrôle des PDF',retours:'Correctifs & demandes'};
 // ══════════════════════════════════════════════════════════════
 //  SECTION IMPORTS — contrôle visuel des 4 PDF par journée
 // ══════════════════════════════════════════════════════════════
@@ -3519,16 +3556,20 @@ async function sbMapRD(table, cols, from, to, pick){
 }
 
 // Lecture paginée renvoyant un map "restaurant|date" → nombre de lignes (déclarations).
-async function sbCountRD(table, from, to){
+async function sbCountRD(table, from, to, opts){
+  // opts.cols : colonnes à lire (défaut 'restaurant,date') ; opts.filter(row) : ne compter que si vrai
   const map = {};
   if(!SB) return map;
+  const cols = (opts&&opts.cols) || 'restaurant,date';
+  const filter = opts&&opts.filter;
   const PAGE = 1000; let offset = 0;
   for(let garde=0; garde<200; garde++){
-    const { data, error } = await SB.from(table).select('restaurant,date')
+    const { data, error } = await SB.from(table).select(cols)
       .gte('date',from).lte('date',to).order('date',{ascending:true}).range(offset, offset+PAGE-1);
     if(error){ console.error('[sbCountRD]', table, error); break; }
     const rows = data||[];
     rows.forEach(x=>{
+      if(filter && !filter(x)) return;
       const dt=(x.date||'').slice(0,10);
       let rt=x.restaurant; if(rt==='ALL'||rt==='Administration') rt='BK526';
       map[rt+'|'+dt] = (map[rt+'|'+dt]||0) + 1;
@@ -4479,11 +4520,38 @@ async function checkFichiersManquants(){
     const SEUIL_EC = (typeof SEUILS!=='undefined' && SEUILS.erreur_caisse_max) ? SEUILS.erreur_caisse_max : 5;
     const annulCaisse = await sbMapRD('journees', 'restaurant,date,annulations_nb,annulations_montant', SUIVI_DATE_DEBUT, finISO, x=>({nb:x.annulations_nb||0, mnt:x.annulations_montant||0}));
     const ecartCaisse = await sbMapRD('journees', 'restaurant,date,erreur_caisse', SUIVI_DATE_DEBUT, finISO, x=>(x.erreur_caisse!=null?x.erreur_caisse:null));
-    const declAnnul   = await sbCountRD('annulations', SUIVI_DATE_DEBUT, finISO);
+    const declAnnul   = await sbCountRD('annulations', SUIVI_DATE_DEBUT, finISO, {cols:'restaurant,date,source', filter:x=>x.source!=='pdf_caisse'});
+    // Lignes du rapport caisse (à photographier, hors webuser) par jour — pour lister chaque annulation
+    // + jours où le rapport EXISTE (webuser inclus) → pour ne PAS retomber sur la Synthèse CA ces jours-là
+    const annulLignes = {};
+    const joursRapport = new Set();
+    try {
+      let off=0; const PG=1000;
+      for(let g=0; g<200; g++){
+        const {data,error} = await SB.from('annulations').select('restaurant,date,montant,manager,photographiable,source').eq('source','pdf_caisse').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO).order('date',{ascending:true}).range(off,off+PG-1);
+        if(error) break; const rows=data||[];
+        rows.forEach(x=>{ let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; const k=rt+'|'+(x.date||'').slice(0,10); joursRapport.add(k); if(x.photographiable===false) return; (annulLignes[k]=annulLignes[k]||[]).push({montant:Math.abs(x.montant||0), nom:x.manager||''}); });
+        if(rows.length<PG) break; off+=PG;
+      }
+    } catch(e){ console.warn('annulLignes', e); }
     // Manager d'ouverture / fermeture (pour savoir qui était de service un jour incomplet)
     const mgrOuv = await sbMapRD('journees', 'restaurant,date,manager_ouverture', SUIVI_DATE_DEBUT, finISO, x=>x.manager_ouverture||'');
     const mgrFer = await sbMapRD('journees', 'restaurant,date,manager_fermeture', SUIVI_DATE_DEBUT, finISO, x=>x.manager_fermeture||'');
-    const declErrCais = await sbCountRD('erreurs_caisse', SUIVI_DATE_DEBUT, finISO);
+    // Justifications d'erreur caisse SAISIES (hors import « Déclaration de caisse »)
+    const declErrCais = await sbCountRD('erreurs_caisse', SUIVI_DATE_DEBUT, finISO, {cols:'restaurant,date,source', filter:x=>x.source!=='declaration_caisse'});
+    // Écarts caisse IMPORTÉS (Déclaration de caisse) par jour : une ligne par session > seuil, avec le NOM du caissier
+    const ecartLignes = {};        // key -> [{montant, nom, manager, sens}]
+    const joursDeclCaisse = new Set();
+    try {
+      let off=0; const PG=1000;
+      for(let g=0; g<200; g++){
+        const {data,error} = await SB.from('erreurs_caisse').select('restaurant,date,montant,sens,equipier,manager,source').eq('source','declaration_caisse').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO).order('date',{ascending:true}).range(off,off+PG-1);
+        if(error) break; const rows=data||[];
+        rows.forEach(x=>{ let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; const k=rt+'|'+(x.date||'').slice(0,10); joursDeclCaisse.add(k);
+          if(Math.abs(x.montant||0) >= SEUIL_EC){ (ecartLignes[k]=ecartLignes[k]||[]).push({montant:Math.abs(x.montant||0), nom:x.equipier||'', manager:x.manager||'', sens:x.sens||'manquant'}); } });
+        if(rows.length<PG) break; off+=PG;
+      }
+    } catch(e){ console.warn('ecartLignes', e); }
 
     // Liste des jours du 17 mai à hier (dates locales)
     const jours = [];
@@ -4507,13 +4575,41 @@ async function checkFichiersManquants(){
         // Autres dépôts manquants (SOS Drive · Ventes ¼h · Bons repas)
         const autresDocs = ['sos','ventes','repas'].filter(t=>!has[t].has(key));
         if(autresDocs.length) cat.autres[rt].push({jour, docs:autresDocs});
-        // Annulations vues par la caisse mais non (toutes) déclarées
-        const aInfo = annulCaisse[key]||{nb:0,mnt:0};
-        const nbCaisse = aInfo.nb||0, nbDecl = declAnnul[key]||0;
-        if(nbCaisse>nbDecl) cat.annul[rt].push({jour, nb:(nbCaisse-nbDecl), mnt:(aInfo.mnt||0)});
-        // Erreur caisse > seuil sans déclaration
-        const ec = ecartCaisse[key], nbEcDecl = declErrCais[key]||0;
-        if(ec!=null && Math.abs(ec)>SEUIL_EC && nbEcDecl===0) cat.caisse[rt].push({jour, ec:Math.round(ec)});
+        // Annulations NON déclarées.
+        //  • Rapport importé  → une ligne par annulation avec le NOM (« Caisse comptée par »).
+        //  • Pas encore de rapport → repli sur la Synthèse CA (annulations_nb) : on affiche
+        //    le nombre manquant attribué aux managers d'ouverture / fermeture (pas de nom précis).
+        const ligns = annulLignes[key]||[];           // annulations à photographier du jour (webuser déjà exclus)
+        const nbDecl = declAnnul[key]||0;             // déclarations faites ce jour
+        if(joursRapport.has(key)){
+          // Rapport importé ce jour → on liste chaque annulation non déclarée avec le nom
+          if(ligns.length > nbDecl){
+            const nonDecl = ligns.slice(nbDecl);      // les non couvertes par une déclaration
+            cat.annul[rt].push({jour, nb:nonDecl.length, lignes:nonDecl});
+          }
+        } else {
+          // Pas encore de rapport ce jour → repli sur la Synthèse CA (sans nom)
+          const ac = annulCaisse[key];                // {nb, mnt} depuis journees
+          if(ac && ac.nb > nbDecl){
+            const manque = ac.nb - nbDecl;
+            const mntManque = ac.nb ? Math.abs(ac.mnt||0) * (manque/ac.nb) : 0;
+            cat.annul[rt].push({jour, nb:manque, mnt:mntManque, repli:true});
+          }
+        }
+        // Erreur caisse > seuil sans justification.
+        //  • Déclaration de caisse importée → une ligne par caissier en écart, avec le NOM.
+        //  • Sinon → repli sur l'écart global de la Synthèse CA (sans nom).
+        const nbEcDecl = declErrCais[key]||0;
+        if(joursDeclCaisse.has(key)){
+          const ecl = ecartLignes[key]||[];             // sessions > seuil de ce jour
+          if(ecl.length > nbEcDecl){
+            const nonDecl = ecl.slice(nbEcDecl);
+            cat.caisse[rt].push({jour, lignes:nonDecl});
+          }
+        } else {
+          const ec = ecartCaisse[key];
+          if(ec!=null && Math.abs(ec)>SEUIL_EC && nbEcDecl===0) cat.caisse[rt].push({jour, ec:Math.round(ec)});
+        }
       });
     });
 
@@ -4559,12 +4655,31 @@ async function checkFichiersManquants(){
       rt => j => row(`<span style="color:var(--accent)">${jourLbl(j)}</span> — <span style="color:var(--red);font-weight:500">Synthèse CA manquante</span>${respLine(rt,j)}`));
 
     // Colonne 2 — Annulations à déclarer
+    //  • Rapport importé → une ligne par annulation : montant + nom (« Caisse comptée par »)
+    //  • Repli Synthèse CA (pas encore de rapport) → nombre + montant + managers ouverture/fermeture
     const colAnnul = colonne('Annulations à déclarer','🚫','var(--red)', cat.annul,
-      rt => o => row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — <span style="color:var(--red);font-weight:500">${o.nb} annulation(s)${o.mnt?` (${fmt(o.mnt)} €)`:''}</span>${respLine(rt,o.jour)}`));
+      rt => o => {
+        if(o.lignes && o.lignes.length){
+          const items = o.lignes.map((l,i)=>`<div style="margin-top:1px">${o.lignes.length>1?`<span style="color:var(--muted)">${i+1})</span> `:''}<span style="color:var(--red);font-weight:600">${fmt(l.montant)} €</span>${l.nom?` <span style="color:var(--muted2)">· ${l.nom}</span>`:''}</div>`).join('');
+          return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span>${items}`);
+        }
+        // Repli : la Synthèse CA ne donne pas les noms → on affiche ouverture / fermeture
+        const items = `<span style="color:var(--red);font-weight:500">${o.nb} annulation(s)${o.mnt?` (${fmt(o.mnt)} €)`:''} à déclarer</span>`;
+        return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — ${items}${respLine(rt,o.jour)}`);
+      });
 
     // Colonne 3 — Erreurs caisse à déclarer
+    //  • Déclaration de caisse importée → une ligne par caissier : écart + nom
+    //  • Repli Synthèse CA → écart global du jour + ouverture/fermeture
     const colCaisse = colonne('Erreurs caisse à déclarer','💰','var(--red)', cat.caisse,
-      rt => o => row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — <span style="color:var(--red);font-weight:500">écart ${o.ec>0?'+':''}${o.ec} € à déclarer</span>${respLine(rt,o.jour)}`));
+      rt => o => {
+        if(o.lignes && o.lignes.length){
+          const items = o.lignes.map((l,i)=>{ const signe=l.sens==='excedent'?'+':'−';
+            return `<div style="margin-top:1px">${o.lignes.length>1?`<span style="color:var(--muted)">${i+1})</span> `:''}<span style="color:var(--red);font-weight:600">${signe}${fmt(l.montant)} €</span>${l.nom?` <span style="color:var(--muted2)">· ${l.nom}</span>`:''}${l.manager?` <span style="color:var(--muted)">(valid. ${l.manager})</span>`:''}</div>`; }).join('');
+          return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span>${items}`);
+        }
+        return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — <span style="color:var(--red);font-weight:500">écart ${o.ec>0?'+':''}${o.ec} € à déclarer</span>${respLine(rt,o.jour)}`);
+      });
 
     // Bloc secondaire — Autres dépôts manquants (SOS Drive · Ventes ¼h · Bons repas)
     let autresTotal = 0; restos.forEach(rt=>{ autresTotal += cat.autres[rt].length; });
@@ -5225,10 +5340,13 @@ function buildHistMoisSelect(){
     lastYear = y;
   });
   sel.innerHTML = html;
-  // Restaurer la sélection si toujours dispo, sinon le mois le plus récent AVEC des données
+  // Défaut à l'ouverture : le mois EN COURS s'il a des données, sinon le mois le plus récent
+  // qui en a. On ne restaure PAS l'ancienne sélection : on veut toujours arriver sur le mois
+  // courant en ouvrant l'Historique (demande client).
   const aDesDonnees = mm => (DATA||[]).some(d=>d.date&&d.date.startsWith(mm)) || (DATA25||[]).some(d=>d.date&&d.date.startsWith(mm));
-  if(prev && mois.includes(prev)) sel.value = prev;
-  else { const avec = mois.filter(aDesDonnees); sel.value = avec[0] || mois[0]; }
+  const moisCourant = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const avec = mois.filter(aDesDonnees);
+  sel.value = aDesDonnees(moisCourant) ? moisCourant : (avec[0] || mois[0]);
 }
 
 function loadHistorique() {
@@ -7253,13 +7371,33 @@ function parserSynthesCA(txt) {
   }
 
   // ── ENCAISSEMENTS (théorique | prélevé | Compté/Déposé | Écart comptage) ──
-  // Compté/Déposé = le plus grand des 2 montants encadrant le libellé ; écart = leur différence.
+  // Ordre de lecture pdf.js : « [prélevé] [écart] [théorique] LIBELLÉ [Compté/Déposé] ».
+  // On prend le montant JUSTE APRÈS le libellé = Compté/Déposé (celui affiché) ; le théorique
+  // est juste avant. Motif de montant STRICT (groupes de 3 chiffres).
+  //
+  // ANTI-FUSION : en pdf.js l'espace des milliers est la MÊME qu'entre deux colonnes, donc deux
+  // nombres voisins peuvent se coller en un seul (ex. « -2,55 » + « 1 308,26 », ou « 75 » + « 102,00 »
+  // → 75 102,00). Garde-fou robuste : un encaissement d'une journée ne peut JAMAIS dépasser le CA
+  // total encaissé. Si la valeur lue dépasse ce plafond, on retire le groupe de tête (fusion) et on
+  // recommence jusqu'à retomber sous le plafond.
+  const MS = '(-?\\d{1,3}(?: \\d{3})*,\\d{2})';
+  const plafondEnc = (ca_ttc ? Math.abs(ca_ttc)*1.5 : 60000);   // borne haute pour un moyen de paiement / jour
+  const defusionne = (raw) => {
+    if(raw==null || raw==='') return null;
+    let parts = String(raw).trim().split(/\s+/);      // ["75","102,00"] ou ["1","308,26"]
+    let v = num(parts.join(''));
+    while(parts.length > 1 && (v==null || Math.abs(v) > plafondEnc)){ parts.shift(); v = num(parts.join('')); }
+    return v;
+  };
   const lireEnc = (label) => {
     const esc = label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    let m = T.match(new RegExp(MO+'\\s+'+esc+'\\s+'+MO));
-    if(m){ const a=num(m[1]), b=num(m[2]); return { montant:Math.max(a,b), ecart:+(Math.max(a,b)-Math.min(a,b)).toFixed(2) }; }
-    m = T.match(new RegExp(esc+'\\s+'+MO));
-    return m ? { montant:num(m[1]), ecart:null } : { montant:null, ecart:null };
+    let m = T.match(new RegExp(MS+'\\s+'+esc+'\\s+'+MS));
+    if(m){ const theo=defusionne(m[1]), compte=defusionne(m[2]);
+      const montant = compte!=null ? compte : theo;
+      const ecart = (theo!=null && compte!=null) ? +(theo-compte).toFixed(2) : null;
+      return { montant, ecart }; }
+    m = T.match(new RegExp(esc+'\\s+'+MS));
+    return m ? { montant:defusionne(m[1]), ecart:null } : { montant:null, ecart:null };
   };
   const encCB    = lireEnc('CB');
   const encESP   = lireEnc('ESPECES');
@@ -8174,14 +8312,17 @@ function anSetPreset(p, btn){
   document.querySelectorAll('#an-presets .an-preset').forEach(b=>b.classList.toggle('active', b===btn));
   const dates = document.getElementById('an-dates');
   const jour  = document.getElementById('an-jour');
-  // masquer les deux zones par défaut
+  const sem   = document.getElementById('an-semaine');
+  const moi   = document.getElementById('an-mois');
+  // masquer toutes les zones par défaut
   dates.classList.remove('show');
   if(jour) jour.style.display = 'none';
+  if(sem)  sem.style.display  = 'none';
+  if(moi)  moi.style.display  = 'none';
 
   if(p==='custom'){ dates.classList.add('show'); return; } // attend que l'utilisateur choisisse les dates
 
-  const pad=n=>String(n).padStart(2,'0');
-  const iso=d=>d?d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()):'';
+  const iso=anIso;
 
   if(p==='jour'){
     // Afficher le sélecteur de jour (pré-rempli sur aujourd'hui s'il est vide)
@@ -8192,14 +8333,98 @@ function anSetPreset(p, btn){
     return;
   }
 
-  // calculer from/to selon le preset
-  const to = new Date();
-  let from = null;
-  if(p==='semaine'){ from=new Date(); from.setDate(from.getDate()-6); }   // 7 derniers jours
-  else if(p==='mois'){ from=new Date(); from.setDate(from.getDate()-29); }     // 30 derniers jours
-  document.getElementById('an-date-from').value = from?iso(from):'';
-  document.getElementById('an-date-to').value   = iso(to);
+  if(p==='semaine'){
+    // Menu déroulant des semaines, positionné sur la semaine EN COURS
+    if(sem) sem.style.display = 'flex';
+    anBuildSemaineOptions();
+    const sel = document.getElementById('an-semaine-sel');
+    if(sel) sel.selectedIndex = 0;   // semaine en cours (option la plus récente en haut)
+    anSemaineChange();
+    return;
+  }
+
+  if(p==='mois'){
+    // Menu déroulant des mois, positionné sur le mois EN COURS
+    if(moi) moi.style.display = 'flex';
+    anBuildMoisOptions();
+    const sel = document.getElementById('an-mois-sel');
+    if(sel) sel.selectedIndex = 0;   // mois en cours (option la plus récente en haut)
+    anMoisChange();
+    return;
+  }
+
   anRefresh();
+}
+
+// ── Helpers date (partagés par les sélecteurs jour / semaine / mois) ──
+function anPad(n){ return String(n).padStart(2,'0'); }
+function anIso(d){ return d?d.getFullYear()+'-'+anPad(d.getMonth()+1)+'-'+anPad(d.getDate()):''; }
+function anMonday(d){ const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); const wd=(x.getDay()+6)%7; x.setDate(x.getDate()-wd); return x; } // lundi de la semaine
+function anIsoWeek(d){ const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const dn=(t.getUTCDay()+6)%7; t.setUTCDate(t.getUTCDate()-dn+3); const ft=new Date(Date.UTC(t.getUTCFullYear(),0,4)); const fdn=(ft.getUTCDay()+6)%7; ft.setUTCDate(ft.getUTCDate()-fdn+3); return 1+Math.round((t-ft)/(7*24*3600*1000)); }
+
+// ── Sélecteur "Une semaine" (lundi → dimanche) ──
+function anBuildSemaineOptions(){
+  const sel = document.getElementById('an-semaine-sel'); if(!sel) return;
+  const cur = sel.value;
+  let opts='';
+  const monday = anMonday(new Date());
+  for(let i=0;i<53;i++){                       // ~1 an de semaines, la plus récente en haut
+    const m=new Date(monday); m.setDate(m.getDate()-i*7);
+    const e=new Date(m); e.setDate(e.getDate()+6);
+    const val=anIso(m);
+    const lbl='S'+anIsoWeek(m)+' · '+anPad(m.getDate())+'/'+anPad(m.getMonth()+1)+' → '+anPad(e.getDate())+'/'+anPad(e.getMonth()+1)+' '+e.getFullYear();
+    opts+=`<option value="${val}">${lbl}</option>`;
+  }
+  sel.innerHTML=opts;
+  if(cur && [...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function anSemaineChange(){
+  const sel=document.getElementById('an-semaine-sel'); if(!sel||!sel.value) return;
+  const m=new Date(sel.value+'T00:00:00'); const e=new Date(m); e.setDate(e.getDate()+6);
+  document.getElementById('an-date-from').value=anIso(m);
+  document.getElementById('an-date-to').value  =anIso(e);
+  const lbl=document.getElementById('an-semaine-label');
+  if(lbl) lbl.textContent='du '+formatDate(anIso(m))+' au '+formatDate(anIso(e));
+  anRefresh();
+}
+function anSemaineStep(delta){   // ◀ = -1 (semaine plus ancienne) · ▶ = +1 (plus récente)
+  const sel=document.getElementById('an-semaine-sel'); if(!sel||!sel.options.length) return;
+  let idx=sel.selectedIndex; if(idx<0)idx=0;
+  idx=idx-delta;                                // options triées récent→ancien : plus ancienne = index+1
+  if(idx<0)idx=0; if(idx>sel.options.length-1)idx=sel.options.length-1;
+  sel.selectedIndex=idx; anSemaineChange();
+}
+
+// ── Sélecteur "Un mois" (mois calendaire complet) ──
+function anBuildMoisOptions(){
+  const sel = document.getElementById('an-mois-sel'); if(!sel) return;
+  const cur=sel.value;
+  const MOIS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  let opts=''; const now=new Date(); let y=now.getFullYear(), mo=now.getMonth();
+  for(let i=0;i<24;i++){                        // 24 mois, le plus récent en haut
+    const val=y+'-'+anPad(mo+1);
+    opts+=`<option value="${val}">${MOIS[mo]} ${y}</option>`;
+    mo--; if(mo<0){mo=11;y--;}
+  }
+  sel.innerHTML=opts;
+  if(cur && [...sel.options].some(o=>o.value===cur)) sel.value=cur;
+}
+function anMoisChange(){
+  const sel=document.getElementById('an-mois-sel'); if(!sel||!sel.value) return;
+  const [y,mo]=sel.value.split('-').map(Number);
+  const first=new Date(y,mo-1,1); const last=new Date(y,mo,0);
+  document.getElementById('an-date-from').value=anIso(first);
+  document.getElementById('an-date-to').value  =anIso(last);
+  const lbl=document.getElementById('an-mois-label');
+  if(lbl) lbl.textContent='du '+formatDate(anIso(first))+' au '+formatDate(anIso(last));
+  anRefresh();
+}
+function anMoisStep(delta){       // ◀ = -1 (mois plus ancien) · ▶ = +1 (plus récent)
+  const sel=document.getElementById('an-mois-sel'); if(!sel||!sel.options.length) return;
+  let idx=sel.selectedIndex; if(idx<0)idx=0;
+  idx=idx-delta;
+  if(idx<0)idx=0; if(idx>sel.options.length-1)idx=sel.options.length-1;
+  sel.selectedIndex=idx; anMoisChange();
 }
 
 // ── Sélecteur "Un jour" : applique le jour choisi (plage from=to=ce jour) ──
@@ -8294,6 +8519,12 @@ async function anRefresh(){
     AN_DATA.journeesAll = journeesA.data||[];
     AN_DATA.annulationsAll = annA.data||[];
     AN_DATA.repasAll = repasA.data||[];
+
+    // ── SOS tous restos ET toutes dates (rapport de présence des 3 directeurs) ──
+    try {
+      const sosToutAll = await SB.from('sos_drive').select('*').order('date',{ascending:false});
+      AN_DATA.sosToutAll = sosToutAll.data||[];
+    } catch(e){ console.warn('chargement sos tout/all', e); AN_DATA.sosToutAll=[]; }
 
     // ── SOS / TEMPS DE SERVICE : toutes les journées (aucun filtre de date) ──
     try {
@@ -8501,10 +8732,14 @@ function sosComputeParJour(rows, isMgr){
       const v = d[t.id]; if(v==null) return;
       const nom = d[champ(t.shift)]; if(!nom) return;
       const g = data[j][t.shift];
-      if(!g[nom]) g[nom] = {nom, tsSum:0, tsN:0, cmd:0, jours:new Set()};
+      if(!g[nom]) g[nom] = {nom, tsSum:0, tsN:0, cmd:0, jours:new Set(), byDate:{}};
       g[nom].tsSum += v; g[nom].tsN++;
       const c = d[t.nc]; if(c!=null) g[nom].cmd += c;
       g[nom].jours.add(d.date);
+      // détail par service (par date) pour l'affichage au clic
+      if(!g[nom].byDate[d.date]) g[nom].byDate[d.date] = {tsSum:0, tsN:0, cmd:0};
+      g[nom].byDate[d.date].tsSum += v; g[nom].byDate[d.date].tsN++;
+      if(c!=null) g[nom].byDate[d.date].cmd += c;
     });
   });
   // finaliser : pour chaque jour/shift, tableaux triés
@@ -8516,7 +8751,10 @@ function sosComputeParJour(rows, isMgr){
         nom:p.nom,
         tempsMoy: p.tsN? Math.round(p.tsSum/p.tsN): null,
         commandes: p.cmd,
-        jours: p.jours.size
+        jours: p.jours.size,
+        services: Object.entries(p.byDate)
+          .map(([date,b])=>({date, tempsMoy:b.tsN?Math.round(b.tsSum/b.tsN):null, commandes:b.cmd}))
+          .sort((a,b)=>(b.date||'').localeCompare(a.date||''))
       })).filter(p=>p.tempsMoy!=null);
     });
   }
@@ -8694,8 +8932,9 @@ function sosShiftRanking(list, shift, isMgr){
 }
 
 // Petite carte "meilleur / moyen / moins bon" sur un critère donné
-function sosPodium(titre, list, valKey, fmtVal, sensBas){
+function sosPodium(titre, list, valKey, fmtVal, sensBas, subFn){
   // sensBas = true : plus la valeur est BASSE, meilleur (ex. temps). false : plus HAUTE, meilleur (ex. commandes)
+  // subFn (optionnel) : rend une 2e ligne sous la valeur (ex. commandes entre parenthèses)
   const valides = list.filter(p=>p[valKey]!=null);
   if(valides.length<1) return '';
   const tri = [...valides].sort((a,b)=> sensBas ? a[valKey]-b[valKey] : b[valKey]-a[valKey]);
@@ -8705,7 +8944,8 @@ function sosPodium(titre, list, valKey, fmtVal, sensBas){
   const cell = (p,emoji,lbl,col)=> p ? `<div style="flex:1;text-align:center;padding:8px 4px;background:${col};border-radius:8px">
     <div style="font-size:10px;color:var(--muted2);margin-bottom:2px">${emoji} ${lbl}</div>
     <div style="font-size:13px;font-weight:700">${p.nom}</div>
-    <div style="font-size:11px;color:var(--muted)">${fmtVal(p[valKey])}</div></div>` : '';
+    <div style="font-size:11px;color:var(--muted)">${fmtVal(p[valKey])}</div>
+    ${subFn?`<div style="font-size:10px;color:var(--muted2);margin-top:1px">${subFn(p)}</div>`:''}</div>` : '';
   return `<div style="margin-bottom:10px">
     <div style="font-size:11px;color:var(--muted2);margin-bottom:5px;font-weight:600">${titre}</div>
     <div style="display:flex;gap:8px">
@@ -8717,22 +8957,36 @@ function sosPodium(titre, list, valKey, fmtVal, sensBas){
 
 // Rendu d'un shift pour un jour donné : deux colonnes séparées (temps · commandes),
 // avec mise en avant du + rapide et du + de commandes.
-function sosJourShiftTable(list, shift, isMgr){
+// Toggle du détail des services d'un manager (lignes partageant la même classe)
+function sosToggleDet(cls){
+  document.querySelectorAll('.'+cls).forEach(el=>{ el.style.display = (el.style.display==='none'||!el.style.display) ? 'table-row' : 'none'; });
+}
+function sosJourShiftTable(list, shift, isMgr, jourIdx){
   if(!list.length) return `<div style="padding:8px 0;font-size:11px;color:var(--muted)">— Pas de donnée ${shift==='open'?'midi':'soir'}</div>`;
   const parTemps = [...list].sort((a,b)=>a.tempsMoy-b.tempsMoy);
   const rapide = parTemps[0]?.nom;
   const lent   = parTemps.length>1?parTemps[parTemps.length-1]?.nom:null;
   const maxCmd = Math.max(...list.map(p=>p.commandes||0));
   const topCmd = list.find(p=>p.commandes===maxCmd && maxCmd>0)?.nom;
-  const rows = parTemps.map(p=>{
+  const rows = parTemps.map((p,idx)=>{
     let bT=''; if(p.nom===rapide && list.length>1) bT=' ⚡'; else if(p.nom===lent) bT=' 🐢';
     const bC = (p.nom===topCmd) ? ' <span style="font-size:9px;background:rgba(55,138,221,.16);color:#378ADD;padding:0 5px;border-radius:4px">+ cmd</span>' : '';
-    return `<tr>
-      <td style="font-weight:600;white-space:nowrap">${p.nom}${bT}</td>
+    const svc = p.services||[];
+    const cls = `sd_${jourIdx}_${shift}_${idx}`;
+    const fleche = svc.length ? ` <span style="color:var(--muted2);font-size:9px">▸ ${svc.length} service${svc.length>1?'s':''}</span>` : '';
+    const mainRow = `<tr style="cursor:pointer" onclick="sosToggleDet('${cls}')" title="Voir le détail des services">
+      <td style="font-weight:600;white-space:nowrap">${p.nom}${bT}${fleche}</td>
       <td class="num" style="color:${sosColor(p.tempsMoy)};font-weight:600">${secToHMS(p.tempsMoy)}</td>
       <td class="num">${p.commandes||0}${bC}</td>
       <td class="num" style="color:var(--muted2)">${p.jours}j</td>
     </tr>`;
+    const detRows = svc.map(s=>`<tr class="${cls}" style="display:none;background:rgba(255,255,255,.03)">
+      <td style="padding-left:20px;color:var(--muted2);font-size:11px;white-space:nowrap">↳ ${formatDate(s.date)} ${jourSemaine(new Date(s.date))}</td>
+      <td class="num" style="color:${sosColor(s.tempsMoy)};font-size:11px">${secToHMS(s.tempsMoy)}</td>
+      <td class="num" style="color:var(--muted2);font-size:11px">${s.commandes||0}</td>
+      <td></td>
+    </tr>`).join('');
+    return mainRow + detRows;
   }).join('');
   return `<table style="width:100%"><thead><tr><th>${isMgr?'Manager':'Leader'}</th><th class="num">⏱ Temps</th><th class="num">🚗 Cmd</th><th class="num">Jours</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -8749,18 +9003,18 @@ function sosRenderParJour(rows, isMgr){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
         <div style="padding:8px 12px;border-right:1px solid var(--border)">
           <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">🔑 Midi (ouverture)</div>
-          ${sosJourShiftTable(midi,'open',isMgr)}
+          ${sosJourShiftTable(midi,'open',isMgr,j)}
         </div>
         <div style="padding:8px 12px">
           <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">🔒 Soir (fermeture)</div>
-          ${sosJourShiftTable(soir,'close',isMgr)}
+          ${sosJourShiftTable(soir,'close',isMgr,j)}
         </div>
       </div>
     </div>`;
   }).filter(Boolean).join('');
   if(!blocs) return `<div class="table-card" style="margin-bottom:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune donnée détaillée par tranche. Ré-enregistrez les journées SOS via « Ma journée » pour alimenter cette analyse.</div></div>`;
   return `<div class="table-header" style="border:none;padding:14px 0 8px"><span class="table-title">📆 Performance par jour de la semaine — ${isMgr?'managers':'leaders'}</span></div>
-    <div style="font-size:11px;color:var(--muted2);margin-bottom:10px">Pour chaque jour : qui est le plus rapide (⚡) et qui passe le plus de commandes (+ cmd), côté midi et côté soir. Deux mesures séparées : ⏱ temps de service · 🚗 commandes.</div>${blocs}`;
+    <div style="font-size:11px;color:var(--muted2);margin-bottom:10px">Pour chaque jour : qui est le plus rapide (⚡) et qui passe le plus de commandes (+ cmd), côté midi et côté soir. 👉 <strong>Clique sur un manager</strong> pour dérouler le détail de chacun de ses services (date, temps, commandes).</div>${blocs}`;
 }
 
 // Rapport de présence des directeurs — fidèle au modèle "Rapidité de Service"
@@ -8836,16 +9090,21 @@ function sosRapportDirecteurs(rows){
   });
   comparatif += '</tbody></table></div></div>';
 
-  // Historique récent
-  const histo = [...rows].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).slice(0,25).map(d=>`
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-      <div><div style="font-size:13px;font-weight:500">${d.date?formatDate(d.date):'—'}</div><div style="font-size:11px;color:var(--muted2)">${RESTAURANTS[d.restaurant]?.nom||d.restaurant||''}</div></div>
-      <div style="display:flex;gap:6px">
-        <span style="font-size:10px;padding:2px 8px;border-radius:4px;${d.directeur_midi?'background:rgba(62,207,142,.14);color:var(--green)':'background:var(--bg3);color:var(--muted)'}">${d.directeur_midi?'✓ Matin':'— Matin'}</span>
-        <span style="font-size:10px;padding:2px 8px;border-radius:4px;${d.directeur_soir?'background:rgba(62,207,142,.14);color:var(--green)':'background:var(--bg3);color:var(--muted)'}">${d.directeur_soir?'✓ Soir':'— Soir'}</span>
-      </div>
-    </div>`).join('');
-  const histoCard = `<div class="table-card"><div class="table-header"><span class="table-title">📅 Historique de présence</span></div><div style="padding:6px 14px 12px">${histo||'<div class="empty"><div class="empty-sub">Aucune donnée.</div></div>'}</div></div>`;
+  // Historique : une LIGNE par date, une COLONNE par directeur (Matin / Soir).
+  const byDate = {};
+  rows.forEach(d=>{ if(!d.date) return; if(!byDate[d.date]) byDate[d.date]={}; byDate[d.date][d.restaurant]=d; });
+  const dates = Object.keys(byDate).sort((a,b)=>b.localeCompare(a)).slice(0,40);
+  const badge = (on,lbl)=>`<span style="font-size:9px;padding:2px 6px;border-radius:4px;${on?'background:rgba(62,207,142,.14);color:var(--green)':'background:var(--bg3);color:var(--muted)'}">${on?'✓':'—'} ${lbl}</span>`;
+  const histoHead = `<tr><th>Date</th>${DIRS.map(dir=>`<th style="text-align:center;color:${dir.fg}">${nomDir(dir.resto)||dir.short}<div style="font-size:9px;color:var(--muted);font-weight:400">${dir.short}</div></th>`).join('')}</tr>`;
+  const histoRows = dates.map(dt=>{
+    const cells = DIRS.map(dir=>{
+      const r = byDate[dt][dir.resto];
+      if(!r) return `<td style="text-align:center;color:var(--muted);font-size:10px">—</td>`;
+      return `<td style="text-align:center;white-space:nowrap">${badge(!!r.directeur_midi,'M')} ${badge(!!r.directeur_soir,'S')}</td>`;
+    }).join('');
+    return `<tr><td style="color:var(--accent);white-space:nowrap">${formatDate(dt)} ${jourSemaine(new Date(dt))}</td>${cells}</tr>`;
+  }).join('');
+  const histoCard = `<div class="table-card"><div class="table-header"><span class="table-title">📅 Historique de présence — Matin (M) / Soir (S) par directeur</span></div><div class="table-wrap" style="max-height:440px;overflow-y:auto"><table><thead>${histoHead}</thead><tbody>${histoRows||`<tr><td colspan="4"><div class="empty" style="padding:12px"><div class="empty-sub">Aucune donnée.</div></div></td></tr>`}</tbody></table></div></div>`;
 
   return `<div class="table-header" style="border:none;padding:0 0 10px"><span class="table-title">👔 Rapport de présence — Directeurs</span></div>` + cards + comparatif + histoCard;
 }
@@ -9012,11 +9271,9 @@ function anRenderSOS(){
     <div class="table-header"><span class="table-title">🏅 Bilan global — ${isMgr?'managers':'leaders'}</span></div>
     <div style="padding:10px 14px">
       ${bilan.open.length?`<div style="font-size:12px;font-weight:700;color:var(--accent);margin:2px 0 8px">🔑 Service midi (ouverture)</div>
-        ${sosPodium('⏱ Temps de service (le plus rapide gagne)', bilan.open, 'tempsMoy', fmtT, true)}
-        ${sosPodium('🚗 Commandes par jour (le plus de débit gagne)', bilan.open, 'cmdParJour', fmtC, false)}`:''}
+        ${sosPodium('⏱ Temps de service (le plus rapide gagne)', bilan.open, 'tempsMoy', fmtT, true, p=>`(${p.cmdParJour} cmd/j)`)}`:''}
       ${bilan.close.length?`<div style="font-size:12px;font-weight:700;color:var(--accent);margin:12px 0 8px">🔒 Service soir (fermeture)</div>
-        ${sosPodium('⏱ Temps de service (le plus rapide gagne)', bilan.close, 'tempsMoy', fmtT, true)}
-        ${sosPodium('🚗 Commandes par jour (le plus de débit gagne)', bilan.close, 'cmdParJour', fmtC, false)}`:''}
+        ${sosPodium('⏱ Temps de service (le plus rapide gagne)', bilan.close, 'tempsMoy', fmtT, true, p=>`(${p.cmdParJour} cmd/j)`)}`:''}
     </div>
   </div>` : '';
 
@@ -9030,7 +9287,8 @@ function anRenderSOS(){
   const trancheCard = `<div class="table-card" style="margin-bottom:16px"><div class="table-header"><span class="table-title">Moyenne par tranche horaire</span></div><div class="table-wrap"><table><thead><tr><th>Tranche</th><th class="num">Temps moy.</th><th class="num">Jours</th></tr></thead><tbody>${trRows}</tbody></table></div></div>`;
 
   // ── RAPPORT DE PRÉSENCE DES DIRECTEURS (fidèle au modèle, avec sous-menu période) ──
-  const dirRows = sosFilterDirPeriode(rows);
+  // On utilise TOUS les restos (pas seulement le resto actif) pour remplir les 3 directeurs.
+  const dirRows = sosFilterDirPeriode(AN_DATA.sosToutAll || AN_DATA.sosAll || rows);
   const dirPresets = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 12px">
     <button class="an-preset${SOS_DIR_PRESET==='semaine'?' active':''}" onclick="sosSetDirPreset('semaine')">Une semaine</button>
     <button class="an-preset${SOS_DIR_PRESET==='mois'?' active':''}" onclick="sosSetDirPreset('mois')">Un mois</button>
@@ -9207,185 +9465,177 @@ function anRepasParPeriode(rows){
 
 // ───────── ANNULATIONS — classement manager + équipier ─────────
 function anRenderAnnulations(){
-  // ── Déclarations managers (photos des tickets) : table `annulations` (hors pdf_caisse) + saisies locales ──
-  // NB : on travaille sur des COPIES (…map(r=>({...r}))) pour pouvoir corriger la date sans toucher AN_DATA.
-  let decl = [...(AN_DATA.annulationsTout || AN_DATA.annulations || [])].map(r=>({...r}));
+  // Toutes les lignes d'annulation (COPIES), + déclarations locales, recalage nuit, filtre période
+  let all = [...(AN_DATA.annulationsTout || AN_DATA.annulations || [])].map(r=>({...r}));
   try {
     const local = JSON.parse(localStorage.getItem('bk_annulations')||'[]');
     let resto=(ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL')?ACTIVE_RESTO:(CURRENT_USER?.resto||null); if(resto==='ALL'||resto==='Administration')resto=null;
     local.forEach(a=>{
       const dISO = a.date && a.date.includes('/') ? a.date.split('/').reverse().join('-') : a.date;
       if(resto&&a.restaurant!==resto) return;
-      decl.push({date:dISO, heure:a.heure, montant:a.montant, manager:a.manager, equipier:a.equipier, commentaire:a.comment, photo:a.photo, _local:true});
+      all.push({date:dISO, heure:a.heure, montant:a.montant, manager:a.manager, equipier:a.equipier, commentaire:a.comment, photo:a.photo, _local:true});
     });
   } catch(e){}
+  // Journée fiscale : une annulation avant 05:00 appartient à la VEILLE
+  const CUT=5;
+  all.forEach(r=>{ const h=r.heure?parseInt(String(r.heure).split(':')[0],10):NaN; if(!isNaN(h)&&h<CUT&&r.date){ const dt=new Date(r.date+'T12:00:00'); if(!isNaN(dt.getTime())){ r._realdate=r.date; dt.setDate(dt.getDate()-1); r.date=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'); r._nuit=true; } } });
+  all = anEnPeriode(all);
 
-  // ── Journée fiscale : une annulation faite entre 00:00 et 05:00 appartient à la VEILLE ──
-  // (ex. 06/07 01:25 → rattachée au 05/07). On garde la date/heure réelles pour l'affichage.
-  const ANNUL_FISCAL_CUTOFF_H = 5;
-  decl.forEach(r=>{
-    const h = r.heure ? parseInt(String(r.heure).split(':')[0],10) : NaN;
-    if(!isNaN(h) && h < ANNUL_FISCAL_CUTOFF_H && r.date){
-      const dt = new Date(r.date+'T12:00:00');
-      if(!isNaN(dt.getTime())){
-        r._realdate = r.date;
-        dt.setDate(dt.getDate()-1);
-        r.date = dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
-        r._nuit = true;
-      }
-    }
-  });
+  // Toutes les annulations du rapport (webuser inclus dans la liste, mais en simple info)
+  const isPdf = r=>r.source==='pdf_caisse';
+  const isWeb = r=>r.photographiable===false;                 // webuser : pas de photo, juste une info
+  const photoRows = all.filter(r=>isPdf(r));                  // pour la liste : tout le rapport
+  const realRows  = photoRows.filter(r=>!isWeb(r));           // à photographier / à déclarer (hors webuser)
+  const declRows  = all.filter(r=>!isPdf(r)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
-  decl = anEnPeriode(decl);
-  const declRows = decl.filter(r=>r.source!=='pdf_caisse').sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-
-  // ── Source de vérité : nb + montant d'annulations par jour, depuis la Synthèse CA (table journees) ──
-  // (même donnée que le Contrôle des dépôts : journees.annulations_nb / annulations_montant)
+  // Synthèse : managers de shift + repli si le rapport n'est pas importé pour un jour
   const allJ = anJourneesPeriode();
-  const jByKey = {}; allJ.forEach(d=>{ jByKey[(d.restaurant||'')+'|'+d.date]=d; });
-  const journees = allJ.filter(d=>(d.annulations_nb||0)>0 || (d.annulations_montant||0)!=0);
-  const declParJour = {};
-  declRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; if(!declParJour[k]) declParJour[k]={nb:0,rows:[]}; declParJour[k].nb++; declParJour[k].rows.push(r); });
+  const jByKey={}; allJ.forEach(d=>{ jByKey[(d.restaurant||'')+'|'+d.date]=d; });
 
-  // Montant attribué à chaque déclaration = part du montant du jour (Synthèse) / nb d'annulations caisse
-  // du jour (le montant par annulation n'existe pas ligne à ligne, on répartit le total du jour).
-  declRows.forEach(r=>{
-    const jd = jByKey[(r.restaurant||'')+'|'+r.date];
-    const dayM = jd ? Math.abs(jd.annulations_montant||0) : 0;
-    const nbC  = jd ? (jd.annulations_nb||0) : 0;
-    r._mntAttr = nbC>0 ? (dayM/nbC) : Math.abs(r.montant||0);
-  });
+  const grp=(arr)=>{ const o={}; arr.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; (o[k]=o[k]||{nb:0,montant:0,rows:[]}); o[k].nb++; o[k].montant+=Math.abs(r.montant||0); o[k].rows.push(r); }); return o; };
+  const photoByDay=grp(realRows), declByDay=grp(declRows);    // comptages basés sur les vraies annulations
+  const pdfDaySet=new Set(photoRows.map(r=>(r.restaurant||'')+'|'+r.date));  // jours présents dans le rapport
 
-  // Suivi par jour : caisse (Synthèse) vs déclarations managers.
-  // Responsables du jour = manager d'ouverture (🔑) + manager de fermeture (🔒), depuis la Synthèse.
-  // Vert = cette personne a bien déclaré ; Rouge = responsable mais n'a pas déclaré.
-  const suivi = journees.map(d=>{
-    const k=(d.restaurant||'')+'|'+d.date;
-    const nbCaisse = d.annulations_nb||0;
-    const mnt = Math.abs(d.annulations_montant||0);
-    const rowsJ = declParJour[k]?.rows||[];
-    const nbDecl = rowsJ.length;
-    const manque = Math.max(0, nbCaisse - nbDecl);
-    const declNames = new Set(rowsJ.map(r=>(r.manager||'').trim().toLowerCase()).filter(Boolean));
-    // Responsables : ouverture + fermeture (une seule fois si c'est la même personne),
-    // puis tout déclarant supplémentaire (équipier / autre manager).
-    const resp = [];
-    const pushResp = (ico,nom)=>{
-      if(!nom) return; nom=String(nom).trim(); if(!nom) return;
-      const ex = resp.find(x=>x.nom.toLowerCase()===nom.toLowerCase());
-      if(ex){ if(!ex.ico.includes(ico)) ex.ico += ico; }   // même personne ouverture + fermeture → on cumule les icônes
-      else resp.push({ico, nom});
-    };
-    pushResp('🔑', d.manager_ouverture);
-    pushResp('🔒', d.manager_fermeture);
-    rowsJ.forEach(r=> pushResp('📸', r.manager) );
-    const respHtml = resp.length ? resp.map(p=>{
-      const aDecl = declNames.has(p.nom.trim().toLowerCase());
-      const cc = aDecl ? 'var(--green)' : 'var(--red)';
-      return `<span style="color:${cc};font-weight:600">${p.ico} ${p.nom}${aDecl?' ✓':''}</span>`;
-    }).join(' · ') : '<span style="color:var(--muted)">—</span>';
-    let statut,col,ico;
-    if(nbCaisse===0){ statut='—'; col='var(--muted)'; ico='—'; }
-    else if(nbDecl>=nbCaisse){ statut='Déclaré ('+nbDecl+'/'+nbCaisse+')'; col='var(--green)'; ico='✓'; }
-    else if(nbDecl===0){ statut=nbCaisse+' à déclarer'; col='var(--red)'; ico='⛔'; }
-    else { statut='Incomplet ('+nbDecl+'/'+nbCaisse+')'; col='var(--yellow)'; ico='⚠️'; }
-    return {date:d.date, restaurant:d.restaurant, nbCaisse, mnt, nbDecl, manque, statut, col, ico, respHtml};
-  });
+  // Montant attribué à chaque déclaration = part du montant à photographier du jour (webuser exclu)
+  declRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; const pd=photoByDay[k];
+    if(pd&&pd.nb){ r._mntAttr=pd.montant/pd.nb; }
+    else { const jd=jByKey[k]; r._mntAttr = jd&&jd.annulations_nb ? Math.abs(jd.annulations_montant||0)/jd.annulations_nb : Math.abs(r.montant||0); } });
 
-  // ── Déclarations « orphelines » : déclarées un jour où la Synthèse CA ne voit AUCUNE annulation ──
-  // (le plus souvent un décalage de date : annulation de nuit datée du lendemain alors qu'elle
-  //  appartient à la journée fiscale de la veille). On les rend visibles au lieu de les cacher.
-  const suiviKeys = new Set(journees.map(d=>(d.restaurant||'')+'|'+d.date));
-  let nbOrphelins = 0;
-  Object.keys(declParJour).forEach(k=>{
-    if(suiviKeys.has(k)) return;
+  // Jours « à photographier » : union rapport-photo + déclarations + Synthèse (repli)
+  const jSet=new Set([...Object.keys(photoByDay), ...Object.keys(declByDay)]);
+  allJ.forEach(d=>{ if((d.annulations_nb||0)>0) jSet.add((d.restaurant||'')+'|'+d.date); });
+
+  const suivi = [...jSet].map(k=>{
     const [restaurant,date]=k.split('|');
-    const rowsJ=declParJour[k].rows;
     const jd=jByKey[k]||{};
-    const resp=[];
-    const pr=(ico,nom)=>{ if(!nom)return; nom=String(nom).trim(); if(!nom)return; const ex=resp.find(x=>x.nom.toLowerCase()===nom.toLowerCase()); if(ex){if(!ex.ico.includes(ico))ex.ico+=ico;} else resp.push({ico,nom}); };
-    pr('🔑',jd.manager_ouverture); pr('🔒',jd.manager_fermeture); rowsJ.forEach(r=>pr('📸',r.manager));
-    const respHtml = resp.length ? resp.map(p=>`<span style="color:var(--yellow);font-weight:600">${p.ico} ${p.nom}</span>`).join(' · ') : '<span style="color:var(--muted)">—</span>';
-    const mntDecl = rowsJ.reduce((a,b)=>a+Math.abs(b.montant||0),0);
-    nbOrphelins += rowsJ.length;
-    suivi.push({date, restaurant, nbCaisse:0, mnt:mntDecl, nbDecl:rowsJ.length, manque:0, statut:'Déclaration sans annulation caisse (date ?)', col:'var(--yellow)', ico:'⚠️', respHtml, orphan:true});
-  });
-  suivi.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const hasPdf = pdfDaySet.has(k);
+    const nbPhoto = photoByDay[k]?.nb || (hasPdf?0:(jd.annulations_nb||0));   // hors webuser si rapport importé
+    const mntPhoto = hasPdf ? (photoByDay[k]?.montant||0) : Math.abs(jd.annulations_montant||0);
+    const nbDecl = declByDay[k]?.nb||0;
+    const manque = Math.max(0, nbPhoto - nbDecl);
+    // Déclarants (vert ✓) + responsables encore manquants (rouge)
+    const declNoms=[...new Set((declByDay[k]?.rows||[]).map(r=>r.manager).filter(Boolean))];
+    const chips=[]; const seen=new Set();
+    declNoms.forEach(n=>{ chips.push(`<span style="color:var(--green);font-weight:600">📸 ${n} ✓</span>`); seen.add(n.trim().toLowerCase()); });
+    if(manque>0){ [jd.manager_ouverture,jd.manager_fermeture].filter(Boolean).forEach(n=>{ if(!seen.has(String(n).trim().toLowerCase())){ chips.push(`<span style="color:var(--red);font-weight:600">${n}</span>`); seen.add(String(n).trim().toLowerCase()); } }); }
+    const respHtml = chips.length?chips.join(' · '):'<span style="color:var(--muted)">—</span>';
+    let statut,col,ico;
+    if(nbPhoto===0 && nbDecl>0){ statut='Déclaration sans annulation caisse'; col='var(--yellow)'; ico='⚠️'; }
+    else if(nbPhoto===0){ statut='—'; col='var(--muted)'; ico='—'; }
+    else if(nbDecl>=nbPhoto){ statut='Déclaré ('+nbDecl+'/'+nbPhoto+')'; col='var(--green)'; ico='✓'; }
+    else if(nbDecl===0){ statut=nbPhoto+' à déclarer'; col='var(--red)'; ico='⛔'; }
+    else { statut='Incomplet ('+nbDecl+'/'+nbPhoto+')'; col='var(--yellow)'; ico='⚠️'; }
+    return {date,restaurant,nbPhoto,mntPhoto,nbDecl,manque,statut,col,ico,respHtml,hasPdf};
+  }).filter(s=>s.nbPhoto>0 || s.nbDecl>0).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
-  // ── KPIs (basés sur la Synthèse CA — fiable) ──
-  const totNb = suivi.reduce((a,b)=>a+b.nbCaisse,0);
-  const totMontant = suivi.reduce((a,b)=>a+(b.orphan?0:b.mnt),0);
-  const totDecl = suivi.reduce((a,b)=>a+Math.min(b.nbDecl,b.nbCaisse),0);
+  // ── KPIs (webuser = simple info, jamais dans « à déclarer ») ──
+  const totPhoto = suivi.reduce((a,b)=>a+b.nbPhoto,0);
+  const totMnt = suivi.reduce((a,b)=>a+b.mntPhoto,0);
+  const totDecl = suivi.reduce((a,b)=>a+Math.min(b.nbDecl,b.nbPhoto),0);
   const totManque = suivi.reduce((a,b)=>a+b.manque,0);
-  const joursIncomplets = suivi.filter(s=>s.manque>0).length;
+  const joursInc = suivi.filter(s=>s.manque>0).length;
 
   const kpis = `
   <div class="kpi-grid">
-    <div class="kpi bad"><div class="kpi-label">Total annulations (caisse)</div><div class="kpi-val">${totNb}</div><div style="font-size:10px;color:var(--muted2)">${suivi.length} jour(s) concerné(s)</div></div>
-    <div class="kpi bad"><div class="kpi-label">Montant total</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
-    <div class="kpi ${totManque>0?'bad':'ok'}"><div class="kpi-label">À déclarer (tickets manquants)</div><div class="kpi-val">${totManque}</div><div style="font-size:10px;color:var(--muted2)">${joursIncomplets} jour(s)</div></div>
-    <div class="kpi ${totDecl>=totNb&&totNb>0?'ok':'warn'}"><div class="kpi-label">Déclarées (photos faites)</div><div class="kpi-val">${totDecl}/${totNb}</div></div>
+    <div class="kpi bad"><div class="kpi-label">À photographier</div><div class="kpi-val">${totPhoto}</div><div style="font-size:10px;color:var(--muted2)">${suivi.length} jour(s)</div></div>
+    <div class="kpi bad"><div class="kpi-label">Montant à photographier</div><div class="kpi-val">${fmt(totMnt)} €</div></div>
+    <div class="kpi ${totDecl>=totPhoto&&totPhoto>0?'ok':''}"><div class="kpi-label">Déclarées</div><div class="kpi-val">${totDecl}/${totPhoto}</div></div>
+    <div class="kpi ${totManque>0?'bad':'ok'}"><div class="kpi-label">À déclarer (manquantes)</div><div class="kpi-val">${totManque}</div><div style="font-size:10px;color:var(--muted2)">${joursInc} jour(s)</div></div>
   </div>`;
 
-  // ── Tableau par jour (caisse vs déclarations) ──
-  const suiviRows = suivi.slice(0,200).map(s=>`
-    <tr>
-      <td style="color:var(--accent)">${formatDate(s.date)} ${jourSemaine(new Date(s.date))}</td>
-      <td class="num" style="font-weight:600">${s.nbCaisse}</td>
-      <td class="num" style="color:var(--red);font-weight:600">${fmt(s.mnt)} €</td>
-      <td class="num">${s.nbDecl}</td>
-      <td class="num" style="font-weight:600;color:${s.manque>0?'var(--red)':'var(--green)'}">${s.manque>0?s.manque:'0'}</td>
-      <td><span style="color:${s.col};font-weight:600">${s.ico} ${s.statut}</span></td>
-      <td style="font-size:11px">${s.respHtml}</td>
-    </tr>`).join('');
-  const suiviTbl = suivi.length ? `
-  <div class="table-card" style="margin-top:16px">
-    <div class="table-header"><span class="table-title">📅 Annulations par jour — caisse vs déclarations</span><span style="font-size:10px;color:var(--muted)">${totDecl}/${totNb} déclarées</span></div>
-    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">« Nb caisse » et « Montant » = annulations vues sur la <strong>Synthèse CA</strong> du jour. « Déclarées » = déclarations (photos des 3 tickets) faites par les managers. Colonne <strong>Responsables</strong> : 🔑 ouverture · 🔒 fermeture — <span style="color:var(--green);font-weight:600">vert = a déclaré ✓</span>, <span style="color:var(--red);font-weight:600">rouge = n'a pas déclaré</span>. <span style="color:var(--muted)">🌙 Les annulations déclarées avant 05:00 sont rattachées à la journée fiscale de la veille.</span>${nbOrphelins>0?`<br><span style="color:var(--yellow)">⚠️ ${nbOrphelins} déclaration(s) tombent un jour sans annulation en caisse (ligne « Nb caisse = 0 ») — à vérifier (mauvaise date de saisie ?).</span>`:''}</div>
-    <div class="table-wrap" style="max-height:360px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Nb caisse</th><th class="num">Montant</th><th class="num">Déclarées</th><th class="num">À déclarer</th><th>Statut</th><th>Responsables (🔑 ouv · 🔒 ferm)</th></tr></thead><tbody>${suiviRows}</tbody></table></div>
-  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune annulation sur la période sélectionnée (d'après la Synthèse CA). Élargis la période en haut.</div></div>`;
-
-  // ── Topo par responsable : présence sur des jours à annulations + combien il en déclare ──
-  // Un jour à annulations est rattaché à l'ouverture ET à la fermeture (une seule fois si c'est
-  // la même personne). On ne « blâme » personne quand rien n'est déclaré : on montre le positif
-  // (jours de service avec annulations, nb d'annulations, et combien la personne a déclaré).
-  const byResp={};
-  journees.forEach(d=>{
-    const nbC=d.annulations_nb||0; if(nbC<=0) return;
-    const k=(d.restaurant||'')+'|'+d.date;
-    const rowsJ=declParJour[k]?.rows||[];
-    const declNames=new Set(rowsJ.map(r=>(r.manager||'').trim().toLowerCase()).filter(Boolean));
-    const mnt=Math.abs(d.annulations_montant||0);
-    const resps=[...new Set([d.manager_ouverture, d.manager_fermeture].filter(Boolean).map(n=>String(n).trim()))];
-    resps.forEach(nom=>{
-      if(!byResp[nom]) byResp[nom]={nom, jours:0, nbAnnul:0, montant:0, decl:0};
-      byResp[nom].jours++; byResp[nom].nbAnnul+=nbC; byResp[nom].montant+=mnt;
-      if(declNames.has(nom.toLowerCase())) byResp[nom].decl++;
+  // ── Tableau : UNE LIGNE PAR ANNULATION à photographier (jamais additionnées) ──
+  // Statut déclaré/pas : par jour, les N premières annulations sont couvertes par les N déclarations du jour.
+  const photoByDaySorted={};
+  photoRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; (photoByDaySorted[k]=photoByDaySorted[k]||[]).push(r); });
+  const photoLignes=[];
+  Object.keys(photoByDaySorted).forEach(k=>{
+    const arr=photoByDaySorted[k].sort((a,b)=>(a.heure||'').localeCompare(b.heure||''));
+    const decls=(declByDay[k]?.rows||[]);
+    let di=0;  // seules les VRAIES annulations (hors webuser) consomment les déclarations du jour
+    arr.forEach(r=>{
+      if(isWeb(r)){ photoLignes.push(Object.assign({}, r, {isWeb:true, declared:false, decl:null})); return; }
+      const declared = di<decls.length; const decl = declared?decls[di]:null; if(declared) di++;
+      photoLignes.push(Object.assign({}, r, {isWeb:false, declared, decl}));
     });
+  });
+  photoLignes.sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (a.heure||'').localeCompare(b.heure||''));
+
+  const photoRowsHtml = photoLignes.slice(0,400).map(r=>{
+    const nom = r.manager || '—';
+    if(r.isWeb){
+      // Webuser : simple info, aucune photo/déclaration. Le canal remplace la photo.
+      const canal = r.canal || 'Webuser';
+      return `<tr>
+      <td style="color:var(--accent)">${formatDate(r.date)} ${jourSemaine(new Date(r.date))}</td>
+      <td class="num" style="color:var(--blue);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
+      <td><span style="color:var(--muted2)">${nom}</span></td>
+      <td><span style="color:var(--blue);font-weight:600">🌐 Webuser</span></td>
+      <td><span style="color:var(--blue)">${canal}</span></td>
+    </tr>`;
+    }
+    const cc = r.declared ? 'var(--green)' : 'var(--red)';
+    const st = r.declared ? '✓ Déclarée' : '⛔ Non déclarée';
+    let photo = '<span style="color:var(--muted)">—</span>';
+    if(r.declared){ const d=r.decl||{}; const th=(dbxThumb(d.photo_bad_url,'ticket erreur')+dbxThumb(d.photo_annul_url,'ticket annulation')+dbxThumb(d.photo_good_url,'ticket corrigé')); photo = th || '<span style="color:var(--green)">📸 oui</span>'; }
+    return `<tr>
+      <td style="color:var(--accent)">${formatDate(r.date)} ${jourSemaine(new Date(r.date))}</td>
+      <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
+      <td><span style="color:${cc};font-weight:600">${nom}</span></td>
+      <td><span style="color:${cc};font-weight:600">${st}</span></td>
+      <td>${photo}</td>
+    </tr>`;
+  }).join('');
+  const suiviTbl = photoLignes.length ? `
+  <div class="table-card" style="margin-top:16px">
+    <div class="table-header"><span class="table-title">🚫 Annulations à photographier — une ligne par annulation</span><span style="font-size:10px;color:var(--muted)">${totDecl}/${totPhoto} déclarées</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Une ligne = une annulation (jamais additionnées). <strong>Qui</strong> = la personne qui a compté la caisse ; <span style="color:var(--green);font-weight:600">vert = déclarée ✓</span>, <span style="color:var(--red);font-weight:600">rouge = non déclarée ⛔</span>. Les <span style="color:var(--blue);font-weight:600">webuser (Uber/livraison)</span> sont en simple info : pas de photo, le canal s'affiche à la place. La photo apparaît dès que l'annulation est déclarée.</div>
+    <div class="table-wrap" style="max-height:440px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Qui</th><th>Statut</th><th>Photo / canal</th></tr></thead><tbody>${photoRowsHtml}</tbody></table></div>
+  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune annulation sur la période. Importe le « Rapport des annulations » dans Config → Importer des documents, ou élargis la période.</div></div>`;
+
+  // ── Vue PAR SALARIÉ (annulations à photographier, hors webuser) ──
+  const bySal={};
+  photoLignes.filter(r=>!r.isWeb).forEach(r=>{ const nom=r.manager||'(non identifié)'; const m=Math.abs(r.montant||0);
+    if(!bySal[nom])bySal[nom]={nom,nb:0,montant:0,decl:0,mDecl:0,mNon:0};
+    bySal[nom].nb++; bySal[nom].montant+=m;
+    if(r.declared){ bySal[nom].decl++; bySal[nom].mDecl+=m; } else { bySal[nom].mNon+=m; } });
+  const salList=Object.values(bySal).sort((a,b)=>b.nb-a.nb || b.montant-a.montant);
+  const salCard = salList.length ? `<div class="table-card" style="margin-top:16px">
+    <div class="table-header"><span class="table-title">🧑‍🍳 Par salarié — annulations à photographier</span><span style="font-size:10px;color:var(--muted)">${salList.length} salarié(s)</span></div>
+    <div class="table-wrap" style="max-height:360px;overflow-y:auto"><table><thead><tr><th>Salarié</th><th class="num">Nb</th><th class="num">Montant</th><th class="num">Déclarées</th><th class="num">€ déclaré</th><th class="num">À déclarer</th><th class="num">€ à déclarer</th></tr></thead><tbody>${salList.map(s=>`<tr><td style="font-weight:600;color:var(--accent)">${s.nom}</td><td class="num">${s.nb}</td><td class="num">${fmt(s.montant)} €</td><td class="num" style="color:var(--green);font-weight:600">${s.decl}</td><td class="num" style="color:${s.mDecl>0?'var(--green)':'var(--muted2)'};font-weight:600">${fmt(s.mDecl)} €</td><td class="num" style="color:${(s.nb-s.decl)>0?'var(--red)':'var(--muted2)'};font-weight:600">${s.nb-s.decl}</td><td class="num" style="color:${s.mNon>0?'var(--red)':'var(--muted2)'};font-weight:600">${fmt(s.mNon)} €</td></tr>`).join('')}</tbody></table></div>
+  </div>` : '';
+
+  // ── Topo responsables : présence sur les annulations à photographier + combien déclarées ──
+  const byResp={};
+  suivi.forEach(s=>{
+    if(s.nbPhoto<=0) return;
+    const jd=jByKey[s.restaurant+'|'+s.date]||{};
+    const declNames=new Set((declByDay[s.restaurant+'|'+s.date]?.rows||[]).map(r=>(r.manager||'').trim().toLowerCase()).filter(Boolean));
+    const resps=[...new Set([jd.manager_ouverture,jd.manager_fermeture].filter(Boolean).map(n=>String(n).trim()))];
+    resps.forEach(nom=>{ if(!byResp[nom])byResp[nom]={nom,jours:0,nbAnnul:0,montant:0,decl:0}; byResp[nom].jours++; byResp[nom].nbAnnul+=s.nbPhoto; byResp[nom].montant+=s.mntPhoto; if(declNames.has(nom.toLowerCase()))byResp[nom].decl++; });
   });
   const respList=Object.values(byResp).sort((a,b)=>b.nbAnnul-a.nbAnnul || b.jours-a.jours);
 
-  // Classement équipiers (qui a physiquement fait l'annulation, si saisi) — avec montant réparti
+  // Classement équipiers (qui a physiquement fait l'annulation, si saisi)
   const byEq={}; declRows.forEach(r=>{ if(!r.equipier)return; const e=r.equipier; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=(r._mntAttr||0);});
   const cltEq=Object.values(byEq).sort((a,b)=>b.montant-a.montant || b.nb-a.nb);
 
-  const cltMgrTbl = respList.length ? anClassement('👔 Topo responsables — présence sur les annulations & déclarations faites', respList.length+' managers · trié par nb d\'annulations',
+  const cltMgrTbl = respList.length ? anClassement('👔 Topo responsables — annulations à photographier & déclarations faites', respList.length+' managers',
     [
       {label:'#', render:(l,i)=>anBadge(i)},
       {label:'Manager', key:'nom'},
       {label:'Jours avec annul.', num:true, key:'jours'},
-      {label:'Nb annulations', num:true, render:l=>{const f=anFeu(l.nbAnnul,4,8,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${l.nbAnnul}</span>`;}},
+      {label:'Nb à photographier', num:true, render:l=>{const f=anFeu(l.nbAnnul,4,8,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${l.nbAnnul}</span>`;}},
       {label:'Montant', num:true, render:l=>fmt(l.montant)+' €'},
       {label:'Jours déclarés', num:true, render:l=>`<span style="color:${l.decl>0?'var(--green)':'var(--muted2)'};font-weight:600">${l.decl}/${l.jours}</span>`},
     ], respList) : '';
 
-  const cltEqTbl = cltEq.length ? anClassement('🧑‍🍳 Classement équipiers — annulations', cltEq.length+' équipiers · montant = part du total du jour',
+  const cltEqTbl = cltEq.length ? anClassement('🧑‍🍳 Classement équipiers — annulations', cltEq.length+' équipiers · montant = part du montant à photographier',
     [
       {label:'#', render:(l,i)=>anBadge(i)},
       {label:'Équipier', key:'nom'},
       {label:'Nb annulations', num:true, render:l=>{const f=anFeu(l.nb,3,6,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${l.nb}</span>`;}},
       {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,40,100,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
-    ], cltEq) : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucun équipier renseigné sur les annulations déclarées. Saisissez le nom de l'équipier lors de la déclaration.</div></div>`;
+    ], cltEq) : '';
 
   // ── Détail des déclarations (qui, photo, note) ──
   const detail = declRows.slice(0,200).map(r=>`
@@ -9399,71 +9649,94 @@ function anRenderAnnulations(){
   const detailTbl = declRows.length ? `
   <div class="table-card" style="margin-top:16px">
     <div class="table-header"><span class="table-title">Détail des annulations déclarées</span><span style="font-size:10px;color:var(--muted)">${declRows.length} déclaration(s)</span></div>
-    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Le <strong>montant</strong> est la part du montant du jour (Synthèse CA) répartie sur les annulations de la journée — le ticket ne donne pas le montant ligne à ligne. 🌙 = annulation de nuit rattachée à la veille.</div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Le <strong>montant</strong> est la part du montant à photographier du jour (webuser exclu). 🌙 = annulation de nuit rattachée à la veille.</div>
     <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th>Heure</th><th class="num">Montant</th><th>Annulé / déclaré par</th><th>Équipier / caisse</th><th>Photo</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
-  </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune déclaration d'annulation sur la période (avec le détail des tickets / équipiers).</div></div>`;
+  </div>` : '';
 
-  return kpis + suiviTbl + `<div style="height:16px"></div>` + cltMgrTbl + (respList.length?`<div style="height:16px"></div>`:'') + cltEqTbl + detailTbl;
+  return kpis + suiviTbl + salCard;
 }
 
-// ───────── ERREURS DE CAISSE — suivi & classements ─────────
+// ───────── ERREURS DE CAISSE — même système que les annulations ─────────
+// Source « declaration_caisse » = écarts importés (les faits, par caissier).
+// Autre source = justification saisie par le manager (photo/note).
 function anRenderErreursCaisse(){
-  const rows = anEnPeriode([...(AN_DATA.erreursCaisseTout || [])]);
-  if(!rows.length) return _anEmpty('💶','Aucune erreur de caisse sur la période','Change la période en haut, ou déclare les erreurs via le menu « Erreur caisse ».');
-  rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const all = anEnPeriode([...(AN_DATA.erreursCaisseTout || [])]);
+  if(!all.length) return _anEmpty('💶','Aucune erreur de caisse sur la période','Importe la « Déclaration de caisse » (CSV) dans Config → Importer des documents, ou change la période.');
+  const PLANCHER = 2;   // on ignore les écarts de moins de 2 € (pas de seuil d'alerte ici)
 
-  const totMontant = rows.reduce((a,b)=>a+Math.abs(b.montant||0),0);
-  const nb = rows.length;
-  const manquants = rows.filter(r=>r.sens!=='excedent');
-  const excedents = rows.filter(r=>r.sens==='excedent');
-  const totManq = manquants.reduce((a,b)=>a+Math.abs(b.montant||0),0);
-  const totExc  = excedents.reduce((a,b)=>a+Math.abs(b.montant||0),0);
+  const impRows  = all.filter(r=>r.source==='declaration_caisse');   // écarts importés (par caissier)
+  const justRows = all.filter(r=>r.source!=='declaration_caisse');   // justifications saisies
 
+  // Base d'affichage : import si présent, sinon saisies manuelles — et uniquement les écarts ≥ 2 €
+  const base = (impRows.length ? impRows : all).filter(r=>Math.abs(r.montant||0) >= PLANCHER);
+  if(!base.length) return _anEmpty('💶','Aucun écart ≥ 2 € sur la période','Les écarts de moins de 2 € ne sont pas affichés. Change la période si besoin.');
+
+  // Justifications par jour (pour marquer « justifié » + récupérer la photo)
+  const justByDay={}; justRows.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; (justByDay[k]=justByDay[k]||[]).push(r); });
+
+  // Une ligne par session ≥ 2 € ; « justifié » attribué aux N premières du jour (N = justifications saisies)
+  const byDay={}; base.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; (byDay[k]=byDay[k]||[]).push(r); });
+  const lignes=[];
+  Object.keys(byDay).forEach(k=>{
+    const arr=byDay[k].slice().sort((a,b)=>(a.heure||'').localeCompare(b.heure||''));
+    const nJust=(justByDay[k]||[]).length; let ji=0;
+    arr.forEach(r=>{
+      let justified=false, just=null;
+      if(ji<nJust){ justified=true; just=justByDay[k][ji]; ji++; }
+      lignes.push(Object.assign({}, r, {justified, just}));
+    });
+  });
+  lignes.sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (a.heure||'').localeCompare(b.heure||''));
+
+  // KPIs
+  const totManq = base.filter(r=>r.sens!=='excedent').reduce((a,b)=>a+Math.abs(b.montant||0),0);
+  const totExc  = base.filter(r=>r.sens==='excedent').reduce((a,b)=>a+Math.abs(b.montant||0),0);
+  const aJust = lignes.filter(l=>!l.justified);
+  const totAjust = aJust.reduce((a,b)=>a+Math.abs(b.montant||0),0);
   const kpis = `
   <div class="kpi-grid">
-    <div class="kpi bad"><div class="kpi-label">Total erreurs</div><div class="kpi-val">${nb}</div></div>
-    <div class="kpi bad"><div class="kpi-label">Montant total (écarts)</div><div class="kpi-val">${fmt(totMontant)} €</div></div>
+    <div class="kpi bad"><div class="kpi-label">Écarts de caisse (≥ 2 €)</div><div class="kpi-val">${base.length}</div></div>
     <div class="kpi warn"><div class="kpi-label">Manquant cumulé</div><div class="kpi-val">−${fmt(totManq)} €</div></div>
     <div class="kpi ok"><div class="kpi-label">Excédent cumulé</div><div class="kpi-val">+${fmt(totExc)} €</div></div>
+    <div class="kpi ${aJust.length?'bad':'ok'}"><div class="kpi-label">À justifier</div><div class="kpi-val">${aJust.length}</div><div style="font-size:10px;color:var(--muted2)">${fmt(totAjust)} €</div></div>
   </div>`;
 
-  // Par équipier
-  const byEq={}; rows.forEach(r=>{ const e=r.equipier||'(non renseigné)'; if(!byEq[e])byEq[e]={nom:e,nb:0,montant:0}; byEq[e].nb++; byEq[e].montant+=Math.abs(r.montant||0); });
-  const cltEq=Object.values(byEq).sort((a,b)=>b.montant-a.montant);
-  // Par manager
-  const byMgr={}; rows.forEach(r=>{ const m=r.manager||'(non renseigné)'; if(!byMgr[m])byMgr[m]={nom:m,nb:0,montant:0}; byMgr[m].nb++; byMgr[m].montant+=Math.abs(r.montant||0); });
-  const cltMgr=Object.values(byMgr).sort((a,b)=>b.montant-a.montant);
-
-  const cltEqTbl = anClassement('🧑‍🍳 Classement équipiers — erreurs de caisse (pire → meilleur)', cltEq.length+' équipiers',
-    [
-      {label:'#', render:(l,i)=>anBadge(i)},
-      {label:'Équipier', key:'nom'},
-      {label:'Nb', num:true, key:'nb'},
-      {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,20,60,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
-    ], cltEq);
-
-  const cltMgrTbl = anClassement('👔 Classement managers — erreurs de caisse', cltMgr.length+' managers',
-    [
-      {label:'#', render:(l,i)=>anBadge(i)},
-      {label:'Manager', key:'nom'},
-      {label:'Nb', num:true, key:'nb'},
-      {label:'Montant', num:true, render:l=>{const f=anFeu(l.montant,20,60,'bas'); return `<span style="color:${f.col};font-weight:600">${f.dot} ${fmt(l.montant)} €</span>`;}},
-    ], cltMgr);
-
-  const detail = rows.slice(0,120).map(r=>`
-    <tr><td style="color:var(--accent)">${r.date?formatDate(r.date):'—'}</td>
-      <td class="num" style="font-weight:600;color:${r.sens==='excedent'?'var(--green)':'var(--red)'}">${r.sens==='excedent'?'+':'−'}${fmt(Math.abs(r.montant||0))} €</td>
-      <td>${r.manager||'—'}</td>
-      <td style="color:var(--muted2)">${r.equipier||'—'}</td>
-      <td>${r.photo_url?dbxThumb(r.photo_url,'justificatif'):'<span style="color:var(--muted2)">—</span>'}</td>
-      <td style="color:var(--muted2);font-size:10px">${r.commentaire||''}</td></tr>`).join('');
-  const detailTbl = `
+  // Tableau : une ligne par écart
+  const rowsHtml = lignes.slice(0,400).map(l=>{
+    const signe=l.sens==='excedent'?'+':'−'; const col=l.sens==='excedent'?'var(--yellow)':'var(--red)';
+    const d=l.just||{}; const photo = l.justified ? (d.photo_url?dbxThumb(d.photo_url,'justificatif'):'') : '';
+    const statut = l.justified ? (photo?'✓ Justifié (photo)':'✓ Justifié') : '⛔ À justifier';
+    const sc = l.justified ? 'var(--green)' : 'var(--red)';
+    const just = l.justified ? (photo || '<span style="color:var(--green)">✓ oui</span>') : '<span style="color:var(--muted)">—</span>';
+    return `<tr>
+      <td style="color:var(--accent)">${l.date?formatDate(l.date):'—'} ${l.heure||''}</td>
+      <td class="num" style="font-weight:600;color:${col}">${signe}${fmt(Math.abs(l.montant||0))} €</td>
+      <td><span style="font-weight:600;color:var(--accent)">${l.equipier||'—'}</span></td>
+      <td style="color:var(--muted2)">${l.manager||'—'}</td>
+      <td><span style="color:${sc};font-weight:600">${statut}</span></td>
+      <td>${just}</td>
+    </tr>`;
+  }).join('');
+  const suiviTbl = `
   <div class="table-card" style="margin-top:16px">
-    <div class="table-header"><span class="table-title">Détail des erreurs de caisse</span><span style="font-size:10px;color:var(--muted)">${nb} erreurs</span></div>
-    <div class="table-wrap" style="max-height:340px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Écart</th><th>Manager</th><th>Équipier</th><th>Justificatif</th><th>Note</th></tr></thead><tbody>${detail}</tbody></table></div>
+    <div class="table-header"><span class="table-title">💶 Écarts de caisse — une ligne par session (caissier)</span><span style="font-size:10px;color:var(--muted)">${base.length} écart(s) ≥ 2 €</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Écart espèces = déclaré − théorique (on n'affiche pas les écarts de moins de 2 €). <span style="color:var(--red);font-weight:600">rouge = manquant</span>, <span style="color:var(--yellow);font-weight:600">jaune = excédent</span>. Chaque écart est <strong>à justifier</strong> ; il passe <span style="color:var(--green);font-weight:600">✓ justifié</span> avec la photo dès qu'une justification est saisie ce jour-là.</div>
+    <div class="table-wrap" style="max-height:440px;overflow-y:auto"><table><thead><tr><th>Date / heure</th><th class="num">Écart</th><th>Caissier</th><th>Validé par</th><th>Statut</th><th>Justificatif</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
   </div>`;
 
-  return kpis + cltEqTbl + `<div style="height:16px"></div>` + cltMgrTbl + detailTbl;
+  // Par salarié (caissier)
+  const bySal={};
+  base.forEach(r=>{ const nom=r.equipier||'(non renseigné)'; if(!bySal[nom])bySal[nom]={nom,nb:0,manq:0,exc:0};
+    bySal[nom].nb++; if(r.sens==='excedent')bySal[nom].exc+=Math.abs(r.montant||0); else bySal[nom].manq+=Math.abs(r.montant||0); });
+  // à justifier par salarié
+  lignes.forEach(l=>{ const nom=l.equipier||'(non renseigné)'; if(bySal[nom]){ bySal[nom].ajust=(bySal[nom].ajust||0)+(!l.justified?1:0); bySal[nom].ajustM=(bySal[nom].ajustM||0)+(!l.justified?Math.abs(l.montant||0):0); } });
+  const salList=Object.values(bySal).sort((a,b)=>(b.manq-a.manq)||(b.nb-a.nb));
+  const salCard = salList.length ? `<div class="table-card" style="margin-top:16px">
+    <div class="table-header"><span class="table-title">🧑‍🍳 Par salarié — écarts de caisse</span><span style="font-size:10px;color:var(--muted)">${salList.length} salarié(s)</span></div>
+    <div class="table-wrap" style="max-height:360px;overflow-y:auto"><table><thead><tr><th>Caissier</th><th class="num">Nb écarts</th><th class="num">Manquant</th><th class="num">Excédent</th><th class="num">À justifier</th></tr></thead><tbody>${salList.map(s=>`<tr><td style="font-weight:600;color:var(--accent)">${s.nom}</td><td class="num">${s.nb}</td><td class="num" style="color:${s.manq>0?'var(--red)':'var(--muted2)'};font-weight:600">−${fmt(s.manq)} €</td><td class="num" style="color:${s.exc>0?'var(--yellow)':'var(--muted2)'}">+${fmt(s.exc)} €</td><td class="num" style="color:${(s.ajust||0)>0?'var(--red)':'var(--muted2)'};font-weight:600">${s.ajust||0}${(s.ajustM||0)>0?` (${fmt(s.ajustM)} €)`:''}</td></tr>`).join('')}</tbody></table></div>
+  </div>` : '';
+
+  return kpis + suiviTbl + salCard;
 }
 
 // ───────── CORRECTIONS — classement managers (depuis journees) ─────────
@@ -10054,6 +10327,191 @@ async function persistAnnulationSupabase(base, equipier, photos){
       console.warn('insert annulation (repli)', error.message||error);
     }
   }catch(e){ console.warn('persistAnnulationSupabase', e); }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  IMPORT ADMIN — document par document (démarrage : Rapport des annulations)
+// ══════════════════════════════════════════════════════════════
+// Parser du « Rapport des annulations » (format journalier OU mensuel).
+// Fiable sur date + montant + flag webuser (ancré sur « DD/MM/YYYY montant€ »).
+function parseRapportAnnulations(txt){
+  const res={from:null, to:null, lignes:[]};
+  const mR = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2})\s+au\s+(\d{2})\/(\d{2})\/(\d{2})/);
+  if(mR){ res.from='20'+mR[3]+'-'+mR[2]+'-'+mR[1]; res.to='20'+mR[6]+'-'+mR[5]+'-'+mR[4]; }
+  // Nettoyage des en-têtes / pieds de page répétés (multi-pages)
+  let body=' '+txt+' ';
+  body=body.replace(/Du\s+\d{2}\/\d{2}\/\d{2}\s+au\s+\d{2}\/\d{2}\/\d{2}\s+en\s+journ[ée]e\s+fiscale/gi,' ');
+  body=body.replace(/Rapport des annulations/gi,' ').replace(/Edit[ée] le\s+\d{2}\/\d{2}\/\d{4}\s+[àa]\s+\d{1,2}:\d{2}\s+par\s+\S+/gi,' ');
+  body=body.replace(/Vendeurs\s*:/gi,' ').replace(/PRES D ARENES|SAINT JEAN DE VEDAS|SAINT CLEMENT/gi,' ').replace(/10\.7\.[\d._]+/g,' ');
+  body=body.replace(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/g,' ').replace(/\b\d{2}_\d{2}_\d{2}\b/g,' '); // versions logiciel / IP de caisse
+  // mots d'en-tête de colonnes (n'apparaissent jamais dans les données)
+  body=body.replace(/Annul[ée] par|Caisse compt[ée]e par|Ticket payant|Ticket annulant|D[ée]lai|\(min\)|Caisse\s*-\s*Ticket|\bheure\b|\bCaissier\b|\bMontant\b|\bDate\b/gi,' ');
+  const iTot = body.search(/\bTOTAL\b/);
+  if(iTot>0) body = body.slice(0, iTot);
+  // Jeu des codes caissiers (token isolé juste avant chaque date) pour isoler le NOM
+  const caissierSet=new Set(['KIOSK']); let mc;
+  const reC=/\d{3,}\s+([A-Z]{4,8}|LE\s+[A-Z]{2,6})\s+\d{2}\/\d{2}\/\d{4}/g;
+  while((mc=reC.exec(body))) caissierSet.add(mc[1].trim().toUpperCase());
+  const isC=(t)=>caissierSet.has((t||'').toUpperCase());
+  // Chaque annulation se termine par « DD/MM/YYYY montant€ ».
+  const re=/([\s\S]*?)(\d{2})\/(\d{2})\/(\d{4})\s+([\d  ]*,\d{2})\s*€/g;
+  let m;
+  while((m=re.exec(body))){
+    const bloc=m[1].trim();
+    const date=m[4]+'-'+m[3]+'-'+m[2];
+    const montant=parseFloat(m[5].replace(/\s/g,'').replace(',','.'))||0;
+    const webuser=/(^|\s)webuser(\s|$)/i.test(bloc);
+    const heures=(bloc.match(/\b\d{1,2}:\d{2}\b/g)||[]);
+    // Nom (« Caisse comptée par ») = ce qui reste entre le code et le(s) caissier(s), avant la 1re heure
+    let prefix=(bloc.split(/\s\d{1,2}:\d{2}/)[0]||'').trim();
+    let toks=prefix.split(/\s+/).filter(Boolean);
+    let rest=toks.slice(1);
+    while(rest.length>2){ const last=rest[rest.length-1], prev=rest[rest.length-2];
+      if(isC(last)){ rest.pop(); if(prev&&prev.toUpperCase()==='LE') rest.pop(); }
+      else if(prev&&isC(prev+' '+last)){ rest.pop(); rest.pop(); }
+      else break; }
+    while(rest.length>2 && rest[rest.length-1].toUpperCase()==='KIOSK') rest.pop();
+    // Nom « Caisse comptée par » = tout ce qui reste (2 OU 3 mots, ex. « DA SILVA LAETITIA »)
+    const nom = rest.join(' ') || null;
+    let canal=null;
+    if(/UBERDEL|UBER EATS|UBER/i.test(bloc)) canal='Uber Eats';
+    else if(/DELIVEROO/i.test(bloc)) canal='Deliveroo';
+    else if(/KIOSK/i.test(bloc)) canal='Kiosk';
+    if(webuser && !canal) canal='Uber Eats / livraison';
+    res.lignes.push({date, montant, webuser, nom, heure:heures[0]||null, canal});
+  }
+  return res;
+}
+
+function admImportDrop(e){
+  e.preventDefault();
+  const z=document.getElementById('adm-drop'); if(z) z.classList.remove('drag-over');
+  const fs=e.dataTransfer&&e.dataTransfer.files;
+  if(fs&&fs.length) admImportFiles(fs);
+}
+
+async function admImportFiles(files){
+  const box=document.getElementById('adm-import-result'); if(!box) return;
+  const arr=Array.from(files||[]).filter(f=>/\.(pdf|csv)$/i.test(f.name)||f.type==='application/pdf'||f.type==='text/csv');
+  if(!arr.length){ box.innerHTML='<div class="table-card"><div style="padding:12px 14px;font-size:12px;color:var(--red)">Aucun PDF ou CSV détecté.</div></div>'; return; }
+  box.innerHTML='<div class="table-card"><div style="padding:12px 14px;font-size:12px;color:var(--muted)">⏳ Lecture des documents…</div></div>';
+  const results=[];
+  for(const f of arr){
+    try{
+      // ── CSV : Déclaration de caisse (écarts par caissier) ──
+      if(/\.csv$/i.test(f.name) || f.type==='text/csv'){
+        const csv = await f.text();
+        if(/ESPECESTHEORIQUE|ESPCESDECLARE/i.test(csv) || /clarat[io]+n de caisse/i.test(f.name)){
+          results.push(await admSaveDeclarationCaisse(csv, f.name));
+        } else {
+          results.push({ok:false, nom:f.name, msg:'CSV non reconnu (attendu : « Déclaration de caisse »).'});
+        }
+        continue;
+      }
+      // ── PDF ──
+      const pdfjsLib=window['pdfjs-dist/build/pdf'];
+      pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const ab=await f.arrayBuffer();
+      const pdf=await pdfjsLib.getDocument({data:ab}).promise;
+      let txt=''; for(let p=1;p<=pdf.numPages;p++){ const pg=await pdf.getPage(p); const tc=await pg.getTextContent(); txt+=tc.items.map(t=>t.str).join(' ')+' '; }
+      const type=(typeof detecterTypePDF==='function')?detecterTypePDF(txt):null;
+      if(type==='annulations' || /Rapport des annulations/i.test(txt)){
+        results.push(await admSaveRapportAnnulations(txt, f.name));
+      } else {
+        const labels={synthese:'Synthèse CA',sos:'SOS Drive',ventes:'Ventes ¼h',repas:'Bons repas'};
+        results.push({ok:false, nom:f.name, msg: type&&labels[type] ? ('Reconnu : '+labels[type]+' — l\'import de ce document depuis cet écran sera ajouté prochainement. Pour l\'instant, passe par « Ma journée ».') : 'Document non reconnu (ni rapport d\'annulations, ni Déclaration de caisse).'});
+      }
+    }catch(e){ results.push({ok:false, nom:f.name, msg:'Erreur de lecture : '+(e.message||e)}); }
+  }
+  box.innerHTML = results.map(r=>`<div class="table-card" style="margin-bottom:8px;border-left:3px solid ${r.ok?'var(--green)':'var(--red)'}">
+    <div style="padding:10px 14px;font-size:12px"><div>${r.ok?'✅':'⚠️'} <strong>${r.nom}</strong></div><div style="color:var(--muted2);margin-top:3px">${r.msg}</div></div></div>`).join('');
+}
+
+// ── Parser CSV « Déclaration de caisse » : un écart espèces par session de caisse ──
+function parseDeclarationCaisse(txt){
+  const lines=String(txt).split(/\r?\n/).filter(l=>l.trim());
+  if(lines.length<2) return {lignes:[]};
+  const H=lines[0].split(';').map(s=>s.trim().toUpperCase());
+  const idx=n=>H.indexOf(n);
+  const num=s=>{ if(s==null||s==='')return 0; const v=parseFloat(String(s).replace(/\s/g,'').replace(',','.')); return isNaN(v)?0:v; };
+  const iVend=idx('LIBELLEVENDEUR'), iResp=idx('VALIDATIONRESPONSABLE'), iCaisse=idx('CAISSE');
+  const iEspTh=idx('ESPECESTHEORIQUE'), iEspDe=idx('ESPCESDECLARE');
+  const iDate=idx('DATEFISCALE'), iHeure=idx('HEURE_FIN_SESSION');
+  if(iEspTh<0 || iEspDe<0) return {lignes:[], erreur:'Colonnes espèces introuvables'};
+  const out=[];
+  for(const l of lines.slice(1)){
+    const c=l.split(';'); if(c.length<H.length-2) continue;
+    const th=num(c[iEspTh]), de=num(c[iEspDe]);
+    const ecart=Math.round((de-th)*100)/100;
+    if(Math.abs(ecart)<0.01) continue;              // pas d'écart : on ignore
+    const dISO=(c[iDate]||'').slice(0,10);
+    out.push({ date:dISO, heure:(c[iHeure]||'').trim()||null, equipier:(c[iVend]||'').trim()||null,
+      manager:(c[iResp]||'').trim()||null, caisse:(c[iCaisse]||'').trim()||null,
+      theorique:th, declare:de, montant:Math.abs(ecart), sens: ecart<0?'manquant':'excedent' });
+  }
+  return {lignes:out};
+}
+
+async function admSaveDeclarationCaisse(txt, nom){
+  if(!SB) return {ok:false, nom, msg:'Base non connectée.'};
+  const resto = (typeof hrDetectResto==='function'?(hrDetectResto(nom)||hrDetectResto(txt)):null) || (ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL'&&ACTIVE_RESTO!=='Administration'?ACTIVE_RESTO:null);
+  if(!resto) return {ok:false, nom, msg:'Restaurant non identifié (mets le bon resto en haut ou garde le nom du fichier).'};
+  const p=parseDeclarationCaisse(txt);
+  if(p.erreur) return {ok:false, nom, msg:p.erreur};
+  if(!p.lignes.length) return {ok:false, nom, msg:'Aucun écart de caisse (théorique = déclaré partout) sur ce fichier.'};
+  const dates=p.lignes.map(l=>l.date).filter(Boolean).sort();
+  const from=dates[0], to=dates[dates.length-1];
+  try{
+    // Réimport propre : purge des écarts importés déjà présents sur la période/resto
+    await SB.from('erreurs_caisse').delete().eq('restaurant',resto).eq('source','declaration_caisse').gte('date',from).lte('date',to);
+    const rows=p.lignes.map(a=>({ restaurant:resto, date:a.date, heure:a.heure, montant:a.montant, sens:a.sens,
+      equipier:a.equipier, manager:a.manager, theorique:a.theorique, declare:a.declare, caisse:a.caisse,
+      commentaire:'Déclaration de caisse ('+a.sens+')', source:'declaration_caisse' }));
+    let {error}=await SB.from('erreurs_caisse').insert(rows);
+    if(error){ const rows2=rows.map(r=>{const c={...r}; delete c.theorique; delete c.declare; delete c.caisse; return c;});
+      const r2=await SB.from('erreurs_caisse').insert(rows2); error=r2.error; }
+    if(error) return {ok:false, nom, msg:'Erreur d\'enregistrement : '+(error.message||error)};
+    if(typeof loadAll==='function'){ try{ await loadAll(); }catch(e){} }
+    const nbManq=p.lignes.filter(l=>l.sens==='manquant').length, nbExc=p.lignes.length-nbManq;
+    const totManq=p.lignes.filter(l=>l.sens==='manquant').reduce((a,b)=>a+b.montant,0);
+    const totExc =p.lignes.filter(l=>l.sens==='excedent').reduce((a,b)=>a+b.montant,0);
+    const rn=(typeof RESTAURANTS!=='undefined'&&RESTAURANTS[resto])?RESTAURANTS[resto].nom:resto;
+    return {ok:true, nom, msg:`Déclaration de caisse — ${rn} · du ${formatDate(from)} au ${formatDate(to)} · <strong>${p.lignes.length} écart(s)</strong> (${nbManq} manquant = ${fmt(totManq)} €, ${nbExc} excédent = ${fmt(totExc)} €).`};
+  }catch(e){ return {ok:false, nom, msg:'Erreur : '+(e.message||e)}; }
+}
+
+async function admSaveRapportAnnulations(txt, nom){
+  if(!SB) return {ok:false, nom, msg:'Base non connectée.'};
+  const resto = (typeof hrDetectResto==='function'?hrDetectResto(txt):null) || (ACTIVE_RESTO&&ACTIVE_RESTO!=='ALL'&&ACTIVE_RESTO!=='Administration'?ACTIVE_RESTO:null);
+  if(!resto) return {ok:false, nom, msg:'Restaurant non identifié dans le PDF (ni via le resto actif). Sélectionne le bon restaurant en haut et réessaie.'};
+  const p = parseRapportAnnulations(txt);
+  if(!p.lignes.length) return {ok:false, nom, msg:'Aucune annulation lue dans ce PDF.'};
+  const alldates = p.lignes.map(l=>l.date).sort();
+  const from = p.from || alldates[0];
+  const to   = p.to   || alldates[alldates.length-1];
+  try{
+    // Réimport propre : on purge les annulations « caisse » déjà enregistrées sur la période/resto
+    await SB.from('annulations').delete().eq('restaurant',resto).eq('source','pdf_caisse').gte('date',from).lte('date',to);
+    const rows = p.lignes.map(a=>({
+      restaurant:resto, date:a.date, heure:a.heure||null, montant:a.montant||0,
+      manager: a.nom||null,   // « qui a fait l'annulation » (Caisse comptée par du rapport)
+      commentaire: a.webuser ? ('Webuser (Uber/livraison) — '+(a.nom||'')) : ('Annulé par '+(a.nom||'?')),
+      canal: a.canal||null,
+      photographiable: !a.webuser,
+      source:'pdf_caisse'
+    }));
+    let {error}=await SB.from('annulations').insert(rows);
+    if(error){ // repli si une colonne manque (canal / photographiable)
+      const rows2=rows.map(r=>{ const c={...r}; delete c.canal; return c; });
+      const r2=await SB.from('annulations').insert(rows2); error=r2.error;
+    }
+    if(error) return {ok:false, nom, msg:'Erreur d\'enregistrement : '+(error.message||error)};
+    if(typeof loadAll==='function'){ try{ await loadAll(); }catch(e){} }
+    const nbW=p.lignes.filter(l=>l.webuser).length, nbP=p.lignes.length-nbW;
+    const mnt=p.lignes.reduce((a,b)=>a+(b.montant||0),0);
+    const rn=(typeof RESTAURANTS!=='undefined'&&RESTAURANTS[resto])?RESTAURANTS[resto].nom:resto;
+    return {ok:true, nom, msg:`Rapport des annulations — ${rn} · du ${formatDate(from)} au ${formatDate(to)} · <strong>${p.lignes.length} annulation(s)</strong> enregistrée(s) (${nbP} à photographier, ${nbW} webuser) · ${fmt(mnt)} €.`};
+  }catch(e){ return {ok:false, nom, msg:'Erreur : '+(e.message||e)}; }
 }
 
 function sauvegarderAnnulation() {
