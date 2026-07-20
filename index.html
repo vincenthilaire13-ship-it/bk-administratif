@@ -4641,6 +4641,8 @@ async function checkFichiersManquants(){
         // Autres dépôts manquants (SOS Drive · Ventes ¼h · Bons repas)
         const autresDocs = ['sos','ventes','repas'].filter(t=>!has[t].has(key));
         if(autresDocs.length) cat.autres[rt].push({jour, docs:autresDocs});
+        // Annulations & erreurs caisse : uniquement à partir du plancher (avant = période de test, ignoré)
+        if(jour < ANNUL_EC_DEBUT) return;
         // Annulations NON déclarées.
         //  • Rapport importé  → une ligne par annulation avec le NOM (« Caisse comptée par »).
         //  • Pas encore de rapport → repli sur la Synthèse CA (annulations_nb) : on affiche
@@ -4790,6 +4792,9 @@ async function checkFichiersManquants(){
 // Date de démarrage du suivi des PHOTOS d'annulations : on repart à zéro le 11/06/2026.
 // Toutes les annulations antérieures sont considérées comme ayant leurs tickets (pas de demande).
 const ANNUL_DATE_DEBUT = '2026-06-11';
+// Plancher « données réelles » pour les ANNULATIONS & ERREURS CAISSE : avant cette date,
+// c'est de la période de test → on n'en tient PAS compte (dashboard ET analyses).
+const ANNUL_EC_DEBUT = '2026-07-01';
 
 async function renderAnnulationsSansPhoto(){
   const box = document.getElementById('imports-annul-photos');
@@ -4798,8 +4803,8 @@ async function renderAnnulationsSansPhoto(){
     let resto = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' && ACTIVE_RESTO!=='Administration') ? ACTIVE_RESTO : (CURRENT_USER?.resto||null);
     if(resto==='ALL'||resto==='Administration') resto=null;
     // Lecture des annulations PDF photographiables (annulé par un nom) + déclarations managers
-    let qPdf = SB.from('annulations').select('*').eq('source','pdf_caisse').eq('photographiable',true).gte('date',ANNUL_DATE_DEBUT);
-    let qDecl= SB.from('annulations').select('restaurant,date').neq('source','pdf_caisse').gte('date',ANNUL_DATE_DEBUT);
+    let qPdf = SB.from('annulations').select('*').eq('source','pdf_caisse').eq('photographiable',true).gte('date',ANNUL_EC_DEBUT);
+    let qDecl= SB.from('annulations').select('restaurant,date').neq('source','pdf_caisse').gte('date',ANNUL_EC_DEBUT);
     if(resto){ qPdf=qPdf.eq('restaurant',resto); qDecl=qDecl.eq('restaurant',resto); }
     const [pdf, decl] = await Promise.all([ qPdf.order('date',{ascending:false}), qDecl ]);
     const pdfRows = pdf.data||[];
@@ -9590,6 +9595,9 @@ function anRenderAnnulations(){
   const CUT=5;
   all.forEach(r=>{ const h=r.heure?parseInt(String(r.heure).split(':')[0],10):NaN; if(!isNaN(h)&&h<CUT&&r.date){ const dt=new Date(r.date+'T12:00:00'); if(!isNaN(dt.getTime())){ r._realdate=r.date; dt.setDate(dt.getDate()-1); r.date=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'); r._nuit=true; } } });
   all = anEnPeriode(all);
+  // Plancher « données réelles » : on ignore tout ce qui précède le 1er juillet (période de test)
+  const _ecDeb = (typeof ANNUL_EC_DEBUT!=='undefined'?ANNUL_EC_DEBUT:'2026-07-01');
+  all = all.filter(r=>(r.date||'') >= _ecDeb);
 
   // Toutes les annulations du rapport (webuser inclus dans la liste, mais en simple info)
   const isPdf = r=>r.source==='pdf_caisse';
@@ -9599,7 +9607,7 @@ function anRenderAnnulations(){
   const declRows  = all.filter(r=>!isPdf(r)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
   // Synthèse : managers de shift + repli si le rapport n'est pas importé pour un jour
-  const allJ = anJourneesPeriode();
+  const allJ = anJourneesPeriode().filter(d=>(d.date||'') >= _ecDeb);
   const jByKey={}; allJ.forEach(d=>{ jByKey[(d.restaurant||'')+'|'+d.date]=d; });
 
   const grp=(arr)=>{ const o={}; arr.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; (o[k]=o[k]||{nb:0,montant:0,rows:[]}); o[k].nb++; o[k].montant+=Math.abs(r.montant||0); o[k].rows.push(r); }); return o; };
@@ -9773,7 +9781,9 @@ function anRenderAnnulations(){
 // Source « declaration_caisse » = écarts importés (les faits, par caissier).
 // Autre source = justification saisie par le manager (photo/note).
 function anRenderErreursCaisse(){
-  const all = anEnPeriode([...(AN_DATA.erreursCaisseTout || [])]);
+  // Plancher « données réelles » : on ignore tout ce qui précède le 1er juillet (période de test)
+  const _ecDeb = (typeof ANNUL_EC_DEBUT!=='undefined'?ANNUL_EC_DEBUT:'2026-07-01');
+  const all = anEnPeriode([...(AN_DATA.erreursCaisseTout || [])]).filter(r=>(r.date||'') >= _ecDeb);
   if(!all.length) return _anEmpty('💶','Aucune erreur de caisse sur la période','Importe la « Déclaration de caisse » (CSV) dans Config → Importer des documents, ou change la période.');
   const PLANCHER = 2;   // on ignore les écarts de moins de 2 € (pas de seuil d'alerte ici)
 
@@ -9854,7 +9864,8 @@ function anRenderErreursCaisse(){
 
 // ───────── CORRECTIONS — classement managers (depuis journees) ─────────
 function anRenderCorrections(){
-  const rows = anJourneesPeriode().filter(d=>d.corrections_montant!=null||d.corrections_nb!=null);
+  const _ecDeb = (typeof ANNUL_EC_DEBUT!=='undefined'?ANNUL_EC_DEBUT:'2026-07-01');
+  const rows = anJourneesPeriode().filter(d=>(d.date||'') >= _ecDeb).filter(d=>d.corrections_montant!=null||d.corrections_nb!=null);
   if(!rows.length) return _anEmpty('✏️','Aucune correction sur la période','Les corrections proviennent de la Synthèse CA.');
   const totMontant = rows.reduce((a,b)=>a+(b.corrections_montant||0),0);
   const totNb = rows.reduce((a,b)=>a+(b.corrections_nb||0),0);
