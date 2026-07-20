@@ -1275,7 +1275,7 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
       <div style="max-width:100%">
         <div class="mgr-card" id="mgr-controle-depots" style="max-width:100%">
           <div class="mgr-title">🗂️ Contrôle des dépôts</div>
-          <div class="mgr-sub">Vérifie quels documents (Synthèse CA · SOS Drive · Ventes ¼h · Bons repas) ont bien été déposés, par jour.</div>
+          <div class="mgr-sub">Vérifie quels documents (Synthèse CA · SOS Drive · Ventes ¼h · Bons repas · Rapport des annulations) ont bien été déposés, par jour.</div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:12px 0">
             <label style="font-size:11px;color:var(--muted2)">Du</label>
             <input type="date" class="form-input" id="imp-date-from" style="width:auto;padding:6px 10px">
@@ -3579,6 +3579,26 @@ async function sbCountRD(table, from, to, opts){
   return map;
 }
 
+// « Le rapport fait foi » — renvoie une fonction (resto,dateISO)=>bool vraie si le jour
+// est couvert par un rapport d'annulations importé. Couverture = intervalle min–max des
+// lignes du rapport pour ce resto SUR CE MOIS. Un jour couvert sans ligne = 0 annulation
+// (on ne se rabat donc PLUS sur la Synthèse CA pour compter/alerter). `keys` = itérable de
+// clés « resto|YYYY-MM-DD » (jours ayant au moins une ligne de rapport).
+function anRapportCouverture(keys){
+  const span={};
+  for(const key of (keys||[])){
+    const parts=String(key).split('|'); const rt=parts[0], d=(parts[1]||'').slice(0,10);
+    if(!d) continue; const mk=rt+'|'+d.slice(0,7);
+    if(!span[mk]) span[mk]={min:d,max:d};
+    else { if(d<span[mk].min)span[mk].min=d; if(d>span[mk].max)span[mk].max=d; }
+  }
+  return (resto,dateISO)=>{
+    let rt=resto; if(rt==='ALL'||rt==='Administration')rt='BK526';
+    const d=(dateISO||'').slice(0,10); const s=span[rt+'|'+d.slice(0,7)];
+    return !!(s && d>=s.min && d<=s.max);
+  };
+}
+
 async function renderImports(){
   const el = document.getElementById('imports-content');
   if(!el) return;
@@ -3608,6 +3628,18 @@ async function renderImports(){
     const ecartCaisse = await sbMapRD('journees', 'restaurant,date,erreur_caisse', from, to, x=>(x.erreur_caisse!=null?x.erreur_caisse:null));
     const declAnnul   = await sbCountRD('annulations', from, to);
     const declErrCais = await sbCountRD('erreurs_caisse', from, to);
+    // Jours où le « Rapport des annulations » a bien été déposé (≥1 ligne source=pdf_caisse)
+    const joursRapport = new Set();
+    try {
+      let off=0; const PG=1000;
+      for(let g=0; g<200; g++){
+        const {data,error} = await SB.from('annulations').select('restaurant,date').eq('source','pdf_caisse').gte('date',from).lte('date',to).range(off,off+PG-1);
+        if(error) break; const rows=data||[];
+        rows.forEach(x=>{ let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; joursRapport.add(rt+'|'+(x.date||'').slice(0,10)); });
+        if(rows.length<PG) break; off+=PG;
+      }
+    } catch(e){ console.warn('joursRapport', e); }
+    const couvertRapport = anRapportCouverture(joursRapport);
     const cols = [
       {key:'synthese', label:'Synthèse CA',  ico:'📄'},
       {key:'sos',      label:'SOS Drive',     ico:'🚗'},
@@ -3660,8 +3692,11 @@ async function renderImports(){
         // ── Contrôle annulations : caisse vs déclarations ──
         const key = rt+'|'+jour;
         const annulInfo = annulCaisse[key] || {nb:0, mnt:0};
-        const nbCaisse = annulInfo.nb||0;           // annulations comptées par la caisse
-        const mntCaisse = annulInfo.mnt||0;         // montant total des annulations (caisse)
+        let nbCaisse = annulInfo.nb||0;             // annulations comptées par la caisse
+        let mntCaisse = annulInfo.mnt||0;           // montant total des annulations (caisse)
+        // « Le rapport fait foi » : jour couvert par un rapport importé mais sans ligne
+        // → 0 annulation (on ignore le compteur de la Synthèse CA pour ce jour).
+        if(couvertRapport(rt,jour) && !joursRapport.has(key)){ nbCaisse=0; mntCaisse=0; }
         const nbDecl   = declAnnul[key]||0;         // déclarations faites par le manager
         const mntTxt = mntCaisse ? ` <span style="color:var(--muted2);font-weight:400">(${fmt(mntCaisse)} €)</span>` : '';
         let cellAnnul;
@@ -3672,6 +3707,21 @@ async function renderImports(){
         } else {
           const reste = nbCaisse-nbDecl;
           cellAnnul = `<span style="color:var(--red);font-weight:600" title="caisse: ${nbCaisse}, déclarées: ${nbDecl}">❌ ${reste} à décl.${mntTxt}</span>`;
+        }
+        // ── Dépôt du « Rapport des annulations » (5e document) ──
+        //  ✅ déposé (au moins une ligne du rapport enregistrée ce jour)
+        //  ❌ manquant (la Synthèse CA signale des annulations mais aucun rapport déposé)
+        //  —  rien à déposer (aucune annulation ce jour d'après la Synthèse)
+        const rapportDepose = joursRapport.has(key);
+        let cellRapport;
+        if(rapportDepose){
+          cellRapport = '<span style="color:var(--green)" title="Rapport des annulations déposé">✅</span>';
+        } else if(couvertRapport(rt,jour)){
+          cellRapport = '<span style="color:var(--green)" title="Couvert par le rapport de la période — aucune annulation ce jour">✅</span>';
+        } else if(nbCaisse>0){
+          cellRapport = '<span style="color:var(--red);font-weight:600" title="La Synthèse CA indique des annulations mais aucun rapport déposé">❌</span>';
+        } else {
+          cellRapport = '<span style="color:var(--muted)" title="Aucune annulation ce jour — rien à déposer">—</span>';
         }
         // ── Contrôle erreur caisse : écart >±seuil sans déclaration ──
         const ec = ecartCaisse[key];                // écart total de la journée
@@ -3693,6 +3743,7 @@ async function renderImports(){
         return `<tr style="background:${bg}">
           <td style="color:var(--accent);white-space:nowrap">${formatDate(jour)} <span style="color:var(--muted2)">${jourSemaine(new Date(jour))}</span></td>
           ${cells}
+          <td class="num" style="font-size:15px">${cellRapport}</td>
           <td class="num" style="font-size:12px">${cellAnnul}</td>
           <td class="num" style="font-size:12px">${cellEc}</td>
           <td class="num">${statut}</td>
@@ -3705,6 +3756,7 @@ async function renderImports(){
           <thead><tr>
             <th>Date</th>
             ${cols.map(c=>`<th class="num">${c.ico} ${c.label}</th>`).join('')}
+            <th class="num">📥 Rapport annul.</th>
             <th class="num">🚫 Annul.</th>
             <th class="num">💶 Caisse</th>
             <th class="num">Statut</th>
@@ -3714,7 +3766,7 @@ async function renderImports(){
       </div>`;
     });
 
-    el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px;line-height:1.6">✅ = fichier importé dans la base · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.<br>🚫 Annul. : compare les annulations vues par la caisse aux déclarations faites (❌ N à décl. = il manque N déclaration(s) d'annulation). 💶 Caisse : ❌ = écart caisse supérieur à ±${SEUIL_EC} € non déclaré via « Déclarer une erreur de caisse ».</div>`;
+    el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px;line-height:1.6">✅ = fichier importé dans la base · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.<br>📥 Rapport annul. : le « Rapport des annulations » (5ᵉ document) a-t-il été déposé ce jour ? ✅ déposé · ❌ manquant (la Synthèse CA signale des annulations mais aucun rapport) · — rien à déposer (aucune annulation ce jour).<br>🚫 Annul. : compare les annulations vues par la caisse aux déclarations faites (❌ N à décl. = il manque N déclaration(s) d'annulation). 💶 Caisse : ❌ = écart caisse supérieur à ±${SEUIL_EC} € non déclaré via « Déclarer une erreur de caisse ».</div>`;
     // Le détail « annulations en attente des tickets » est désormais dans Analyse → Annulations (statut « Non déclarée »).
   } catch(err){
     console.error('renderImports', err);
@@ -4532,6 +4584,7 @@ async function checkFichiersManquants(){
         if(rows.length<PG) break; off+=PG;
       }
     } catch(e){ console.warn('annulLignes', e); }
+    const couvertRapport = anRapportCouverture(joursRapport);   // « le rapport fait foi » sur sa période
     // Manager d'ouverture / fermeture (pour savoir qui était de service un jour incomplet)
     const mgrOuv = await sbMapRD('journees', 'restaurant,date,manager_ouverture', SUIVI_DATE_DEBUT, finISO, x=>x.manager_ouverture||'');
     const mgrFer = await sbMapRD('journees', 'restaurant,date,manager_fermeture', SUIVI_DATE_DEBUT, finISO, x=>x.manager_fermeture||'');
@@ -4585,6 +4638,9 @@ async function checkFichiersManquants(){
             const nonDecl = ligns.slice(nbDecl);      // les non couvertes par une déclaration
             cat.annul[rt].push({jour, nb:nonDecl.length, lignes:nonDecl});
           }
+        } else if(couvertRapport(rt,jour)){
+          // Jour couvert par un rapport importé mais sans ligne → 0 annulation, rien à déclarer
+          // (« le rapport fait foi » : on ignore le compteur de la Synthèse CA pour ce jour).
         } else {
           // Pas encore de rapport ce jour → repli sur la Synthèse CA (sans nom)
           const ac = annulCaisse[key];                // {nb, mnt} depuis journees
@@ -6946,42 +7002,29 @@ function detecterTypePDF(txt){
 }
 
 // ── Parser du rapport d'annulations (5e PDF) ──
-// Format ligne (texte séquentiel pdf.js) :
-//   <caissier> <NOM PRENOM> <HH:MM caissier> <CAISSE> <HH:MM caisse>
-//   192.168.x.x - <ticket> <JJ/MM/AAAA> <montant>€
-// Le "Caissier / Annulé par" = code court (ex. webuser, BEGYYOH). Le NOM PRENOM suit.
+// IMPORTANT : on délègue au parseur robuste parseRapportAnnulations (le MÊME que
+// l'import admin « Config → Importer des documents »). L'ancien parseur, basé sur un
+// découpage « € » + une regex de ligne rigide, renvoyait 0 ligne sur la vraie mise en
+// page du rapport (montant en 2e colonne, délai en fin de ligne) : le rapport déposé
+// dans « Ma journée » était donc reconnu mais jamais enregistré → analyse vide.
 function parserAnnulations(txt){
-  const lignes = [];
-  let dateGlobale = null;
-  const mD = txt.match(/Du\s+(\d{2})\/(\d{2})\/(\d{2})\s+au/i);
-  if(mD){ dateGlobale = '20'+mD[3]+'-'+mD[2]+'-'+mD[1]; }
-
-  // 1) Isoler le corps : retirer le pied (TOTAL…) et l'en-tête (…heure Date).
-  let body = txt;
-  const iTotal = body.search(/\bTOTAL\b/);
-  if(iTotal>0) body = body.slice(0, iTotal);
-  const mh = body.match(/heure\s+Date\b/i);
-  if(mh){ body = body.slice(body.indexOf(mh[0]) + mh[0].length); }
-
-  // 2) Chaque ligne se termine par "<montant>€". On découpe sur € puis on parse chaque morceau.
-  //    Format d'un morceau : <caissier> <NOM PRENOM> <h1> <CAISSE...> <h2> 192.168.x.x - <ticket> <JJ/MM/AAAA> <montant>
-  const parts = body.split(/€/).map(s=>s.trim()).filter(Boolean);
-  const ligneRe = /^(\S+)\s+(.+?)\s+(\d{1,2}:\d{2})\s+(.+?)\s+(\d{1,2}:\d{2})\s+192\.168\.\d+\.\d+\s*-\s*(\d+)\s+(\d{2}\/\d{2}\/\d{4})\s+([\d  ]+,\d{2})$/;
-  parts.forEach(p=>{
-    const m = p.match(ligneRe);
-    if(!m) return;
-    const caissier  = (m[1]||'').trim();   // code court : webuser / BEGYYOH / DA…
-    const nomPrenom = (m[2]||'').trim();    // NOM PRENOM lisible
-    const heure     = m[3];
-    const canal     = (m[4]||'').trim();    // Caisse comptée par (peut contenir un espace : "LE JJOC")
-    const ticket    = m[6];
-    const dateLigne = m[7] ? m[7].split('/').reverse().join('-') : dateGlobale;
-    const montant   = parseFloat((m[8]||'0').replace(/\s/g,'').replace(',','.')) || 0;
-    const webuser   = /^webuser$/i.test(caissier);
-    // webuser → considéré fait (pas de nom) ; sinon nom du caissier = responsable à photographier
-    lignes.push({ date:dateLigne, heure, montant, canal, ticket, caissier, nom: webuser ? null : nomPrenom, webuser });
-  });
-  return { date: dateGlobale, lignes };
+  if(typeof parseRapportAnnulations === 'function'){
+    const r = parseRapportAnnulations(txt) || {};
+    const lignes = (r.lignes || []).map(a => ({
+      date:    a.date,
+      heure:   a.heure || null,
+      montant: a.montant || 0,
+      canal:   a.canal || null,
+      ticket:  a.ticket || null,
+      caissier: a.caissier || null,
+      // webuser → considéré fait (pas de nom) ; sinon nom = responsable à photographier
+      nom:     a.webuser ? null : (a.nom || null),
+      webuser: !!a.webuser
+    }));
+    const date = r.from || (lignes[0] && lignes[0].date) || null;
+    return { date, lignes };
+  }
+  return { date:null, lignes:[] };
 }
 
 async function lireTousPDFs(files) {
@@ -9524,16 +9567,19 @@ function anRenderAnnulations(){
     if(pd&&pd.nb){ r._mntAttr=pd.montant/pd.nb; }
     else { const jd=jByKey[k]; r._mntAttr = jd&&jd.annulations_nb ? Math.abs(jd.annulations_montant||0)/jd.annulations_nb : Math.abs(r.montant||0); } });
 
-  // Jours « à photographier » : union rapport-photo + déclarations + Synthèse (repli)
+  // Jours « à photographier » : union rapport-photo + déclarations + Synthèse (repli
+  // UNIQUEMENT hors période couverte par un rapport importé — « le rapport fait foi »).
+  const couvertRapport = anRapportCouverture(photoRows.map(r=>(r.restaurant||'')+'|'+(r.date||'')));
   const jSet=new Set([...Object.keys(photoByDay), ...Object.keys(declByDay)]);
-  allJ.forEach(d=>{ if((d.annulations_nb||0)>0) jSet.add((d.restaurant||'')+'|'+d.date); });
+  allJ.forEach(d=>{ if((d.annulations_nb||0)>0 && !couvertRapport(d.restaurant,d.date)) jSet.add((d.restaurant||'')+'|'+d.date); });
 
   const suivi = [...jSet].map(k=>{
     const [restaurant,date]=k.split('|');
     const jd=jByKey[k]||{};
     const hasPdf = pdfDaySet.has(k);
-    const nbPhoto = photoByDay[k]?.nb || (hasPdf?0:(jd.annulations_nb||0));   // hors webuser si rapport importé
-    const mntPhoto = hasPdf ? (photoByDay[k]?.montant||0) : Math.abs(jd.annulations_montant||0);
+    const couv = hasPdf || couvertRapport(restaurant,date);   // le rapport fait foi sur sa période
+    const nbPhoto = photoByDay[k]?.nb || (couv?0:(jd.annulations_nb||0));   // hors webuser si rapport importé
+    const mntPhoto = couv ? (photoByDay[k]?.montant||0) : Math.abs(jd.annulations_montant||0);
     const nbDecl = declByDay[k]?.nb||0;
     const manque = Math.max(0, nbPhoto - nbDecl);
     // Déclarants (vert ✓) + responsables encore manquants (rouge)
