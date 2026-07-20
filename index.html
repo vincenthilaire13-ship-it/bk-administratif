@@ -1744,6 +1744,12 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
             <button class="btn" style="width:100%" onclick="reparerRestoAll()">🔧 Réattribuer les journées ALL → BK 526</button>
             <div id="repair-resto-result" style="display:none;font-size:11px;text-align:center;margin-top:6px"></div>
           </div>
+          <div style="margin-top:12px;padding:12px 14px;border-radius:8px;background:rgba(62,207,142,.08);border:1px solid rgba(62,207,142,.25)">
+            <div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:6px">📷 Tester la connexion Dropbox (photos & documents)</div>
+            <div style="font-size:11px;color:var(--muted2);margin-bottom:10px">Envoie une image de test vers Dropbox et affiche le résultat. Si les photos d'annulations ou les documents d'erreurs caisse n'apparaissent pas dans l'analyse, ce test dit précisément ce qui bloque (jeton, droits ou lien de partage).</div>
+            <button class="btn" style="width:100%" onclick="testerDropbox()">📷 Tester Dropbox</button>
+            <div id="dropbox-test-result" style="margin-top:10px;font-size:11px"></div>
+          </div>
         </div>
 
         <div style="margin-top:28px;font-size:11px;font-weight:600;color:var(--accent2);font-family:var(--font-head);margin-bottom:14px">Étapes de déploiement</div>
@@ -10351,6 +10357,41 @@ async function dropboxUpload(file, path){
   else { const ls=await _fetchTimeout('https://api.dropboxapi.com/2/sharing/list_shared_links',{method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},body:JSON.stringify({path:uploaded.path_lower})},20000); if(ls.ok){ const ld=await ls.json(); shareUrl=((ld.links||[])[0]?.url||'').replace('?dl=0','?raw=1'); } }
   return { name:uploaded.name, url:shareUrl, path:uploaded.path_display };
 }
+// Diagnostic : teste toute la chaîne Dropbox (jeton serveur → upload → lien de partage)
+// et affiche l'erreur exacte. Sert à comprendre pourquoi les photos/documents ne
+// s'enregistrent pas (colonnes photo_*_url / photo_url vides en base).
+async function testerDropbox(){
+  const box=document.getElementById('dropbox-test-result'); if(!box) return;
+  box.innerHTML='<span style="color:var(--muted)">⏳ Test en cours…</span>';
+  // 1) Jeton (via /api/dropbox-token → variables Vercel)
+  let tok;
+  try { tok = await getDbxToken(); }
+  catch(e){
+    box.innerHTML='<span style="color:var(--red)">❌ Étape 1 — jeton Dropbox échoué : '+(e.message||e)
+      +'<br>→ Cause probable : variables Vercel <strong>DBX_APP_KEY / DBX_APP_SECRET / DBX_REFRESH_TOKEN</strong> manquantes ou expirées. Copie-moi ce message.</span>';
+    return;
+  }
+  // 2) Upload d'une petite image de test + création du lien de partage
+  try {
+    const b64='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)arr[i]=bin.charCodeAt(i);
+    const blob=new Blob([arr],{type:'image/png'});
+    const up=await dropboxUpload(blob, '/BK Administratif/_test/test-'+Date.now()+'.png');
+    if(up && up.url){
+      const safe=String(up.url).replace(/"/g,'');
+      box.innerHTML='<span style="color:var(--green)">✅ Dropbox fonctionne — image de test envoyée et lien créé. '
+        +'<a href="'+safe+'" target="_blank" style="color:var(--accent)">Voir</a>.'
+        +'<br>Les nouvelles photos/documents devraient donc bien s\'enregistrer à partir de maintenant.</span>';
+    } else {
+      box.innerHTML='<span style="color:var(--yellow)">⚠️ Upload OK mais aucun lien de partage renvoyé.'
+        +'<br>→ Vérifier le scope <strong>sharing</strong> de l\'app Dropbox. Copie-moi ce message.</span>';
+    }
+  } catch(e){
+    box.innerHTML='<span style="color:var(--red)">❌ Étape 2 — upload Dropbox échoué : '+(e.message||e)
+      +'<br>→ « upload dropbox 401 » = jeton invalide/expiré ; « 403 » = droits/scope ; autre = réseau. Copie-moi ce message.</span>';
+  }
+}
+
 // Transforme un lien de partage Dropbox en URL d'affichage direct
 function dbxImg(url){ if(!url) return ''; if(url.startsWith('data:')) return url; let d=url.replace('www.dropbox.com','dl.dropboxusercontent.com'); if(d.includes('dl=0'))d=d.replace('dl=0','raw=1'); else if(d.includes('dl=1'))d=d.replace('dl=1','raw=1'); else if(!d.includes('raw=1'))d+=(d.includes('?')?'&':'?')+'raw=1'; return d; }
 // Ouvre une photo/document en plein écran (dans l'app, sans télécharger)
