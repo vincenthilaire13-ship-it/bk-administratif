@@ -1288,7 +1288,6 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
           <div id="imports-content">
             <div class="empty"><div class="empty-icon">🗂️</div><div class="empty-title">Contrôle des dépôts</div><div class="empty-sub">Cliquez sur Actualiser.</div></div>
           </div>
-          <div id="imports-annul-photos" style="margin-top:16px"></div>
         </div>
       </div>
     </section>
@@ -3716,8 +3715,7 @@ async function renderImports(){
     });
 
     el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px;line-height:1.6">✅ = fichier importé dans la base · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.<br>🚫 Annul. : compare les annulations vues par la caisse aux déclarations faites (❌ N à décl. = il manque N déclaration(s) d'annulation). 💶 Caisse : ❌ = écart caisse supérieur à ±${SEUIL_EC} € non déclaré via « Déclarer une erreur de caisse ».</div>`;
-    // Bloc détaillé : annulations en attente des 3 tickets (avec noms), démarrage 11/06
-    renderAnnulationsSansPhoto();
+    // Le détail « annulations en attente des tickets » est désormais dans Analyse → Annulations (statut « Non déclarée »).
   } catch(err){
     console.error('renderImports', err);
     el.innerHTML = _impEmpty('⚠️','Erreur de chargement', (err&&err.message)||'Impossible de lire les dépôts.');
@@ -7501,12 +7499,37 @@ function parserRepas(txt){
 
 // ── SOS DRIVE (temps de service) ──
 function parserSOS(txt){
+  // ── DATE : lue en toutes lettres OU abrégée (« 2026 juil. 19 », « 2026 juillet 19 »,
+  //    « 19 juillet 2026 », « 19/07/2026 »…). Le mois peut être abrégé avec/sans point.
+  //    Avant, l'export « Toutes les sources » (mois « juil. ») sortait une date VIDE :
+  //    le SOS était alors silencieusement ignoré du contrôle « même jour ».
+  const _moisNum = (raw)=>{
+    const s=(raw||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/\./g,'').trim();
+    if(s.startsWith('janv')||s==='jan')return '01';
+    if(s.startsWith('fev'))return '02';
+    if(s.startsWith('mars')||s==='mar')return '03';
+    if(s.startsWith('avr'))return '04';
+    if(s==='mai')return '05';
+    if(s==='juin'||s==='jun')return '06';
+    if(s.startsWith('juil')||s==='jul')return '07';
+    if(s.startsWith('aou'))return '08';
+    if(s.startsWith('sep'))return '09';
+    if(s.startsWith('oct'))return '10';
+    if(s.startsWith('nov'))return '11';
+    if(s.startsWith('dec'))return '12';
+    return null;
+  };
   let date=null;
-  const dm = txt.match(/(\d{4})\s+(janvier|février|mars|avril|mai|juin|juillet|août|septembre|octobre|novembre|décembre)\s+(\d{1,2})/i);
-  if(dm){ const M={janvier:'01',février:'02',mars:'03',avril:'04',mai:'05',juin:'06',juillet:'07',août:'08',septembre:'09',octobre:'10',novembre:'11',décembre:'12'};
-    date=`${dm[1]}-${M[dm[2].toLowerCase()]}-${String(dm[3]).padStart(2,'0')}`; }
+  for(const _m of txt.matchAll(/(\d{4})\s+([A-Za-zÀ-ÿ]{3,10}\.?)\s+(\d{1,2})(?!\d)/g)){
+    const _mo=_moisNum(_m[2]); if(_mo){ date=`${_m[1]}-${_mo}-${String(_m[3]).padStart(2,'0')}`; break; }
+  }
+  if(!date) for(const _m of txt.matchAll(/(\d{1,2})\s+([A-Za-zÀ-ÿ]{3,10}\.?)\s+(\d{4})/g)){
+    const _mo=_moisNum(_m[2]); if(_mo){ date=`${_m[3]}-${_mo}-${String(_m[1]).padStart(2,'0')}`; break; }
+  }
+  if(!date){ const _d=txt.match(/(\d{2})\/(\d{2})\/(\d{2,4})/); if(_d){ const _an=_d[3].length===2?('20'+_d[3]):_d[3]; date=`${_an}-${_d[2]}-${_d[1]}`; } }
+  // ── RESTAURANT : tolère les accents (Près/Prés d'Arènes, Védas, Clément) ──
   let resto=null;
-  const rm = txt.match(/(Montpellier\s+Saint[- ]Cl[eé]ment|Saint[- ]Jean[- ]de[- ]V[eé]das|Pr[eé]s\s+d'Ar[eè]nes)/i);
+  const rm = txt.match(/(Montpellier\s+Saint[- ]Cl[eéè]ment|Saint[- ]Jean[- ]de[- ]V[eéè]das|Pr[eéè]s\s+d'Ar[eéè]nes)/i);
   if(rm) resto = rm[1].trim();
 
   // Flux de tokens (les colonnes du PDF s'entremêlent avec les objectifs ;
@@ -9576,7 +9599,7 @@ function anRenderAnnulations(){
     const cc = r.declared ? 'var(--green)' : 'var(--red)';
     const st = r.declared ? '✓ Déclarée' : '⛔ Non déclarée';
     let photo = '<span style="color:var(--muted)">—</span>';
-    if(r.declared){ const d=r.decl||{}; const th=(dbxThumb(d.photo_bad_url,'ticket erreur')+dbxThumb(d.photo_annul_url,'ticket annulation')+dbxThumb(d.photo_good_url,'ticket corrigé')); photo = th || '<span style="color:var(--green)">📸 oui</span>'; }
+    if(r.declared){ const d=r.decl||{}; const th=(dbxThumb(d.photo_bad_url,'ticket erreur')+dbxThumb(d.photo_annul_url,'ticket annulation')+dbxThumb(d.photo_good_url,'ticket corrigé')); photo = th || '<span style="color:var(--muted2)" title="Déclarée mais aucune photo n\'a été enregistrée dans le Dropbox">déclarée · sans photo</span>'; }
     return `<tr>
       <td style="color:var(--accent)">${formatDate(r.date)} ${jourSemaine(new Date(r.date))}</td>
       <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
@@ -9707,7 +9730,7 @@ function anRenderErreursCaisse(){
     const d=l.just||{}; const photo = l.justified ? (d.photo_url?dbxThumb(d.photo_url,'justificatif'):'') : '';
     const statut = l.justified ? (photo?'✓ Justifié (photo)':'✓ Justifié') : '⛔ À justifier';
     const sc = l.justified ? 'var(--green)' : 'var(--red)';
-    const just = l.justified ? (photo || '<span style="color:var(--green)">✓ oui</span>') : '<span style="color:var(--muted)">—</span>';
+    const just = l.justified ? (photo || '<span style="color:var(--muted2)" title="Justifié mais aucun document n\'a été enregistré dans le Dropbox">justifié · sans doc</span>') : '<span style="color:var(--muted)">—</span>';
     return `<tr>
       <td style="color:var(--accent)">${l.date?formatDate(l.date):'—'} ${l.heure||''}</td>
       <td class="num" style="font-weight:600;color:${col}">${signe}${fmt(Math.abs(l.montant||0))} €</td>
@@ -10298,10 +10321,15 @@ function dbxOpen(url){
   ov.innerHTML=`<button id="dbx-close" style="position:absolute;top:12px;right:16px;background:rgba(255,255,255,.15);border:none;color:#fff;padding:8px 16px;border-radius:20px;cursor:pointer;font-weight:700">✕ Fermer</button>${inner}`;
   document.body.appendChild(ov);
 }
-// Petite vignette cliquable (ou un tiret si pas de photo)
+// Petite vignette cliquable : image pour une photo, chip « 📄 PDF » pour un document
 function dbxThumb(url, label){
   if(!url) return '';
-  return `<img src="${dbxImg(url)}" title="${label||'photo'}" onclick="dbxOpen('${String(url).replace(/'/g,"\\'")}')" style="width:34px;height:34px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid var(--border2);margin-right:3px" onerror="this.style.display='none'">`;
+  const esc=String(url).replace(/'/g,"\\'");
+  const lower=(String(url).split('?')[0]||'').toLowerCase();
+  if(/\.pdf$/.test(lower)){
+    return `<span onclick="dbxOpen('${esc}')" title="${label||'document'} — cliquer pour ouvrir le PDF" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid var(--border2);border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;color:var(--accent);margin-right:3px">👁 PDF</span>`;
+  }
+  return `<img src="${dbxImg(url)}" title="${label||'photo'}" onclick="dbxOpen('${esc}')" style="width:34px;height:34px;object-fit:cover;border-radius:5px;cursor:pointer;border:1px solid var(--border2);margin-right:3px" onerror="this.style.display='none'">`;
 }
 
 // Enregistre l'annulation dans Supabase APRÈS avoir tenté d'uploader les photos vers Dropbox.
