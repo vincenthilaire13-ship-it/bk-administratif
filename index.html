@@ -3626,6 +3626,10 @@ async function renderImports(){
       ventes:   await sbCouplesRD('ventes_horaire', from, to),
       repas:    await sbCouplesRD('repas_employes', from, to),
     };
+    // Liens Dropbox des PDF sources archivés (journees.docs_urls) → pour rendre les ✅ cliquables
+    let docsByDay = {};
+    try { docsByDay = await sbMapRD('journees', 'restaurant,date,docs_urls', from, to, x=>x.docs_urls||null) || {}; }
+    catch(e){ console.warn('docs_urls', e); }
     // Données pour le contrôle annulations & erreurs caisse :
     // - nb d'annulations vu par la caisse (journees.annulations_nb) + écart caisse (journees.erreur_caisse)
     // - nb de déclarations faites par les managers (tables annulations / erreurs_caisse)
@@ -3685,8 +3689,13 @@ async function renderImports(){
       const rows = jours.map(jour=>{
         const cells = cols.map(c=>{
           const ok = has[c.key].has(rt+'|'+jour);
+          const url = (docsByDay[rt+'|'+jour]||{})[c.key];
+          if(ok && url){
+            const safe=String(url).replace(/'/g,"\\'");
+            return `<td class="num" style="font-size:15px"><span onclick="dbxOpen('${safe}')" title="Voir le PDF déposé" style="cursor:pointer;color:var(--green)">📄</span></td>`;
+          }
           return `<td class="num" style="font-size:15px">${ok
-            ? '<span style="color:var(--green)" title="présent">✅</span>'
+            ? '<span style="color:var(--green)" title="présent (PDF source non archivé)">✅</span>'
             : '<span style="color:var(--red)" title="manquant">❌</span>'}</td>`;
         }).join('');
         const nbOk = cols.filter(c=>has[c.key].has(rt+'|'+jour)).length;
@@ -3772,7 +3781,7 @@ async function renderImports(){
       </div>`;
     });
 
-    el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px;line-height:1.6">✅ = fichier importé dans la base · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.<br>📥 Rapport annul. : le « Rapport des annulations » (5ᵉ document) a-t-il été déposé ce jour ? ✅ déposé · ❌ manquant (la Synthèse CA signale des annulations mais aucun rapport) · — rien à déposer (aucune annulation ce jour).<br>🚫 Annul. : compare les annulations vues par la caisse aux déclarations faites (❌ N à décl. = il manque N déclaration(s) d'annulation). 💶 Caisse : ❌ = écart caisse supérieur à ±${SEUIL_EC} € non déclaré via « Déclarer une erreur de caisse ».</div>`;
+    el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px;line-height:1.6">✅ = fichier importé dans la base · 📄 = PDF source archivé dans Dropbox (clique pour l'ouvrir) · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.<br>📥 Rapport annul. : le « Rapport des annulations » (5ᵉ document) a-t-il été déposé ce jour ? ✅ déposé · ❌ manquant (la Synthèse CA signale des annulations mais aucun rapport) · — rien à déposer (aucune annulation ce jour).<br>🚫 Annul. : compare les annulations vues par la caisse aux déclarations faites (❌ N à décl. = il manque N déclaration(s) d'annulation). 💶 Caisse : ❌ = écart caisse supérieur à ±${SEUIL_EC} € non déclaré via « Déclarer une erreur de caisse ».</div>`;
     // Le détail « annulations en attente des tickets » est désormais dans Analyse → Annulations (statut « Non déclarée »).
   } catch(err){
     console.error('renderImports', err);
@@ -7042,7 +7051,7 @@ async function lireTousPDFs(files) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
   // Réinitialiser l'objet du jour
-  MGR_JOUR = { synthese:null, repas:null, ventes:null, sos:null, annulations:null, dates:{}, fichiers:{} };
+  MGR_JOUR = { synthese:null, repas:null, ventes:null, sos:null, annulations:null, dates:{}, fichiers:{}, fichiers_blob:{} };
   const summaries = [];
 
   for(let i=0; i<files.length; i++) {
@@ -7151,6 +7160,8 @@ async function lireTousPDFs(files) {
       } else {
         summaries.push({key:null, nom:file.name, label:'Document non reconnu', ok:false});
       }
+      // Mémorise le PDF source pour l'archiver dans Dropbox à l'enregistrement
+      if(typeFinal){ (MGR_JOUR.fichiers_blob = MGR_JOUR.fichiers_blob || {})[typeFinal] = file; }
     } catch(err) {
       // On affiche le message d'erreur RÉEL pour identifier la cause (au lieu d'un texte générique)
       const msgErr = (err && err.message) ? err.message : String(err);
@@ -7945,6 +7956,33 @@ async function enregistrerJourneeMgr() {
         const { error:eA } = await SB.from('annulations').insert(rowsAnn);
         if(eA){ erreurs.push('Annulations : '+eA.message); console.error('annulations insert', eA); }
       } catch(e){ console.warn('enregistrement annulations', e); }
+    }
+
+    // 6) ARCHIVAGE DES PDF SOURCES → Dropbox (Synthèse CA, SOS, Ventes ¼h, Bons repas, Rapport annulations)
+    // Chaque PDF déposé est envoyé dans Dropbox et son lien rangé dans journees.docs_urls
+    // pour être consultable depuis « Contrôle des dépôts ». Non bloquant : une erreur d'upload
+    // n'empêche pas l'enregistrement de la journée.
+    if(SB && MGR_JOUR.fichiers_blob && typeof dropboxUpload==='function'){
+      try {
+        const noms = {synthese:'Synthese-CA', sos:'SOS-Drive', ventes:'Ventes-quart-heure', repas:'Bons-repas', annulations:'Rapport-annulations'};
+        const docsUrls = {};
+        for(const k of Object.keys(noms)){
+          const f = MGR_JOUR.fichiers_blob[k];
+          if(!f) continue;
+          try {
+            const ext = (f.name && f.name.match(/\.[a-z0-9]+$/i)) ? f.name.match(/\.[a-z0-9]+$/i)[0] : '.pdf';
+            const path = `/BK Administratif/Documents/${resto}/${date}/${noms[k]}-${Date.now()}${ext}`;
+            const up = await dropboxUpload(f, path);
+            if(up && up.url) docsUrls[k] = up.url;
+          } catch(e){ console.warn('archivage doc '+k, e); }
+        }
+        if(Object.keys(docsUrls).length){
+          let cur=null; try { const {data}=await SB.from('journees').select('docs_urls').eq('restaurant',resto).eq('date',date).maybeSingle(); cur=data; } catch(_e){}
+          const merged = Object.assign({}, (cur&&cur.docs_urls)||{}, docsUrls);
+          const {error:eDoc} = await SB.from('journees').update({docs_urls:merged}).eq('restaurant',resto).eq('date',date);
+          if(eDoc) console.warn('maj docs_urls', eDoc);
+        }
+      } catch(e){ console.warn('archivage documents Dropbox', e); }
     }
 
     // Recharger les données depuis Supabase pour que tout s'affiche immédiatement
