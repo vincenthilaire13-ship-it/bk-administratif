@@ -6608,7 +6608,8 @@ document.addEventListener('click', function(ev){
 });
 
 function showMgrSection(section) {
-  // Afficher le bon panneau dans l'interface manager  document.getElementById('mgr-home').style.display             = section==='home'       ? 'block' : 'none';
+  // Afficher le bon panneau dans l'interface manager
+  document.getElementById('mgr-home').style.display             = section==='home'       ? 'block' : 'none';
   document.getElementById('mgr-section-pdf').style.display      = section==='pdf'        ? 'block' : 'none';
   document.getElementById('mgr-section-annulation').style.display = section==='annulation' ? 'block' : 'none';
   const ecSec = document.getElementById('mgr-section-erreurcaisse');
