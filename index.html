@@ -4429,8 +4429,18 @@ function initSupabase(url, key) {
     // Charger les codes partagés AVANT le login (pour que les bons PIN soient dispo)
     chargerCodesSupabase().then(ok=>{
       if(ok){
-        // Rafraîchir la liste des managers à l'écran de login si on y est
-        if(typeof selectRole==='function' && LOGIN_ROLE) try{selectRole(LOGIN_ROLE);}catch(e){}
+        // Rafraîchir l'écran de login SEULEMENT si on y est encore (aucune session active).
+        // BUG corrigé : quand les codes finissaient de charger APRÈS l'entrée d'un manager,
+        // on rappelait selectRole(LOGIN_ROLE) → nouvelle session → applyRoleUI → nav('manager')
+        // → showMgrSection('home'). La vue « Ma journée » repassait donc à l'accueil au bout
+        // d'~1 s (« ça ouvre, ça se ferme » ; le dépôt des 5 PDF se refermait tout seul).
+        // Après un rafraîchissement, la session est restaurée sans passer par selectRole
+        // (LOGIN_ROLE reste null) → pas de ré-entrée → tout marchait : d'où « après refresh, OK ».
+        // Le manager entre sans PIN : on ne réapplique jamais selectRole pour lui.
+        const _loginVisible = (()=>{ const ls=document.getElementById('login-screen'); return ls && ls.style.display!=='none'; })();
+        if(typeof selectRole==='function' && LOGIN_ROLE && LOGIN_ROLE!=='manager' && !CURRENT_ROLE && _loginVisible){
+          try{selectRole(LOGIN_ROLE);}catch(e){}
+        }
       }
     });
     loadAll();
