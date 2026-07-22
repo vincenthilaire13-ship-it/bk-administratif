@@ -540,6 +540,14 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
   </div>
 </div>
 
+<!-- Écran de chargement : masque les redessins successifs du dashboard (directeur/admin/superviseur)
+     pendant que les données chargent, puis révèle la page finale d'un coup — à sa place, sans rien déplacer. -->
+<div id="app-loading" style="display:none;position:fixed;inset:0;z-index:9998;background:var(--bg,#141414);align-items:center;justify-content:center;flex-direction:column;gap:16px">
+  <div style="width:34px;height:34px;border:3px solid rgba(255,255,255,.14);border-top-color:var(--accent,#f5a623);border-radius:50%;animation:appspin .8s linear infinite"></div>
+  <div style="font-size:13px;color:var(--muted,#8a8a8a)">Chargement…</div>
+</div>
+<style>@keyframes appspin{to{transform:rotate(360deg)}}</style>
+
 <div class="shell" id="app-shell" style="display:none">
 
 <div id="apercu-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:10000;background:#8b5cf6;color:#fff;padding:9px 16px;text-align:center;font-size:13px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.25)">
@@ -4550,6 +4558,7 @@ async function loadAll() {
 const SUIVI_DATE_DEBUT = '2026-05-17'; // début du suivi des dépôts
 
 async function checkFichiersManquants(){
+ try {
   const box = document.getElementById('dash-manquants');
   if(!box) return;
   if(!SB){ box.innerHTML=''; return; }
@@ -4782,6 +4791,11 @@ async function checkFichiersManquants(){
     console.warn('checkFichiersManquants', err);
     box.innerHTML='';
   }
+ } finally {
+    // Le suivi des dépôts est le dernier élément async du dashboard : une fois rendu (ou
+    // en cas d'erreur / de sortie anticipée), on révèle la page. No-op si l'écran n'est pas affiché.
+    hideLoadingGate();
+ }
 }
 
 // ───────── DASHBOARD : annulations en attente des 3 tickets (photos) ─────────
@@ -6465,6 +6479,19 @@ async function doLogin() {
 }
 
 // ── Démarrage session ──
+// ── Écran de chargement (anti-flash) : montré à la connexion, caché quand le dashboard est prêt ──
+function showLoadingGate(){
+  const g = document.getElementById('app-loading'); if(!g) return;
+  g.style.display = 'flex';
+  // Sécurité : ne JAMAIS rester bloqué sur « Chargement… » même si une requête échoue/traîne.
+  if(window.__gateTimer) clearTimeout(window.__gateTimer);
+  window.__gateTimer = setTimeout(()=>{ g.style.display='none'; window.__gateTimer=null; }, 8000);
+}
+function hideLoadingGate(){
+  const g = document.getElementById('app-loading'); if(g) g.style.display='none';
+  if(window.__gateTimer){ clearTimeout(window.__gateTimer); window.__gateTimer=null; }
+}
+
 function setSession(user) {
   CURRENT_ROLE = user.role;
   CURRENT_USER = user;
@@ -6472,6 +6499,7 @@ function setSession(user) {
 
   document.getElementById('login-screen').style.display   = 'none';
   document.getElementById('app-shell').style.display      = 'flex';
+  showLoadingGate();  // masque les rendus intermédiaires jusqu'à ce que la page soit prête
 
   // Badge de version de l'application
   try {
@@ -6574,9 +6602,13 @@ function applyRoleUI(role) {
     const dateEl = document.getElementById('mgr-hello-date');
     if(dateEl) dateEl.textContent = new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     populateManagerSelect();
+    // La vue « Ma journée » est prête immédiatement (pas de données à charger) → révéler tout de suite.
+    hideLoadingGate();
   } else {
     // Idem pour directeur / admin / superviseur : fixer la section d'accueil tout de
     // suite (pas de setTimeout) pour éviter tout flash de vue au chargement.
+    // L'écran « Chargement… » reste affiché jusqu'à ce que le dashboard soit rendu
+    // (voir hideLoadingGate() en fin de checkFichiersManquants — dernier élément async).
     nav('dashboard');
   }
 }
