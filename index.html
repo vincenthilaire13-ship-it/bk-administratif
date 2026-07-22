@@ -402,16 +402,11 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
     <div class="login-logo">BK</div>
     <div class="login-sub" id="login-step-label">Choisissez votre restaurant</div>
 
-    <!-- Badge date de mise à jour (visible uniquement à l'étape choix restaurant) -->
-    <div id="login-maj" style="text-align:center;margin:-4px 0 14px;font-size:11px;color:var(--muted)">
-      🔄 Mise à jour : <span id="login-maj-date" style="color:var(--accent);font-weight:600"></span>
-    </div>
-
     <!-- ÉTAPE 1 : choix restaurant -->
     <div id="step-resto">
       <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:8px">
-        <button class="login-btn" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);font-size:13px;text-align:left;padding:14px 18px;display:flex;align-items:center;gap:12px" onclick="selectResto('BK500','BK 500 — Arènes')">
-          <span style="font-size:22px">🏟️</span><div><div style="font-weight:700">BK 500</div><div style="font-size:10px;color:var(--muted);font-weight:400">Arènes · Perpignan</div></div>
+        <button class="login-btn" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);font-size:13px;text-align:left;padding:14px 18px;display:flex;align-items:center;gap:12px" onclick="selectResto('BK500','BK 500 — Montpellier Près d\'Arènes')">
+          <span style="font-size:22px">🏟️</span><div><div style="font-weight:700">BK 500</div><div style="font-size:10px;color:var(--muted);font-weight:400">Montpellier · Près d'Arènes</div></div>
         </button>
         <button class="login-btn" style="background:var(--bg3);color:var(--text);border:1px solid var(--border2);font-size:13px;text-align:left;padding:14px 18px;display:flex;align-items:center;gap:12px" onclick="selectResto('BK509','BK 509 — Saint-Jean-de-Védas')">
           <span style="font-size:22px">🏪</span><div><div style="font-weight:700">BK 509</div><div style="font-size:10px;color:var(--muted);font-weight:400">Saint-Jean-de-Védas</div></div>
@@ -1050,17 +1045,19 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
               <div>
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Ouverture (8h → 19h)</div>
                 <label class="form-label">Manager ouverture</label>
-                <select class="form-input" id="mgr-ouv" style="margin-bottom:10px" onchange="rafraichirBlocageMgr()"><option value="">— sélectionner —</option></select>
+                <input class="form-input" id="mgr-ouv" list="dl-mgr" autocomplete="off" placeholder="Choisir dans la liste ou taper un nom" style="margin-bottom:10px" onchange="rafraichirBlocageMgr()" oninput="rafraichirBlocageMgr()">
                 <label class="form-label">Leader ouverture</label>
-                <select class="form-input" id="mgr-leader-ouv" onchange="rafraichirBlocageMgr()"><option value="">— sélectionner —</option></select>
+                <input class="form-input" id="mgr-leader-ouv" list="dl-leader" autocomplete="off" placeholder="Choisir dans la liste ou taper un nom" onchange="rafraichirBlocageMgr()" oninput="rafraichirBlocageMgr()">
               </div>
               <div>
                 <div style="font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin-bottom:8px">Fermeture (19h → 2h)</div>
                 <label class="form-label">Manager fermeture</label>
-                <select class="form-input" id="mgr-fer" style="margin-bottom:10px" onchange="rafraichirBlocageMgr()"><option value="">— sélectionner —</option></select>
+                <input class="form-input" id="mgr-fer" list="dl-mgr" autocomplete="off" placeholder="Choisir dans la liste ou taper un nom" style="margin-bottom:10px" onchange="rafraichirBlocageMgr()" oninput="rafraichirBlocageMgr()">
                 <label class="form-label">Leader fermeture</label>
-                <select class="form-input" id="mgr-leader-fer" onchange="rafraichirBlocageMgr()"><option value="">— sélectionner —</option></select>
+                <input class="form-input" id="mgr-leader-fer" list="dl-leader" autocomplete="off" placeholder="Choisir dans la liste ou taper un nom" onchange="rafraichirBlocageMgr()" oninput="rafraichirBlocageMgr()">
               </div>
+              <datalist id="dl-mgr"></datalist>
+              <datalist id="dl-leader"></datalist>
             </div>
 
             <!-- Directeur -->
@@ -3626,10 +3623,6 @@ async function renderImports(){
       ventes:   await sbCouplesRD('ventes_horaire', from, to),
       repas:    await sbCouplesRD('repas_employes', from, to),
     };
-    // Liens Dropbox des PDF sources archivés (journees.docs_urls) → pour rendre les ✅ cliquables
-    let docsByDay = {};
-    try { docsByDay = await sbMapRD('journees', 'restaurant,date,docs_urls', from, to, x=>x.docs_urls||null) || {}; }
-    catch(e){ console.warn('docs_urls', e); }
     // Données pour le contrôle annulations & erreurs caisse :
     // - nb d'annulations vu par la caisse (journees.annulations_nb) + écart caisse (journees.erreur_caisse)
     // - nb de déclarations faites par les managers (tables annulations / erreurs_caisse)
@@ -3689,13 +3682,8 @@ async function renderImports(){
       const rows = jours.map(jour=>{
         const cells = cols.map(c=>{
           const ok = has[c.key].has(rt+'|'+jour);
-          const url = (docsByDay[rt+'|'+jour]||{})[c.key];
-          if(ok && url){
-            const safe=String(url).replace(/'/g,"\\'");
-            return `<td class="num" style="font-size:15px"><span onclick="dbxOpen('${safe}')" title="Voir le PDF déposé" style="cursor:pointer;color:var(--green)">📄</span></td>`;
-          }
           return `<td class="num" style="font-size:15px">${ok
-            ? '<span style="color:var(--green)" title="présent (PDF source non archivé)">✅</span>'
+            ? '<span style="color:var(--green)" title="présent">✅</span>'
             : '<span style="color:var(--red)" title="manquant">❌</span>'}</td>`;
         }).join('');
         const nbOk = cols.filter(c=>has[c.key].has(rt+'|'+jour)).length;
@@ -3781,7 +3769,7 @@ async function renderImports(){
       </div>`;
     });
 
-    el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px;line-height:1.6">✅ = fichier importé dans la base · 📄 = PDF source archivé dans Dropbox (clique pour l'ouvrir) · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.<br>📥 Rapport annul. : le « Rapport des annulations » (5ᵉ document) a-t-il été déposé ce jour ? ✅ déposé · ❌ manquant (la Synthèse CA signale des annulations mais aucun rapport) · — rien à déposer (aucune annulation ce jour).<br>🚫 Annul. : compare les annulations vues par la caisse aux déclarations faites (❌ N à décl. = il manque N déclaration(s) d'annulation). 💶 Caisse : ❌ = écart caisse supérieur à ±${SEUIL_EC} € non déclaré via « Déclarer une erreur de caisse ».</div>`;
+    el.innerHTML = kpis + blocks + `<div style="font-size:10px;color:var(--muted);margin-top:12px;padding:0 4px;line-height:1.6">✅ = fichier importé dans la base · ❌ = à déposer via « Ma journée » ou « Importer PDF ». Le suivi démarre le ${formatDate(debutSuivi)}.<br>📥 Rapport annul. : le « Rapport des annulations » (5ᵉ document) a-t-il été déposé ce jour ? ✅ déposé · ❌ manquant (la Synthèse CA signale des annulations mais aucun rapport) · — rien à déposer (aucune annulation ce jour).<br>🚫 Annul. : compare les annulations vues par la caisse aux déclarations faites (❌ N à décl. = il manque N déclaration(s) d'annulation). 💶 Caisse : ❌ = écart caisse supérieur à ±${SEUIL_EC} € non déclaré via « Déclarer une erreur de caisse ».</div>`;
     // Le détail « annulations en attente des tickets » est désormais dans Analyse → Annulations (statut « Non déclarée »).
   } catch(err){
     console.error('renderImports', err);
@@ -4641,8 +4629,6 @@ async function checkFichiersManquants(){
         // Autres dépôts manquants (SOS Drive · Ventes ¼h · Bons repas)
         const autresDocs = ['sos','ventes','repas'].filter(t=>!has[t].has(key));
         if(autresDocs.length) cat.autres[rt].push({jour, docs:autresDocs});
-        // Annulations & erreurs caisse : uniquement à partir du plancher (avant = période de test, ignoré)
-        if(jour < ANNUL_EC_DEBUT) return;
         // Annulations NON déclarées.
         //  • Rapport importé  → une ligne par annulation avec le NOM (« Caisse comptée par »).
         //  • Pas encore de rapport → repli sur la Synthèse CA (annulations_nb) : on affiche
@@ -4792,9 +4778,6 @@ async function checkFichiersManquants(){
 // Date de démarrage du suivi des PHOTOS d'annulations : on repart à zéro le 11/06/2026.
 // Toutes les annulations antérieures sont considérées comme ayant leurs tickets (pas de demande).
 const ANNUL_DATE_DEBUT = '2026-06-11';
-// Plancher « données réelles » pour les ANNULATIONS & ERREURS CAISSE : avant cette date,
-// c'est de la période de test → on n'en tient PAS compte (dashboard ET analyses).
-const ANNUL_EC_DEBUT = '2026-07-01';
 
 async function renderAnnulationsSansPhoto(){
   const box = document.getElementById('imports-annul-photos');
@@ -4803,8 +4786,8 @@ async function renderAnnulationsSansPhoto(){
     let resto = (ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' && ACTIVE_RESTO!=='Administration') ? ACTIVE_RESTO : (CURRENT_USER?.resto||null);
     if(resto==='ALL'||resto==='Administration') resto=null;
     // Lecture des annulations PDF photographiables (annulé par un nom) + déclarations managers
-    let qPdf = SB.from('annulations').select('*').eq('source','pdf_caisse').eq('photographiable',true).gte('date',ANNUL_EC_DEBUT);
-    let qDecl= SB.from('annulations').select('restaurant,date').neq('source','pdf_caisse').gte('date',ANNUL_EC_DEBUT);
+    let qPdf = SB.from('annulations').select('*').eq('source','pdf_caisse').eq('photographiable',true).gte('date',ANNUL_DATE_DEBUT);
+    let qDecl= SB.from('annulations').select('restaurant,date').neq('source','pdf_caisse').gte('date',ANNUL_DATE_DEBUT);
     if(resto){ qPdf=qPdf.eq('restaurant',resto); qDecl=qDecl.eq('restaurant',resto); }
     const [pdf, decl] = await Promise.all([ qPdf.order('date',{ascending:false}), qDecl ]);
     const pdfRows = pdf.data||[];
@@ -6157,7 +6140,7 @@ document.getElementById('modal').addEventListener('click',e=>{ if(e.target===doc
 
 // ══ SYSTÈME DE RÔLES ══
 const RESTAURANTS = {
-  BK500: { nom:'BK 500', lieu:'Arènes · Perpignan',       couleur:'#e74c3c', icone:'🏟️' },
+  BK500: { nom:'BK 500', lieu:'Montpellier · Près d\'Arènes', couleur:'#e74c3c', icone:'🏟️' },
   BK509: { nom:'BK 509', lieu:'Saint-Jean-de-Védas',      couleur:'#3b82f6', icone:'🏪' },
   BK526: { nom:'BK 526', lieu:'Saint-Clément-Rivière',    couleur:'#10b981', icone:'🌿' },
   ALL:   { nom:'Administration', lieu:'',                  couleur:'#9ca3af', icone:'⚙️' }
@@ -6307,7 +6290,15 @@ function selectRole(role) {
   document.getElementById('login-step-label').textContent =
     ROLE_LABELS[role] + (LOGIN_RESTO && LOGIN_RESTO!=='ALL' ? ' · ' + (RESTAURANTS[LOGIN_RESTO]?.nom||'') : '');
 
-  // Plus de sélection de nom : on entre directement le code PIN, le nom est retrouvé automatiquement
+  // ── MANAGER : accès direct, SANS code PIN ──
+  // L'identité n'est plus demandée au login : elle est saisie au dépôt des 5 PDF
+  // (manager ouverture/fermeture) et figure déjà dans les rapports importés.
+  if(role === 'manager'){
+    setSession({ role:'manager', nom:'', resto: LOGIN_RESTO });
+    return;
+  }
+
+  // ── Directeur / Admin / Superviseur : saisie du code PIN ──
   const wrap = document.getElementById('manager-select-wrap');
   if(wrap) wrap.style.display = 'none';
 
@@ -6494,7 +6485,7 @@ function setSession(user) {
   badge.textContent = ROLE_LABELS[user.role]||user.role;
   badge.className   = 'role-badge role-'+user.role;
   const unEl = document.getElementById('sidebar-username');
-  if(unEl) unEl.textContent = user.nom;
+  if(unEl) unEl.textContent = user.nom || (ROLE_LABELS[user.role]||'');
 
   // Nom du restaurant
   const restoEl = document.getElementById('sidebar-resto');
@@ -6944,26 +6935,17 @@ function populateManagerSelect() {
   const mgrs = resto ? codes.managers.filter(m=>!m.resto || m.resto===resto) : codes.managers;
   const ldrs = resto ? (codes.leaders||[]).filter(l=>!l.resto || l.resto===resto) : (codes.leaders||[]);
   const dirs = resto ? (codes.directeurs||[]).filter(d=>!d.resto || d.resto===resto) : (codes.directeurs||[]);
-  const mgrOpts = mgrs.map(m=>`<option value="${m.nom}">${m.nom}</option>`).join('');
-  const ldrOpts = ldrs.map(l=>`<option value="${l.nom}">${l.nom}</option>`).join('');
-  // Le directeur peut lui-même ouvrir ou fermer : on l'ajoute dans un groupe dédié
-  // sur les selects d'ouverture/fermeture managers.
-  const dirGroup = dirs.length
-    ? `<optgroup label="🎯 Directeur">${dirs.map(d=>`<option value="${d.nom}">${d.nom}</option>`).join('')}</optgroup>`
-    : '';
-  const mgrOptsFull = mgrs.length
-    ? `<optgroup label="👤 Managers">${mgrOpts}</optgroup>${dirGroup}`
-    : (mgrOpts + dirGroup);
-  // Manager ouverture/fermeture → managers + directeurs ; Leader ouverture/fermeture → leaders
-  [['mgr-ouv',mgrOptsFull],['mgr-fer',mgrOptsFull],['mgr-leader-ouv',ldrOpts],['mgr-leader-fer',ldrOpts]].forEach(([id,opts])=>{
-    const el=document.getElementById(id);
-    if(!el) return;
-    el.innerHTML='<option value="">— Sélectionner —</option>'+opts;
-    if(CURRENT_USER?.role==='manager' && id==='mgr-ouv'){
-      const o=el.querySelector(`option[value="${CURRENT_USER.nom}"]`);
-      if(o) o.selected=true;
-    }
-  });
+  // Champs « pick ou taper » → on alimente des <datalist> (managers+directeurs / leaders).
+  const esc = (n)=>String(n||'').replace(/"/g,'&quot;');
+  const opt = (n)=>`<option value="${esc(n)}"></option>`;
+  // dédoublonnage par nom (insensible à la casse)
+  const uniq = (arr)=>{ const seen=new Set(); return arr.filter(n=>{ const k=String(n||'').trim().toLowerCase(); if(!k||seen.has(k))return false; seen.add(k); return true; }); };
+  const mgrNoms = uniq([...mgrs.map(m=>m.nom), ...dirs.map(d=>d.nom)]);
+  const ldrNoms = uniq(ldrs.map(l=>l.nom));
+  const dlMgr = document.getElementById('dl-mgr');
+  if(dlMgr) dlMgr.innerHTML = mgrNoms.map(opt).join('');
+  const dlLdr = document.getElementById('dl-leader');
+  if(dlLdr) dlLdr.innerHTML = ldrNoms.map(opt).join('');
 }
 
 function doLogout() {
@@ -7056,7 +7038,7 @@ async function lireTousPDFs(files) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
   // Réinitialiser l'objet du jour
-  MGR_JOUR = { synthese:null, repas:null, ventes:null, sos:null, annulations:null, dates:{}, fichiers:{}, fichiers_blob:{} };
+  MGR_JOUR = { synthese:null, repas:null, ventes:null, sos:null, annulations:null, dates:{}, fichiers:{} };
   const summaries = [];
 
   for(let i=0; i<files.length; i++) {
@@ -7165,8 +7147,6 @@ async function lireTousPDFs(files) {
       } else {
         summaries.push({key:null, nom:file.name, label:'Document non reconnu', ok:false});
       }
-      // Mémorise le PDF source pour l'archiver dans Dropbox à l'enregistrement
-      if(typeFinal){ (MGR_JOUR.fichiers_blob = MGR_JOUR.fichiers_blob || {})[typeFinal] = file; }
     } catch(err) {
       // On affiche le message d'erreur RÉEL pour identifier la cause (au lieu d'un texte générique)
       const msgErr = (err && err.message) ? err.message : String(err);
@@ -7738,6 +7718,15 @@ async function enregistrerJourneeMgr() {
     commentaire:       document.getElementById('mgr-comment')?.value||''
   };
 
+  // Créer automatiquement dans la liste tout manager / leader saisi à la volée
+  // (plus de code PIN : un nom tapé au dépôt suffit et devient réutilisable partout).
+  try {
+    await enregistrerResponsable('manager', resto, equipe.manager_ouverture);
+    await enregistrerResponsable('manager', resto, equipe.manager_fermeture);
+    await enregistrerResponsable('leader',  resto, equipe.leader_ouverture);
+    await enregistrerResponsable('leader',  resto, equipe.leader_fermeture);
+  } catch(e){ console.warn('auto-création responsables', e); }
+
   const btn = document.getElementById('mgr-btn-save');
   if(btn){ btn.disabled=true; btn.textContent='⏳ Enregistrement…'; }
 
@@ -7963,33 +7952,6 @@ async function enregistrerJourneeMgr() {
       } catch(e){ console.warn('enregistrement annulations', e); }
     }
 
-    // 6) ARCHIVAGE DES PDF SOURCES → Dropbox (Synthèse CA, SOS, Ventes ¼h, Bons repas, Rapport annulations)
-    // Chaque PDF déposé est envoyé dans Dropbox et son lien rangé dans journees.docs_urls
-    // pour être consultable depuis « Contrôle des dépôts ». Non bloquant : une erreur d'upload
-    // n'empêche pas l'enregistrement de la journée.
-    if(SB && MGR_JOUR.fichiers_blob && typeof dropboxUpload==='function'){
-      try {
-        const noms = {synthese:'Synthese-CA', sos:'SOS-Drive', ventes:'Ventes-quart-heure', repas:'Bons-repas', annulations:'Rapport-annulations'};
-        const docsUrls = {};
-        for(const k of Object.keys(noms)){
-          const f = MGR_JOUR.fichiers_blob[k];
-          if(!f) continue;
-          try {
-            const ext = (f.name && f.name.match(/\.[a-z0-9]+$/i)) ? f.name.match(/\.[a-z0-9]+$/i)[0] : '.pdf';
-            const path = `/BK Administratif/Documents/${resto}/${date}/${noms[k]}-${Date.now()}${ext}`;
-            const up = await dropboxUpload(f, path);
-            if(up && up.url) docsUrls[k] = up.url;
-          } catch(e){ console.warn('archivage doc '+k, e); }
-        }
-        if(Object.keys(docsUrls).length){
-          let cur=null; try { const {data}=await SB.from('journees').select('docs_urls').eq('restaurant',resto).eq('date',date).maybeSingle(); cur=data; } catch(_e){}
-          const merged = Object.assign({}, (cur&&cur.docs_urls)||{}, docsUrls);
-          const {error:eDoc} = await SB.from('journees').update({docs_urls:merged}).eq('restaurant',resto).eq('date',date);
-          if(eDoc) console.warn('maj docs_urls', eDoc);
-        }
-      } catch(e){ console.warn('archivage documents Dropbox', e); }
-    }
-
     // Recharger les données depuis Supabase pour que tout s'affiche immédiatement
     if(SB && typeof loadAll==='function'){ try{ await loadAll(); }catch(e){} }
 
@@ -8153,6 +8115,28 @@ async function diagnostiquerSync(){
 // Système "vivant" : dès qu'un nom apparaît dans un document (bons repas, annulation,
 // erreur caisse, etc.), on crée l'équipier s'il n'existe pas, ou on met à jour "vu_le".
 // Réutilisable partout. Ne bloque jamais le flux principal (erreurs ignorées en silence).
+// Ajoute un manager ou un leader dans la liste partagée (codes) s'il n'existe pas déjà.
+// role : 'manager' | 'leader'. Les managers sont créés SANS code PIN (accès direct désormais).
+async function enregistrerResponsable(role, resto, nom){
+  nom = String(nom||'').trim();
+  if(!nom) return;
+  const codes = getCodes();
+  const r = (resto && resto!=='ALL' && resto!=='Administration') ? resto : null;
+  const isLeader = role==='leader';
+  if(isLeader && !Array.isArray(codes.leaders))  codes.leaders  = [];
+  if(!isLeader && !Array.isArray(codes.managers)) codes.managers = [];
+  const list = isLeader ? codes.leaders : codes.managers;
+  const dirs = Array.isArray(codes.directeurs) ? codes.directeurs : [];
+  const norm = s=>String(s||'').trim().toLowerCase();
+  // Déjà présent (même resto, resto non renseigné, OU déjà directeur pour un manager) → on ne recrée pas
+  const existe = list.some(x=>norm(x.nom)===norm(nom) && (!x.resto || !r || x.resto===r))
+    || (!isLeader && dirs.some(d=>norm(d.nom)===norm(nom)));
+  if(existe) return;
+  if(isLeader) list.push({ nom, resto:r });
+  else         list.push({ nom, code:'', resto:r }); // manager sans PIN
+  try { await persistCodes(codes); } catch(e){ console.warn('persistCodes responsable', e); }
+}
+
 async function enregistrerEquipier(resto, nom, code, dateVu){
   if(!SB || !nom) return;
   nom = String(nom).trim();
@@ -9132,6 +9116,90 @@ function sosRenderParJour(rows, isMgr){
     <div style="font-size:11px;color:var(--muted2);margin-bottom:10px">Pour chaque jour : qui est le plus rapide (⚡) et qui passe le plus de commandes (+ cmd), côté midi et côté soir. 👉 <strong>Clique sur un manager</strong> pour dérouler le détail de chacun de ses services (date, temps, commandes).</div>${blocs}`;
 }
 
+// ── Palette de lignes (une couleur par personne) ──
+const SOS_LINE_COLORS = ['#3ecf8e','#378ADD','#f5a623','#f87171','#a78bfa','#22d3ee','#e879f9','#facc15','#4ade80','#fb923c','#60a5fa','#f472b6','#2dd4bf','#c084fc','#fca5a5','#93c5fd'];
+
+// ── TUILE « Temps de service — jour par jour » (chronologique) ──
+// Une ligne par journée (resto+date) : total, midi (ouverture), soir (fermeture),
+// manager/leader midi & soir, commandes. Trié du + récent au + ancien.
+function sosRenderJoursChrono(rows, isMgr){
+  const OPEN  = SOS_TRANCHES.filter(t=>t.shift==='open').map(t=>t.id);
+  const CLOSE = SOS_TRANCHES.filter(t=>t.shift==='close').map(t=>t.id);
+  const moy = (d,ids)=>{ let s=0,n=0; ids.forEach(id=>{ if(d[id]!=null){s+=d[id];n++;} }); return n?Math.round(s/n):null; };
+  const lignes = rows.filter(d=>d.date).map(d=>{
+    const midi = moy(d,OPEN), soir = moy(d,CLOSE);
+    let total = d.total_sec;
+    if(total==null) total = moy(d,[...OPEN,...CLOSE]);
+    const cmd = SOS_TRANCHES.reduce((a,t)=>a+(d[t.nc]||0),0);
+    return { date:d.date, resto:d.restaurant, total, midi, soir,
+      mMidi: isMgr ? d.manager_ouverture : d.leader_ouverture,
+      mSoir: isMgr ? d.manager_fermeture : d.leader_fermeture,
+      cmd, voit:d.total_voitures||null };
+  }).sort((a,b)=>(b.date||'').localeCompare(a.date||'') || (a.resto||'').localeCompare(b.resto||''));
+  if(!lignes.length) return '';
+  const multiResto = new Set(lignes.map(l=>l.resto)).size > 1;
+  const cell = (sec)=> sec==null ? '<span style="color:var(--muted)">—</span>' : `<span style="color:${sosColor(sec)};font-weight:600">${secToHMS(sec)}</span>`;
+  const nomCell = (nom)=> nom ? nom : '<span style="color:var(--muted)">—</span>';
+  const rowsHtml = lignes.map(l=>`<tr>
+    <td style="white-space:nowrap;color:var(--accent)">${formatDate(l.date)} <span style="color:var(--muted2);font-size:10px">${jourSemaine(l.date)}</span></td>
+    ${multiResto?`<td style="font-size:11px;color:var(--muted2)">${RESTAURANTS[l.resto]?.nom||l.resto||'—'}</td>`:''}
+    <td class="num">${cell(l.total)}</td>
+    <td class="num">${cell(l.midi)}</td>
+    <td class="num">${cell(l.soir)}</td>
+    <td style="font-size:11px;white-space:nowrap">${nomCell(l.mMidi)}</td>
+    <td style="font-size:11px;white-space:nowrap">${nomCell(l.mSoir)}</td>
+    <td class="num" style="color:var(--muted2)">${l.cmd||0}</td>
+  </tr>`).join('');
+  return `<div class="table-card" style="margin-bottom:16px">
+    <div class="table-header"><span class="table-title">📋 Temps de service — jour par jour</span><span style="font-size:10px;color:var(--muted)">${lignes.length} jour${lignes.length>1?'s':''} · du + récent au + ancien</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Chaque jour : temps total, 🔑 midi (ouverture), 🔒 soir (fermeture) et qui était ${isMgr?'manager':'leader'}. Vert ≤ ${secToHMS(SOS_OBJ)} · orange ≤ ${secToHMS(SOS_OBJ_ORANGE)} · rouge au-delà.</div>
+    <div class="table-wrap" style="max-height:460px;overflow-y:auto"><table><thead><tr>
+      <th>Jour</th>${multiResto?'<th>Resto</th>':''}<th class="num">⏱ Total</th><th class="num">🔑 Midi</th><th class="num">🔒 Soir</th><th>${isMgr?'Mgr':'Leader'} midi</th><th>${isMgr?'Mgr':'Leader'} soir</th><th class="num">🚗 Cmd</th>
+    </tr></thead><tbody>${rowsHtml}</tbody></table></div>
+  </div>`;
+}
+
+// ── Agrégation par personne × jour de semaine (pour le graphique) ──
+// Retourne { noms:[triés du + rapide au + lent], data:{ nom:[7 moy ou null] } }.
+function sosPersonWeekday(rows, isMgr){
+  const champ = (shift)=> shift==='open'
+    ? (isMgr ? 'manager_ouverture' : 'leader_ouverture')
+    : (isMgr ? 'manager_fermeture' : 'leader_fermeture');
+  const acc = {}; // nom -> [7]{sum,n}
+  rows.forEach(d=>{
+    if(!d.date) return;
+    const j = _joIdx(d.date);
+    SOS_TRANCHES.forEach(t=>{
+      const v = d[t.id]; if(v==null) return;
+      const nom = d[champ(t.shift)]; if(!nom) return;
+      if(!acc[nom]) acc[nom] = Array.from({length:7},()=>({sum:0,n:0}));
+      acc[nom][j].sum += v; acc[nom][j].n++;
+    });
+  });
+  const noms = Object.keys(acc).map(nom=>{
+    let s=0,n=0; acc[nom].forEach(c=>{ s+=c.sum; n+=c.n; });
+    return { nom, avg:n?s/n:null };
+  }).filter(p=>p.avg!=null).sort((a,b)=>a.avg-b.avg).map(p=>p.nom);
+  const data = {};
+  noms.forEach(nom=>{ data[nom] = acc[nom].map(c=>c.n?Math.round(c.sum/c.n):null); });
+  return { noms, data };
+}
+
+// ── Conteneur des 2 graphiques par personne (canvases remplis par anDrawCharts) ──
+function sosRenderPersonCharts(avgsAll){
+  const rankH = Math.max(150, (avgsAll?.length||1)*30 + 30);
+  return `<div class="table-card" style="margin-bottom:16px">
+    <div class="table-header"><span class="table-title">🏁 Par personne — du plus rapide au plus lent</span><span style="font-size:10px;color:var(--muted)">période affichée</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Barre courte = rapide (vert). Barre longue = lent (rouge). Moyenne de toutes les tranches de la personne sur la période choisie.</div>
+    <div style="padding:12px 14px"><div style="position:relative;height:${rankH}px"><canvas id="sos-rank-canvas"></canvas></div></div>
+  </div>
+  <div class="table-card" style="margin-bottom:16px">
+    <div class="table-header"><span class="table-title">📆 Par personne — par jour de semaine</span><span style="font-size:10px;color:var(--muted)">Lun → Dim</span></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Une ligne par personne, du lundi au dimanche. Plus la ligne est basse, plus la personne est rapide ce jour-là.</div>
+    <div style="padding:12px 14px"><div style="position:relative;height:320px"><canvas id="sos-weekday-canvas"></canvas></div></div>
+  </div>`;
+}
+
 // Rapport de présence des directeurs — fidèle au modèle "Rapidité de Service"
 // 3 cartes colorées par resto/directeur + comparatif + historique
 function sosRapportDirecteurs(rows){
@@ -9416,7 +9484,11 @@ function anRenderSOS(){
   </div>`;
   const dirReport = dirPresets + sosRapportDirecteurs(dirRows);
 
-  return diagBanner + kpis + toggle + bilanCard + classementGlobal + parJourBloc + compare + impactCard + trancheCard + dirReport;
+  // ── NOUVEAU : tuile jour par jour + graphiques par personne (placés en haut) ──
+  const joursChrono  = sosRenderJoursChrono(rows, isMgr);
+  const personCharts = sosRenderPersonCharts(avgsAll);
+
+  return diagBanner + kpis + toggle + joursChrono + personCharts + bilanCard + classementGlobal + parJourBloc + compare + impactCard + trancheCard + dirReport;
 }
 
 // Période du rapport directeur (indépendante du reste)
@@ -9595,9 +9667,6 @@ function anRenderAnnulations(){
   const CUT=5;
   all.forEach(r=>{ const h=r.heure?parseInt(String(r.heure).split(':')[0],10):NaN; if(!isNaN(h)&&h<CUT&&r.date){ const dt=new Date(r.date+'T12:00:00'); if(!isNaN(dt.getTime())){ r._realdate=r.date; dt.setDate(dt.getDate()-1); r.date=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'); r._nuit=true; } } });
   all = anEnPeriode(all);
-  // Plancher « données réelles » : on ignore tout ce qui précède le 1er juillet (période de test)
-  const _ecDeb = (typeof ANNUL_EC_DEBUT!=='undefined'?ANNUL_EC_DEBUT:'2026-07-01');
-  all = all.filter(r=>(r.date||'') >= _ecDeb);
 
   // Toutes les annulations du rapport (webuser inclus dans la liste, mais en simple info)
   const isPdf = r=>r.source==='pdf_caisse';
@@ -9607,7 +9676,7 @@ function anRenderAnnulations(){
   const declRows  = all.filter(r=>!isPdf(r)).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
 
   // Synthèse : managers de shift + repli si le rapport n'est pas importé pour un jour
-  const allJ = anJourneesPeriode().filter(d=>(d.date||'') >= _ecDeb);
+  const allJ = anJourneesPeriode();
   const jByKey={}; allJ.forEach(d=>{ jByKey[(d.restaurant||'')+'|'+d.date]=d; });
 
   const grp=(arr)=>{ const o={}; arr.forEach(r=>{ const k=(r.restaurant||'')+'|'+r.date; (o[k]=o[k]||{nb:0,montant:0,rows:[]}); o[k].nb++; o[k].montant+=Math.abs(r.montant||0); o[k].rows.push(r); }); return o; };
@@ -9781,9 +9850,7 @@ function anRenderAnnulations(){
 // Source « declaration_caisse » = écarts importés (les faits, par caissier).
 // Autre source = justification saisie par le manager (photo/note).
 function anRenderErreursCaisse(){
-  // Plancher « données réelles » : on ignore tout ce qui précède le 1er juillet (période de test)
-  const _ecDeb = (typeof ANNUL_EC_DEBUT!=='undefined'?ANNUL_EC_DEBUT:'2026-07-01');
-  const all = anEnPeriode([...(AN_DATA.erreursCaisseTout || [])]).filter(r=>(r.date||'') >= _ecDeb);
+  const all = anEnPeriode([...(AN_DATA.erreursCaisseTout || [])]);
   if(!all.length) return _anEmpty('💶','Aucune erreur de caisse sur la période','Importe la « Déclaration de caisse » (CSV) dans Config → Importer des documents, ou change la période.');
   const PLANCHER = 2;   // on ignore les écarts de moins de 2 € (pas de seuil d'alerte ici)
 
@@ -9864,8 +9931,7 @@ function anRenderErreursCaisse(){
 
 // ───────── CORRECTIONS — classement managers (depuis journees) ─────────
 function anRenderCorrections(){
-  const _ecDeb = (typeof ANNUL_EC_DEBUT!=='undefined'?ANNUL_EC_DEBUT:'2026-07-01');
-  const rows = anJourneesPeriode().filter(d=>(d.date||'') >= _ecDeb).filter(d=>d.corrections_montant!=null||d.corrections_nb!=null);
+  const rows = anJourneesPeriode().filter(d=>d.corrections_montant!=null||d.corrections_nb!=null);
   if(!rows.length) return _anEmpty('✏️','Aucune correction sur la période','Les corrections proviennent de la Synthèse CA.');
   const totMontant = rows.reduce((a,b)=>a+(b.corrections_montant||0),0);
   const totNb = rows.reduce((a,b)=>a+(b.corrections_nb||0),0);
@@ -10126,12 +10192,59 @@ function anDrawCharts(){
             y:{ticks:{font:{size:10},color:'#a8acb6'},grid:{color:'rgba(255,255,255,.06)'},beginAtZero:true}}};
 
   if(AN_TAB==='sos'){
-    const c=document.getElementById('an-sos-canvas'); if(!c)return;
-    const rows=AN_DATA.sos.filter(r=>r.total_sec);
-    _anCharts.sos=new Chart(c,{type:'line',data:{labels:rows.map(r=>formatDate(r.date)),
-      datasets:[{data:rows.map(r=>r.total_sec),borderColor:'#f5a623',backgroundColor:'rgba(245,166,35,.1)',fill:true,tension:.3,pointRadius:3}]},
-      options:{...baseOpts,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>'Temps : '+secToHMS(ctx.parsed.y)}}},
-        scales:{...baseOpts.scales,y:{...baseOpts.scales.y,ticks:{...baseOpts.scales.y.ticks,callback:v=>secToHMS(v)}}}}});
+    // Rows normalisés (identiques à ceux d'anRenderSOS) + mode managers/leaders
+    let sosRows = (typeof sosNormaliser==='function') ? sosNormaliser(AN_DATA.sos||[]) : (AN_DATA.sos||[]);
+    sosRows = sosRows.filter(r=>r.total_sec!=null || SOS_TRANCHES.some(t=>r[t.id]!=null));
+    const isMgr = (typeof SOS_PERF_MODE!=='undefined') ? SOS_PERF_MODE==='managers' : true;
+
+    // ── Graphe 1 : classement par personne (barres horizontales, rapide→lent, vert→rouge) ──
+    const rankCv=document.getElementById('sos-rank-canvas');
+    if(rankCv && typeof sosComputeStats==='function'){
+      const avgs = sosComputeStats(sosRows, isMgr, null); // trié asc = plus rapide en 1er
+      if(avgs.length){
+        const vals = avgs.map(a=>a.avg);
+        const mn=Math.min(...vals), mx=Math.max(...vals);
+        const lerp=(a,b,f)=>Math.round(a+(b-a)*f);
+        const barCol=(v)=>{ const t=mx>mn?(v-mn)/(mx-mn):0; const g=[62,207,142],y=[245,166,35],r=[248,113,113];
+          let c; if(t<0.5){const f=t/0.5;c=[lerp(g[0],y[0],f),lerp(g[1],y[1],f),lerp(g[2],y[2],f)];}
+          else{const f=(t-0.5)/0.5;c=[lerp(y[0],r[0],f),lerp(y[1],r[1],f),lerp(y[2],r[2],f)];}
+          return `rgb(${c[0]},${c[1]},${c[2]})`; };
+        _anCharts.sosRank=new Chart(rankCv,{type:'bar',
+          data:{labels:avgs.map(a=>a.nom),datasets:[{data:vals,backgroundColor:vals.map(barCol),borderRadius:4,maxBarThickness:26}]},
+          options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+            plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>'Temps moyen : '+secToHMS(ctx.parsed.x)+'  ('+(avgs[ctx.dataIndex]?.count||0)+' tranches)'}}},
+            scales:{x:{beginAtZero:true,ticks:{font:{size:10},color:'#a8acb6',callback:v=>secToHMS(v)},grid:{color:'rgba(255,255,255,.06)'}},
+                    y:{ticks:{font:{size:11},color:'#c9cdd6'},grid:{display:false}}}}});
+      }
+    }
+
+    // ── Graphe 2 : par jour de semaine (une ligne par personne, Lun→Dim) ──
+    const wkCv=document.getElementById('sos-weekday-canvas');
+    if(wkCv && typeof sosPersonWeekday==='function'){
+      const { noms, data } = sosPersonWeekday(sosRows, isMgr);
+      if(noms.length){
+        const datasets = noms.map((nom,i)=>{ const col=SOS_LINE_COLORS[i%SOS_LINE_COLORS.length];
+          return { label:nom, data:data[nom], borderColor:col, backgroundColor:col,
+            spanGaps:true, tension:.3, pointRadius:3, pointHoverRadius:5, borderWidth:2 }; });
+        _anCharts.sosWk=new Chart(wkCv,{type:'line',
+          data:{labels:['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'],datasets},
+          options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},
+            plugins:{legend:{display:true,position:'bottom',labels:{font:{size:10},color:'#c9cdd6',boxWidth:12,padding:8}},
+              tooltip:{callbacks:{label:ctx=>ctx.dataset.label+' : '+secToHMS(ctx.parsed.y)}}},
+            scales:{x:{ticks:{font:{size:11},color:'#a8acb6'},grid:{display:false}},
+                    y:{ticks:{font:{size:10},color:'#a8acb6',callback:v=>secToHMS(v)},grid:{color:'rgba(255,255,255,.06)'},beginAtZero:false}}}});
+      }
+    }
+
+    // (ancien graphe total par date — seulement si le canvas existe)
+    const c=document.getElementById('an-sos-canvas');
+    if(c){
+      const rows=(AN_DATA.sos||[]).filter(r=>r.total_sec);
+      _anCharts.sos=new Chart(c,{type:'line',data:{labels:rows.map(r=>formatDate(r.date)),
+        datasets:[{data:rows.map(r=>r.total_sec),borderColor:'#f5a623',backgroundColor:'rgba(245,166,35,.1)',fill:true,tension:.3,pointRadius:3}]},
+        options:{...baseOpts,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>'Temps : '+secToHMS(ctx.parsed.y)}}},
+          scales:{...baseOpts.scales,y:{...baseOpts.scales.y,ticks:{...baseOpts.scales.y.ticks,callback:v=>secToHMS(v)}}}}});
+    }
   } else if(AN_TAB==='repas'){
     const c=document.getElementById('an-repas-canvas'); if(!c)return;
     const byDay={}; AN_DATA.repas.forEach(r=>{byDay[r.date]=(byDay[r.date]||0)+(r.nb_repas||0);});
