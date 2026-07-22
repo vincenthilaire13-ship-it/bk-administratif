@@ -6562,17 +6562,22 @@ function applyRoleUI(role) {
   }
 
   if(isManager) {
-    setTimeout(()=>{
-      nav('manager');
-      showMgrSection('home');
-      const nameEl = document.getElementById('mgr-hello-name');
-      if(nameEl) nameEl.textContent = CURRENT_USER?.nom||'';
-      const dateEl = document.getElementById('mgr-hello-date');
-      if(dateEl) dateEl.textContent = new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-      populateManagerSelect();
-    },150);
+    // Basculer SYNCHRONEMENT sur « Ma journée » (dans la même tâche JS que l'affichage
+    // de l'app). Avant, ce nav était dans un setTimeout(150) : le navigateur peignait
+    // donc la section dashboard (active par défaut) pendant ~150 ms avant de la réduire
+    // à Ma journée → « tout apparaît puis se remet sur Ma journée ». En synchrone, aucun
+    // rendu intermédiaire n'a lieu : le 1er affichage montre directement Ma journée.
+    nav('manager');
+    showMgrSection('home');
+    const nameEl = document.getElementById('mgr-hello-name');
+    if(nameEl) nameEl.textContent = CURRENT_USER?.nom||'';
+    const dateEl = document.getElementById('mgr-hello-date');
+    if(dateEl) dateEl.textContent = new Date().toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+    populateManagerSelect();
   } else {
-    setTimeout(()=>nav('dashboard'), 50);
+    // Idem pour directeur / admin / superviseur : fixer la section d'accueil tout de
+    // suite (pas de setTimeout) pour éviter tout flash de vue au chargement.
+    nav('dashboard');
   }
 }
 
