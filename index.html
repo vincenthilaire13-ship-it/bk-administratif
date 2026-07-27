@@ -942,6 +942,9 @@ body{--resto-color:transparent;--resto-color-rgb:0,0,0}
             <div style="font-size:11px;color:var(--muted);margin-top:4px" id="mgr-hello-date"></div>
           </div>
 
+          <!-- Suivi des dépôts (Synthèse CA · Annulations · Erreurs caisse) -->
+          <div id="mgr-manquants" style="margin-bottom:20px"></div>
+
           <!-- Bouton 1 : PDF journée -->
           <div class="mgr-card" style="cursor:pointer;transition:border-color .2s" onclick="document.getElementById('modal-pre-depot').classList.add('open')"
                onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor=''">
@@ -4555,29 +4558,40 @@ async function loadAll() {
 // ══════════════════════════════════════════════════════════════
 //  DÉTECTION DES FICHIERS MANQUANTS (alerte dashboard)
 // ══════════════════════════════════════════════════════════════
-const SUIVI_DATE_DEBUT = '2026-05-17'; // début du suivi des dépôts
+const SUIVI_DATE_DEBUT = '2026-07-01'; // début du suivi des dépôts (avant = phase de démarrage : annulations/corrections/erreurs considérées comme faites, mises de côté)
 
 async function checkFichiersManquants(){
  try {
-  const box = document.getElementById('dash-manquants');
-  if(!box) return;
-  if(!SB){ box.innerHTML=''; return; }
+  // Rendu partagé : le dashboard (admin/directeur/superviseur) ET l'accueil « Ma journée »
+  // (managers) affichent le même Suivi des dépôts.
+  const boxes = ['dash-manquants','mgr-manquants'].map(id=>document.getElementById(id)).filter(Boolean);
+  if(!boxes.length) return;
+  const setBoxes = html => boxes.forEach(b=>{ b.innerHTML = html; });
+  if(!SB){ setBoxes(''); return; }
 
-  // Suivi des dépôts : suit le restaurant sélectionné en haut.
-  // Directeur → son resto. Admin/superviseur → le resto sélectionné, ou les 3 si "Tous".
+  const ALL_RESTOS = ['BK500','BK509','BK526'];
+  // Dashboard (dash-manquants) : suit le restaurant sélectionné en haut.
+  //   Directeur → son resto. Admin/superviseur → le resto sélectionné, ou les 3 si "Tous".
   let restos;
   if(CURRENT_USER?.role === 'directeur' && CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL') restos = [CURRENT_USER.resto];
   else if(ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' && ACTIVE_RESTO!=='Administration') restos = [ACTIVE_RESTO];
-  else restos = ['BK500','BK509','BK526']; // vue "Tous"
+  else restos = ALL_RESTOS.slice(); // vue "Tous"
+  // « Ma journée » (mgr-manquants) : TOUJOURS un seul restaurant — celui du manager
+  // connecté. Chaque manager ne voit que SON restaurant (500 → 500, 509 → 509, 526 → 526).
+  // En aperçu admin (« Voir comme »), on retombe sur le resto sélectionné, sinon BK526.
+  let mgrResto;
+  if(CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL' && CURRENT_USER.resto!=='Administration') mgrResto = CURRENT_USER.resto;
+  else if(ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' && ACTIVE_RESTO!=='Administration') mgrResto = ACTIVE_RESTO;
+  else mgrResto = 'BK526';
 
   // Dernier jour à contrôler = hier (date LOCALE, pas UTC, pour éviter tout décalage)
   const now = new Date();
   const hier = new Date(now.getFullYear(), now.getMonth(), now.getDate()-1);
   const pad = n => String(n).padStart(2,'0');
   const finISO = hier.getFullYear()+'-'+pad(hier.getMonth()+1)+'-'+pad(hier.getDate());
-  if(finISO < SUIVI_DATE_DEBUT){ box.innerHTML=''; return; }
+  if(finISO < SUIVI_DATE_DEBUT){ setBoxes(''); return; }
 
-  box.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0">Vérification des dépôts…</div>';
+  setBoxes('<div style="font-size:11px;color:var(--muted);padding:8px 0">Vérification des dépôts…</div>');
 
   try {
     // Synthèse CA = présence d'un CA HT (pas juste une ligne journees créée par le SOS)
@@ -4639,7 +4653,7 @@ async function checkFichiersManquants(){
     //   caisse[rt]   = [{jour, ec}…]                   (erreurs caisse à déclarer)
     //   autres[rt]   = [{jour, docs:[clé…]}…]          (SOS Drive · Ventes ¼h · Bons repas)
     const cat = { synthese:{}, annul:{}, caisse:{}, autres:{} };
-    restos.forEach(rt=>{
+    ALL_RESTOS.forEach(rt=>{
       cat.synthese[rt]=[]; cat.annul[rt]=[]; cat.caisse[rt]=[]; cat.autres[rt]=[];
       jours.forEach(jour=>{
         const key = rt+'|'+jour;
@@ -4706,14 +4720,17 @@ async function checkFichiersManquants(){
         `<div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">${rowsArr.slice(2).join('')}</div></details>`;
     };
 
-    function colonne(titre, emoji, accent, dataParResto, rowFn){
-      let total = 0; restos.forEach(rt=>{ total += (dataParResto[rt]||[]).length; });
+    function colonne(titre, emoji, accent, dataParResto, rowFn, restosShow){
+      let total = 0; restosShow.forEach(rt=>{ total += (dataParResto[rt]||[]).length; });
       let inner = '';
-      restos.forEach(rt=>{
+      restosShow.forEach(rt=>{
         const list = (dataParResto[rt]||[]).slice().reverse();
         if(!list.length) return;
+        // Un seul restaurant affiché → inutile de répéter son nom en sous-titre.
+        const soustitre = restosShow.length>1
+          ? `<div style="font-size:10px;font-weight:600;color:var(--accent2);margin-bottom:4px">${RESTAURANTS[rt]?.nom||rt}</div>` : '';
         inner += `<div style="margin-bottom:10px">
-          <div style="font-size:10px;font-weight:600;color:var(--accent2);margin-bottom:4px">${RESTAURANTS[rt]?.nom||rt}</div>
+          ${soustitre}
           <div style="display:flex;flex-direction:column;gap:4px">${pliRows(list.map(rowFn(rt)))}</div>
         </div>`;
       });
@@ -4726,70 +4743,81 @@ async function checkFichiersManquants(){
         </div>${inner}</div>`;
     }
 
-    // Colonne 1 — Synthèses CA manquantes
-    const colSynthese = colonne('Synthèses CA manquantes','🧾','var(--accent)', cat.synthese,
-      rt => j => row(`<span style="color:var(--accent)">${jourLbl(j)}</span> — <span style="color:var(--red);font-weight:500">Synthèse CA manquante</span>${respLine(rt,j)}`));
+    // Construit le bloc « Suivi des dépôts » complet pour une liste de restaurants.
+    // Dashboard : peut en passer plusieurs (vue "Tous"). « Ma journée » : un seul.
+    function buildHtml(restosShow){
+      // Colonne 1 — Synthèses CA manquantes
+      const colSynthese = colonne('Synthèses CA manquantes','🧾','var(--accent)', cat.synthese,
+        rt => j => row(`<span style="color:var(--accent)">${jourLbl(j)}</span> — <span style="color:var(--red);font-weight:500">Synthèse CA manquante</span>${respLine(rt,j)}`), restosShow);
 
-    // Colonne 2 — Annulations à déclarer
-    //  • Rapport importé → une ligne par annulation : montant + nom (« Caisse comptée par »)
-    //  • Repli Synthèse CA (pas encore de rapport) → nombre + montant + managers ouverture/fermeture
-    const colAnnul = colonne('Annulations à déclarer','🚫','var(--red)', cat.annul,
-      rt => o => {
-        if(o.lignes && o.lignes.length){
-          const items = o.lignes.map((l,i)=>`<div style="margin-top:1px">${o.lignes.length>1?`<span style="color:var(--muted)">${i+1})</span> `:''}<span style="color:var(--red);font-weight:600">${fmt(l.montant)} €</span>${l.nom?` <span style="color:var(--muted2)">· ${l.nom}</span>`:''}</div>`).join('');
-          return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span>${items}`);
-        }
-        // Repli : la Synthèse CA ne donne pas les noms → on affiche ouverture / fermeture
-        const items = `<span style="color:var(--red);font-weight:500">${o.nb} annulation(s)${o.mnt?` (${fmt(o.mnt)} €)`:''} à déclarer</span>`;
-        return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — ${items}${respLine(rt,o.jour)}`);
-      });
+      // Colonne 2 — Annulations à déclarer
+      //  • Rapport importé → une ligne par annulation : montant + nom (« Caisse comptée par »)
+      //  • Repli Synthèse CA (pas encore de rapport) → nombre + montant + managers ouverture/fermeture
+      const colAnnul = colonne('Annulations à déclarer','🚫','var(--red)', cat.annul,
+        rt => o => {
+          if(o.lignes && o.lignes.length){
+            const items = o.lignes.map((l,i)=>`<div style="margin-top:1px">${o.lignes.length>1?`<span style="color:var(--muted)">${i+1})</span> `:''}<span style="color:var(--red);font-weight:600">${fmt(l.montant)} €</span>${l.nom?` <span style="color:var(--muted2)">· ${l.nom}</span>`:''}</div>`).join('');
+            return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span>${items}`);
+          }
+          // Repli : la Synthèse CA ne donne pas les noms → on affiche ouverture / fermeture
+          const items = `<span style="color:var(--red);font-weight:500">${o.nb} annulation(s)${o.mnt?` (${fmt(o.mnt)} €)`:''} à déclarer</span>`;
+          return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — ${items}${respLine(rt,o.jour)}`);
+        }, restosShow);
 
-    // Colonne 3 — Erreurs caisse à déclarer
-    //  • Déclaration de caisse importée → une ligne par caissier : écart + nom
-    //  • Repli Synthèse CA → écart global du jour + ouverture/fermeture
-    const colCaisse = colonne('Erreurs caisse à déclarer','💰','var(--red)', cat.caisse,
-      rt => o => {
-        if(o.lignes && o.lignes.length){
-          const items = o.lignes.map((l,i)=>{ const signe=l.sens==='excedent'?'+':'−';
-            return `<div style="margin-top:1px">${o.lignes.length>1?`<span style="color:var(--muted)">${i+1})</span> `:''}<span style="color:var(--red);font-weight:600">${signe}${fmt(l.montant)} €</span>${l.nom?` <span style="color:var(--muted2)">· ${l.nom}</span>`:''}${l.manager?` <span style="color:var(--muted)">(valid. ${l.manager})</span>`:''}</div>`; }).join('');
-          return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span>${items}`);
-        }
-        return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — <span style="color:var(--red);font-weight:500">écart ${o.ec>0?'+':''}${o.ec} € à déclarer</span>${respLine(rt,o.jour)}`);
-      });
+      // Colonne 3 — Erreurs caisse à déclarer
+      //  • Déclaration de caisse importée → une ligne par caissier : écart + nom
+      //  • Repli Synthèse CA → écart global du jour + ouverture/fermeture
+      const colCaisse = colonne('Erreurs caisse à déclarer','💰','var(--red)', cat.caisse,
+        rt => o => {
+          if(o.lignes && o.lignes.length){
+            const items = o.lignes.map((l,i)=>{ const signe=l.sens==='excedent'?'+':'−';
+              return `<div style="margin-top:1px">${o.lignes.length>1?`<span style="color:var(--muted)">${i+1})</span> `:''}<span style="color:var(--red);font-weight:600">${signe}${fmt(l.montant)} €</span>${l.nom?` <span style="color:var(--muted2)">· ${l.nom}</span>`:''}${l.manager?` <span style="color:var(--muted)">(valid. ${l.manager})</span>`:''}</div>`; }).join('');
+            return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span>${items}`);
+          }
+          return row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — <span style="color:var(--red);font-weight:500">écart ${o.ec>0?'+':''}${o.ec} € à déclarer</span>${respLine(rt,o.jour)}`);
+        }, restosShow);
 
-    // Bloc secondaire — Autres dépôts manquants (SOS Drive · Ventes ¼h · Bons repas)
-    let autresTotal = 0; restos.forEach(rt=>{ autresTotal += cat.autres[rt].length; });
-    let autresHtml = '';
-    if(autresTotal){
-      let inner = '';
-      restos.forEach(rt=>{
-        const list = cat.autres[rt].slice().reverse();
-        if(!list.length) return;
-        inner += `<div style="margin-bottom:8px">
-          <div style="font-size:10px;font-weight:600;color:var(--accent2);margin-bottom:4px">${RESTAURANTS[rt]?.nom||rt}</div>
-          <div style="display:flex;flex-direction:column;gap:4px">${pliRows(list.map(o=>row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — manque : <span style="color:var(--red);font-weight:500">${o.docs.map(t=>labels[t]).join(', ')}</span>${respLine(rt,o.jour)}`)))}</div>
-        </div>`;
-      });
-      autresHtml = `<div style="margin-top:12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:12px 14px">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <span style="font-size:15px">📁</span>
-          <span style="font-weight:600;font-size:12px;color:var(--accent2)">Autres dépôts manquants — SOS Drive · Ventes ¼h · Bons repas</span>
-          <span style="margin-left:auto;font-size:10px;color:var(--muted2);background:var(--bg3);border-radius:10px;padding:1px 8px">${autresTotal}</span>
-        </div>${inner}</div>`;
+      // Bloc secondaire — Autres dépôts manquants (SOS Drive · Ventes ¼h · Bons repas)
+      let autresTotal = 0; restosShow.forEach(rt=>{ autresTotal += (cat.autres[rt]||[]).length; });
+      let autresHtml = '';
+      if(autresTotal){
+        let inner = '';
+        restosShow.forEach(rt=>{
+          const list = (cat.autres[rt]||[]).slice().reverse();
+          if(!list.length) return;
+          const soustitre = restosShow.length>1
+            ? `<div style="font-size:10px;font-weight:600;color:var(--accent2);margin-bottom:4px">${RESTAURANTS[rt]?.nom||rt}</div>` : '';
+          inner += `<div style="margin-bottom:8px">
+            ${soustitre}
+            <div style="display:flex;flex-direction:column;gap:4px">${pliRows(list.map(o=>row(`<span style="color:var(--accent)">${jourLbl(o.jour)}</span> — manque : <span style="color:var(--red);font-weight:500">${o.docs.map(t=>labels[t]).join(', ')}</span>${respLine(rt,o.jour)}`)))}</div>
+          </div>`;
+        });
+        autresHtml = `<div style="margin-top:12px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);padding:12px 14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:15px">📁</span>
+            <span style="font-weight:600;font-size:12px;color:var(--accent2)">Autres dépôts manquants — SOS Drive · Ventes ¼h · Bons repas</span>
+            <span style="margin-left:auto;font-size:10px;color:var(--muted2);background:var(--bg3);border-radius:10px;padding:1px 8px">${autresTotal}</span>
+          </div>${inner}</div>`;
+      }
+
+      return `<div style="background:rgba(248,113,113,.06);border:1px solid var(--border2);border-radius:var(--radius);padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <span style="font-size:18px">📋</span>
+          <span style="font-weight:600;font-size:13px">Suivi des dépôts depuis le ${formatDate(SUIVI_DATE_DEBUT)}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:stretch">${colSynthese}${colAnnul}${colCaisse}</div>
+        ${autresHtml}
+      </div>`;
     }
 
-    const html = `<div style="background:rgba(248,113,113,.06);border:1px solid var(--border2);border-radius:var(--radius);padding:14px 16px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <span style="font-size:18px">📋</span>
-        <span style="font-weight:600;font-size:13px">Suivi des dépôts depuis le ${formatDate(SUIVI_DATE_DEBUT)}</span>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:stretch">${colSynthese}${colAnnul}${colCaisse}</div>
-      ${autresHtml}
-    </div>`;
-    box.innerHTML = html;
+    // Dashboard → restaurant(s) sélectionné(s) ; « Ma journée » → SON restaurant uniquement.
+    const dashBox = document.getElementById('dash-manquants');
+    const mgrBox  = document.getElementById('mgr-manquants');
+    if(dashBox) dashBox.innerHTML = buildHtml(restos);
+    if(mgrBox)  mgrBox.innerHTML  = buildHtml([mgrResto]);
   } catch(err){
     console.warn('checkFichiersManquants', err);
-    box.innerHTML='';
+    setBoxes('');
   }
  } finally {
     // Le suivi des dépôts est le dernier élément async du dashboard : une fois rendu (ou
@@ -6583,10 +6611,27 @@ function applyRoleUI(role) {
       if(restoEl) restoEl.textContent = (RESTAURANTS[restoInitial]?.nom||restoInitial);
       applyRestoColor(restoInitial);
     },50);
-  } else if(CURRENT_USER?.resto) {
-    ACTIVE_RESTO = CURRENT_USER.resto;
-    window.ACTIVE_RESTO = CURRENT_USER.resto;
-    setTimeout(()=>applyRestoColor(CURRENT_USER.resto), 50);
+  } else {
+    // Manager / directeur (mono-restaurant), y compris l'aperçu admin « Voir comme ».
+    //  • Vrai manager/directeur → son propre restaurant (CURRENT_USER.resto).
+    //  • Aperçu admin (compte « Administration », resto = ALL) → on CONSERVE le restaurant
+    //    déjà sélectionné en haut. Sinon ACTIVE_RESTO retombait sur ALL et « Ma journée »
+    //    affichait BK526 par défaut au lieu du resto choisi (ex. sidebar 509 mais data 526).
+    let rSolo = null;
+    if(CURRENT_USER?.resto && CURRENT_USER.resto!=='ALL' && CURRENT_USER.resto!=='Administration'){
+      rSolo = CURRENT_USER.resto;
+    } else if(APERCU_ROLE && ACTIVE_RESTO && ACTIVE_RESTO!=='ALL' && ACTIVE_RESTO!=='Administration'){
+      rSolo = ACTIVE_RESTO;
+    }
+    if(rSolo){
+      ACTIVE_RESTO = rSolo;
+      window.ACTIVE_RESTO = rSolo;
+      setTimeout(()=>{
+        const restoEl = document.getElementById('sidebar-resto');
+        if(restoEl) restoEl.textContent = (RESTAURANTS[rSolo]?.nom||rSolo);
+        applyRestoColor(rSolo);
+      }, 50);
+    }
   }
 
   if(isManager) {
@@ -6661,6 +6706,10 @@ function showMgrSection(section) {
   document.getElementById('mgr-section-annulation').style.display = section==='annulation' ? 'block' : 'none';
   const ecSec = document.getElementById('mgr-section-erreurcaisse');
   if(ecSec) ecSec.style.display = section==='erreurcaisse' ? 'block' : 'none';
+  // Accueil « Ma journée » : (re)charger le Suivi des dépôts en haut (Synthèse CA ·
+  // annulations · erreurs caisse). Rappelé à chaque retour à l'accueil → se met à jour
+  // après une déclaration. checkFichiersManquants gère seul l'absence de SB.
+  if(section==='home' && typeof checkFichiersManquants==='function') checkFichiersManquants();
   // Init date/heure pour annulation
   if(section==='annulation') {
     const now = new Date();
@@ -9814,20 +9863,32 @@ function anRenderAnnulations(){
     const cc = r.declared ? 'var(--green)' : 'var(--red)';
     const st = r.declared ? '✓ Déclarée' : '⛔ Non déclarée';
     let photo = '<span style="color:var(--muted)">—</span>';
-    if(r.declared){ const d=r.decl||{}; const th=(dbxThumb(d.photo_bad_url,'ticket erreur')+dbxThumb(d.photo_annul_url,'ticket annulation')+dbxThumb(d.photo_good_url,'ticket corrigé')); photo = th || '<span style="color:var(--muted2)" title="Déclarée mais aucune photo n\'a été enregistrée dans le Dropbox">déclarée · sans photo</span>'; }
+    if(r.declared){
+      const d=r.decl||{};
+      const th=(dbxThumb(d.photo_bad_url,'ticket erreur')+dbxThumb(d.photo_annul_url,'ticket annulation')+dbxThumb(d.photo_good_url,'ticket corrigé'));
+      const base = th || '<span style="color:var(--muted2)" title="Déclarée mais aucune photo n\'a été enregistrée dans le Dropbox">déclarée · sans photo</span>';
+      // Explications de ticket manquant (saisies par le manager quand il n'a que 1 ou 2 tickets)
+      // + commentaire libre → affichées sous la photo, à droite.
+      const escC = t=>String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      let notes='';
+      [['Mauvais ticket',d.ticket_bad_manquant],['Ticket annulé',d.ticket_annul_manquant],['Bon ticket',d.ticket_good_manquant]]
+        .forEach(([lbl,txt])=>{ if(txt&&String(txt).trim()) notes+=`<div style="font-size:10px;color:var(--red);margin-top:3px">⚠️ ${lbl} manquant — <span style="color:var(--muted2);font-style:italic">${escC(txt)}</span></div>`; });
+      if(d.commentaire&&String(d.commentaire).trim()) notes+=`<div style="font-size:10px;color:var(--muted2);margin-top:3px">💬 ${escC(d.commentaire)}</div>`;
+      photo = base + notes;
+    }
     return `<tr>
-      <td style="color:var(--accent)">${formatDate(r.date)} ${jourSemaine(new Date(r.date))}</td>
+      <td style="color:var(--accent);white-space:nowrap">${formatDate(r.date)} ${jourSemaine(new Date(r.date))}</td>
       <td class="num" style="color:var(--red);font-weight:600">${fmt(Math.abs(r.montant||0))} €</td>
       <td><span style="color:${cc};font-weight:600">${nom}</span></td>
       <td><span style="color:${cc};font-weight:600">${st}</span></td>
-      <td>${photo}</td>
+      <td style="min-width:220px">${photo}</td>
     </tr>`;
   }).join('');
   const suiviTbl = photoLignes.length ? `
   <div class="table-card" style="margin-top:16px">
     <div class="table-header"><span class="table-title">🚫 Annulations à photographier — une ligne par annulation</span><span style="font-size:10px;color:var(--muted)">${totDecl}/${totPhoto} déclarées</span></div>
-    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Une ligne = une annulation (jamais additionnées). <strong>Qui</strong> = la personne qui a compté la caisse ; <span style="color:var(--green);font-weight:600">vert = déclarée ✓</span>, <span style="color:var(--red);font-weight:600">rouge = non déclarée ⛔</span>. Les <span style="color:var(--blue);font-weight:600">webuser (Uber/livraison)</span> sont en simple info : pas de photo, le canal s'affiche à la place. La photo apparaît dès que l'annulation est déclarée.</div>
-    <div class="table-wrap" style="max-height:440px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Qui</th><th>Statut</th><th>Photo / canal</th></tr></thead><tbody>${photoRowsHtml}</tbody></table></div>
+    <div style="padding:8px 14px;font-size:11px;color:var(--muted2);border-bottom:1px solid var(--border)">Une ligne = une annulation (jamais additionnées). <strong>Qui</strong> = la personne qui a compté la caisse ; <span style="color:var(--green);font-weight:600">vert = déclarée ✓</span>, <span style="color:var(--red);font-weight:600">rouge = non déclarée ⛔</span>. Les <span style="color:var(--blue);font-weight:600">webuser (Uber/livraison)</span> sont en simple info : pas de photo, le canal s'affiche à la place. La photo apparaît dès que l'annulation est déclarée. <span style="color:var(--red);font-weight:600">⚠️ ticket manquant</span> et <span style="color:var(--muted2);font-weight:600">💬 commentaire</span> du manager s'affichent sous la photo.</div>
+    <div class="table-wrap" style="max-height:440px;overflow-y:auto"><table><thead><tr><th>Date</th><th class="num">Montant</th><th>Qui</th><th>Statut</th><th>Photo / canal / commentaire</th></tr></thead><tbody>${photoRowsHtml}</tbody></table></div>
   </div>` : `<div class="table-card" style="margin-top:16px"><div style="padding:14px;font-size:11px;color:var(--muted)">ℹ️ Aucune annulation sur la période. Importe le « Rapport des annulations » dans Config → Importer des documents, ou élargis la période.</div></div>`;
 
   // ── Vue PAR SALARIÉ (annulations à photographier, hors webuser) ──
