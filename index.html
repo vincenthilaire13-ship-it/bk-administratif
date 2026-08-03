@@ -8346,6 +8346,20 @@ function anClassement(titre, sousTitre, colonnes, lignes){
     <div class="table-wrap" style="max-height:420px;overflow-y:auto"><table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table></div>
   </div>`;
 }
+// ── Normalisation des noms de managers ──
+// Rapproche les deux écritures d'un même manager : "PRÉNOM I" (temps de
+// service / journées) et "NOM Prénom" ou "King- CODE NOM Prénom" (rapport
+// caisse). Un même manager = une seule ligne. Ex : "AUDREY JONHSON" = "AUDREY J".
+function _anTokens(raw){
+  return (raw||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z\s-]/g,' ')
+    .split(/[\s-]+/)
+    .filter(t=>t && !['webuser','king','user','admin'].includes(t));
+}
+function _anNomPropre(raw){
+  const t=_anTokens(raw);
+  return t.length ? t.map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(' ') : (raw||'—');
+}
 function anRender(){
   const el = document.getElementById('an-content');
   if(AN_TAB==='sos')          el.innerHTML = anRenderSOS();
@@ -9661,7 +9675,7 @@ function anRenderParPersonne(type){
   const champFer = estLeader ? 'leader_fermeture' : 'manager_fermeture';
   // Agrégat par personne
   const stat = {};
-  const get = (nom)=>{ if(!stat[nom]) stat[nom]={nom, sosSum:0,sosN:0, jours:new Set(), corrPctSum:0,corrPctN:0, corrEur:0, tablesNb:0, tablesJ:0, annNb:0,annEur:0}; return stat[nom]; };
+  const get = (nom, disp)=>{ if(!stat[nom]) stat[nom]={nom: disp||nom, sosSum:0,sosN:0, jours:new Set(), corrPctSum:0,corrPctN:0, corrEur:0, tablesNb:0, tablesJ:0, annNb:0,annEur:0, annDecl:0}; return stat[nom]; };
   // Temps de service (sos_drive) — rattaché à l'ouverture ET la fermeture,
   // sans doublon si c'est la même personne.
   sos.forEach(r=>{
@@ -9681,8 +9695,34 @@ function anRenderParPersonne(type){
         if(d.commandes_ouvertes_nb!=null){ s.tablesNb+=d.commandes_ouvertes_nb; s.tablesJ++; }
       });
     });
-    // Annulations par manager
-    anns.forEach(a=>{ const nom=a.manager; if(!nom)return; const s=get(nom); s.annNb++; s.annEur+=Math.abs(a.montant||0); });
+    // Annulations par manager — on RATTACHE chaque annulation au manager déjà
+    // connu (temps de service / journées, nom "PRÉNOM I") par prénom + initiale du
+    // nom, pour éviter les doublons ("AUDREY JONHSON" du rapport = "AUDREY J").
+    // Le RAPPORT caisse (source=pdf_caisse) fait foi pour les MONTANTS ; les
+    // déclarations manager (0 €) sont comptées à part (annDecl).
+    const canonInfo = Object.keys(stat).map(k=>{
+      const t=_anTokens(k); return {key:k, prenom:t[0]||'', init:(t[1]&&t[1].length===1)?t[1]:''};
+    });
+    const rattacher = (raw)=>{
+      const toks=_anTokens(raw); if(!toks.length) return null;
+      const set=new Set(toks);
+      // 1) prénom présent ET une initiale de nom qui colle (le plus fiable)
+      let h=canonInfo.find(c=>c.prenom && c.init && set.has(c.prenom) && toks.some(t=>t[0]===c.init));
+      if(h) return h.key;
+      // 2) prénom présent, un seul candidat possible
+      const cands=canonInfo.filter(c=>c.prenom && set.has(c.prenom));
+      if(cands.length===1) return cands[0].key;
+      // 3) plusieurs candidats : préférer celui sans initiale (prénom seul, ex JORIS/THOMAS)
+      h=cands.find(c=>!c.init); if(h) return h.key;
+      return cands.length ? cands[0].key : null;
+    };
+    anns.forEach(a=>{
+      const raw=a.manager; if(!raw) return;
+      const key = rattacher(raw) || ('~'+_anTokens(raw).join(' '));
+      const s = stat[key] || get(key, _anNomPropre(raw));
+      if(a.source==='pdf_caisse'){ s.annNb++; s.annEur+=Math.abs(a.montant||0); }
+      else { s.annDecl=(s.annDecl||0)+1; }
+    });
   }
   const lignes = Object.values(stat).map(s=>({
     nom:s.nom,
@@ -9691,14 +9731,22 @@ function anRenderParPersonne(type){
     corrPct: s.corrPctN? s.corrPctSum/s.corrPctN : null,
     corrEur: s.corrEur,
     tablesParJour: s.tablesJ? s.tablesNb/s.tablesJ : null,
-    annNb: s.annNb, annEur: s.annEur
+    annNb: s.annNb, annEur: s.annEur, annDecl: s.annDecl||0
   }));
   if(!lignes.length){
     return _anEmpty(estLeader?'⭐':'👔', `Aucune donnée par ${type}`,
       `Les analyses par ${type} apparaîtront dès que des journées seront déposées avec le ${type} d'ouverture/fermeture renseigné dans « Ma journée ».`);
   }
-  // Tri par temps de service décroissant (pire en haut)
-  lignes.sort((a,b)=>(b.sosMoy||0)-(a.sosMoy||0));
+  // Tri par temps de service CROISSANT : le plus rapide (meilleur) en haut,
+  // le plus lent en bas. Les managers sans temps de service (annulations seules)
+  // sont renvoyés tout en bas.
+  lignes.sort((a,b)=>{
+    const av=a.sosMoy, bv=b.sosMoy;
+    if(av==null && bv==null) return (b.annEur||0)-(a.annEur||0);
+    if(av==null) return 1;
+    if(bv==null) return -1;
+    return av-bv;
+  });
   const seuilCorr=(typeof SEUILS!=='undefined'&&SEUILS.corrections_max)||4;
   const colonnes = estLeader ? [
     {label:'#', render:(l,i)=>anBadge(i)},
@@ -9710,7 +9758,11 @@ function anRenderParPersonne(type){
     {label:'Manager', key:'nom'},
     {label:'Temps service', num:true, render:l=>{if(l.sosMoy==null)return '—';const f=anFeu(l.sosMoy,SOS_SEUIL_ORANGE,SOS_SEUIL_ROUGE,'bas');return `<span style="color:${f.col};font-weight:600">${f.dot} ${secToHMS(l.sosMoy)}</span>`;}},
     {label:'Corr. %', num:true, render:l=>{if(l.corrPct==null)return '—';const f=anFeu(l.corrPct,seuilCorr,seuilCorr*1.5,'bas');return `<span style="color:${f.col}">${f.dot} ${l.corrPct.toFixed(2)}%</span>`;}},
-    {label:'Annul.', num:true, render:l=>l.annNb?`${l.annNb} (${fmt(l.annEur)}€)`:'—'},
+    {label:'Annul.', num:true, render:l=>{
+      if(l.annNb) return `${l.annNb} (${fmt(l.annEur)}€)`;
+      if(l.annDecl) return `<span style="color:var(--muted)">${l.annDecl} décl.</span>`;
+      return '—';
+    }},
     {label:'Tables/j', num:true, render:l=>l.tablesParJour!=null?l.tablesParJour.toFixed(1):'—'},
     {label:'Jours', num:true, key:'jours'},
   ];
