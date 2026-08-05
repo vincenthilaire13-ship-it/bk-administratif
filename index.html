@@ -6754,18 +6754,46 @@ const MGR_PDF_ATTENDUS = [
 ];
 // Objet rassemblant les données du jour, rempli au fur et à mesure
 let MGR_JOUR = null;
+// ── Normalisation du texte extrait par pdf.js ──
+// pdf.js recolle les fragments de texte d'une même ligne en insérant un espace
+// entre CHAQUE fragment. Selon la police / le découpage du PDF, un titre comme
+// « Rapidité de service au Drive » ressort donc parfois en
+// « Rapidit é  de   service  au  Drive » : les regex à espace simple ne matchent
+// plus et le document est déclaré « non reconnu » (cas du SOS Drive du BK 500).
+// On travaille donc sur une version SANS accents, espaces écrasés, en majuscules.
+function _normPdfTxt(txt){
+  return (txt||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // é→e, è→e, à→a…
+    .replace(/\s+/g,' ')                              // espaces multiples → 1
+    .toUpperCase();
+}
 function detecterTypePDF(txt){
+  const N = _normPdfTxt(txt);
+  // Forme COMPACTE : plus aucun espace ni ponctuation. Indispensable car pdf.js
+  // coupe parfois un mot en deux fragments (« Rapidit » + « é de service »), ce
+  // qui donnait « RAPIDIT E DE SERVICE » et faisait échouer toutes les regex.
+  const C = N.replace(/[^A-Z0-9]/g,'');
   // Commandes/Tables ouvertes (rappel + annulation) — à tester en premier
-  if(/Commandes?\s+Ouvertes/i.test(txt) && /Rappel[ée]\s+par/i.test(txt) && /Annul[ée]\s+par/i.test(txt)) return 'commandes_ouvertes';
-  if(/Rapidit[ée] de service au Drive|SOS\s*DRIVE/i.test(txt)
-     || (/Voitures/i.test(txt) && /Attente/i.test(txt) && /Peak\s*nuit/i.test(txt))) return 'sos';
+  if(/COMMANDES?OUVERTES/.test(C) && /RAPPELEPAR/.test(C) && /ANNULEPAR/.test(C)) return 'commandes_ouvertes';
+  // ── SOS DRIVE — détection élargie : UNE seule signature suffit ──
+  // (avant, seuls le titre exact et le trio Voitures+Attente+Peak nuit étaient testés)
+  if(/RAPIDITEDESERVICE/.test(C)                    // titre, avec ou sans « au Drive »
+     || /SOSDRIVE/.test(C)
+     || (/VOITURE/.test(C) && /ATTENTE/.test(C) && /PEAKNUIT/.test(C))
+     || (/VOITURE/.test(C) && /TEMPSDESERVICE/.test(C))) return 'sos';
   // Rapport des annulations (5e PDF) : titre spécifique + colonnes "Annulé par / Caisse comptée par"
-  if(/Rapport des annulations/i.test(txt)) return 'annulations';
+  if(/RAPPORTDESANNULATIONS/.test(C)) return 'annulations';
   // Synthèse AVANT repas (la synthèse contient le mot "Repas Employés" dans un tableau)
-  if(/Synth[èe]se CA/i.test(txt) || (/TOTAL DRIVE/i.test(txt) && /TOTAL KIOSK/i.test(txt))) return 'synthese';
-  if(/VENTES HORAIRE|PAR QUART D'HEURE|DEMI HEU/i.test(txt)) return 'ventes';
+  if(/SYNTHESECA/.test(C) || (/TOTALDRIVE/.test(C) && /TOTALKIOSK/.test(C))) return 'synthese';
+  if(/VENTESHORAIRE|PARQUARTD.?HEURE|DEMIHEU/.test(C)) return 'ventes';
   // Repas : titre spécifique "Repas Employé Operationnel" (pas juste "Repas Employés")
-  if(/Repas\s*Employ[ée]\s*Operationnel|BENEFICIAIRE.*MATRICULE|MATRICULE\s*NBR REPAS/i.test(txt)) return 'repas';
+  if(/REPASEMPLOYEOPERATIONNEL|BENEFICIAIRE.{0,200}MATRICULE|MATRICULENBRREPAS/.test(C)) return 'repas';
+  // ── DERNIER RECOURS SOS ── titre illisible : on reconnaît la STRUCTURE du rapport,
+  // c'est-à-dire au moins 3 plages horaires « Xh à Yh » + une colonne Voitures
+  // ou la ligne de total « Moyenne par jour ». Testé en dernier pour ne jamais
+  // voler la détection aux 4 autres documents.
+  const nbPlages = (C.match(/\d{1,2}HA\d{1,2}H/g)||[]).length;
+  if(nbPlages >= 3 && (/VOITURE/.test(C) || /MOYENNEPARJOUR/.test(C))) return 'sos';
   return null;
 }
 // ── Parser du rapport d'annulations (5e PDF) ──
@@ -6905,7 +6933,11 @@ async function lireTousPDFs(files) {
                         : n+' annulation(s) · '+aPhoto+' à photographier');
         summaries.push({key:'annulations', nom:file.name, label:'Rapport annulations', ok:true, date:MGR_JOUR.annulations?.date, info});
       } else {
-        summaries.push({key:null, nom:file.name, label:'Document non reconnu', ok:false});
+        // DIAGNOSTIC : on garde un extrait du texte réellement lu dans le PDF,
+        // affiché sous le récapitulatif. Sans ça, impossible de savoir POURQUOI
+        // un document n'est pas reconnu (titre différent, texte en image, etc.).
+        summaries.push({key:null, nom:file.name, label:'Document non reconnu — '+file.name, ok:false,
+                        extrait: _normPdfTxt(txt).slice(0,400), nbCar: (txt||'').length});
       }
     } catch(err) {
       // On affiche le message d'erreur RÉEL pour identifier la cause (au lieu d'un texte générique)
@@ -6937,6 +6969,12 @@ async function lireTousPDFs(files) {
   // documents non reconnus
   summaries.filter(s=>s.ok===false).forEach(s=>{
     recap += `<div style="font-size:10px;color:var(--red);padding:2px 10px">⚠ ${s.label}</div>`;
+    if(s.extrait !== undefined){
+      const esc = String(s.extrait).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      recap += `<div style="font-size:9px;color:var(--muted2);padding:0 10px 6px;line-height:1.5;word-break:break-word">
+        <em>Texte lu (${s.nbCar} caractères)</em> : ${esc || '<span style="color:var(--red)">AUCUN TEXTE — le PDF est probablement une image (scan) : pdf.js ne peut rien en extraire.</span>'}${esc?'…':''}
+      </div>`;
+    }
   });
   recap += '</div>';
   // Bloc d'alerte cohérence
@@ -7287,8 +7325,12 @@ function parserSOS(txt){
   if(!date){ const _d=txt.match(/(\d{2})\/(\d{2})\/(\d{2,4})/); if(_d){ const _an=_d[3].length===2?('20'+_d[3]):_d[3]; date=`${_an}-${_d[2]}-${_d[1]}`; } }
   // ── RESTAURANT : tolère les accents (Près/Prés d'Arènes, Védas, Clément) ──
   let resto=null;
-  const rm = txt.match(/(Montpellier\s+Saint[- ]Cl[eéè]ment|Saint[- ]Jean[- ]de[- ]V[eéè]das|Pr[eéè]s\s+d'Ar[eéè]nes)/i);
-  if(rm) resto = rm[1].trim();
+  // NB : le BK 500 s'écrit « Près DES Arènes » partout dans l'app ; l'ancienne regex
+  // n'acceptait que « Près d'Arènes » et ne matchait donc jamais pour le 500.
+  const _C = _normPdfTxt(txt).replace(/[^A-Z0-9]/g,'');
+  if(/SAINTCLEMENT|STCLEMENT/.test(_C))            resto = 'Montpellier Saint-Clément';
+  else if(/VEDAS|SAINTJEANDE|STJEANDE/.test(_C))   resto = 'Saint-Jean-de-Védas';
+  else if(/ARENE/.test(_C))                        resto = 'Près des Arènes';
   // Flux de tokens (les colonnes du PDF s'entremêlent avec les objectifs ;
   // on travaille donc par segment de ligne, délimité par les plages horaires).
   const flux = txt.replace(/\s+/g,' ');
