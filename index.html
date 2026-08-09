@@ -4234,32 +4234,24 @@ function loadConfig() {
   const saved = localStorage.getItem('bk_seuils');
   if(saved) Object.assign(SEUILS, JSON.parse(saved));
 }
-// ── Double écriture vers BK RH (passerelle transitoire) ───────────────────────
-// Pendant la transition, l'import ¼h fait dans BK administratif est aussi recopié
-// dans la base BK RH (ventes_horaire) pour que BK RH se remplisse automatiquement.
-// Best effort : n'empêche JAMAIS l'enregistrement administratif. Un avertissement
-// non bloquant est ajouté à la liste d'erreurs si l'écriture RH échoue.
-const SB_RH_URL = 'https://qggkbtzhkomhldhacohd.supabase.co';
-const SB_RH_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZ2tidHpoa29taGxkaGFjb2hkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxNzc0MzIsImV4cCI6MjA5NDc1MzQzMn0.l4W4rH4CFREugjImoRqN8hocmEXFcVqnN1-H78x3S-c';
-let SB_RH = null;
-function initSupabaseRH(){
-  try {
-    if(!SB_RH && window.supabase && window.supabase.createClient){
-      SB_RH = window.supabase.createClient(SB_RH_URL, SB_RH_ANON);
-      window.SB_RH = SB_RH;
-    }
-  } catch(e){ console.warn('[RH] init client RH impossible', e); SB_RH = null; }
-  return SB_RH;
-}
-// Recopie un upsert ventes_horaire vers BK RH. Best effort, non bloquant.
+// ── Double écriture vers BK RH (schéma rh du même projet) ─────────────────────
+// L'import ¼h fait dans BK administratif (public.ventes_horaire) est AUSSI recopié
+// dans rh.ventes_horaire pour que l'appli BK RH se remplisse automatiquement.
+// IMPORTANT (2026-08) : depuis la consolidation Supabase du 20/07, l'ancienne base
+// BK RH séparée (qggkbtzhkomhldhacohd) a été SUPPRIMÉE. Écrire vers cette URL morte
+// provoquait « TypeError: Failed to fetch » à chaque enregistrement. Les données RH
+// vivent désormais dans le schéma `rh` du MÊME projet hôte → on réutilise le client
+// SB déjà connecté via SB.schema('rh'). Best effort : n'empêche JAMAIS l'enregistrement.
+function initSupabaseRH(){ return SB; } // conservé pour compat : le client RH = client hôte
+// Recopie un upsert ventes_horaire vers rh.ventes_horaire. Best effort, non bloquant.
 // Renvoie {ok:true} ou {ok:false, msg:'...'} pour un avertissement éventuel.
 async function rhUpsertVentes(payload){
   try {
-    if(!initSupabaseRH()) return {ok:false, msg:'client RH indisponible'};
-    const { error } = await SB_RH.from('ventes_horaire').upsert(payload,{onConflict:'restaurant,date'});
-    if(error){ console.warn('[RH] upsert ventes_horaire', error); return {ok:false, msg:(error.message||String(error))}; }
+    if(!SB || typeof SB.schema!=='function') return {ok:false, msg:'client indisponible'};
+    const { error } = await SB.schema('rh').from('ventes_horaire').upsert(payload,{onConflict:'restaurant,date'});
+    if(error){ console.warn('[RH] upsert rh.ventes_horaire', error); return {ok:false, msg:(error.message||String(error))}; }
     return {ok:true};
-  } catch(e){ console.warn('[RH] upsert ventes_horaire exception', e); return {ok:false, msg:(e.message||String(e))}; }
+  } catch(e){ console.warn('[RH] upsert rh.ventes_horaire exception', e); return {ok:false, msg:(e.message||String(e))}; }
 }
 function initSupabase(url, key) {
   try {
