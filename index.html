@@ -4452,6 +4452,10 @@ async function checkFichiersManquants(){
   const hier = new Date(now.getFullYear(), now.getMonth(), now.getDate()-1);
   const pad = n => String(n).padStart(2,'0');
   const finISO = hier.getFullYear()+'-'+pad(hier.getMonth()+1)+'-'+pad(hier.getDate());
+  // Borne haute élargie d'UN jour pour les annulations / justifications : une déclaration faite
+  // APRÈS MINUIT est datée du lendemain. On l'inclut dans la lecture, puis _fiscalD la recale sur
+  // sa journée fiscale (la veille) pour qu'elle décompte bien l'annulation/erreur du bon jour.
+  const finISOp1 = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
   if(finISO < SUIVI_DATE_DEBUT){ setBoxes(''); return; }
   setBoxes('<div style="font-size:11px;color:var(--muted);padding:8px 0">Vérification des dépôts…</div>');
   try {
@@ -4467,17 +4471,32 @@ async function checkFichiersManquants(){
     const SEUIL_EC = (typeof SEUILS!=='undefined' && SEUILS.erreur_caisse_max) ? SEUILS.erreur_caisse_max : 5;
     const annulCaisse = await sbMapRD('journees', 'restaurant,date,annulations_nb,annulations_montant', SUIVI_DATE_DEBUT, finISO, x=>({nb:x.annulations_nb||0, mnt:x.annulations_montant||0}));
     const ecartCaisse = await sbMapRD('journees', 'restaurant,date,erreur_caisse', SUIVI_DATE_DEBUT, finISO, x=>(x.erreur_caisse!=null?x.erreur_caisse:null));
-    const declAnnul   = await sbCountRD('annulations', SUIVI_DATE_DEBUT, finISO, {cols:'restaurant,date,source', filter:x=>x.source!=='pdf_caisse'});
-    // Lignes du rapport caisse (à photographier, hors webuser) par jour — pour lister chaque annulation
-    // + jours où le rapport EXISTE (webuser inclus) → pour ne PAS retomber sur la Synthèse CA ces jours-là
+    // Journée fiscale : une opération avant 05:00 appartient à la VEILLE (identique à Analyse → Annulations, CUT=5).
+    // Sans ce recalage, une annulation/justification déclarée APRÈS MINUIT (donc datée du lendemain) n'était
+    // pas rattachée au rapport de la veille → elle restait affichée « à déclarer » alors qu'elle était faite.
+    const _fiscalD = (dISO, heure) => {
+      const h = heure ? parseInt(String(heure).split(':')[0],10) : NaN;
+      if(!isNaN(h) && h < 5 && dISO){
+        const dt = new Date(dISO+'T12:00:00');
+        if(!isNaN(dt.getTime())){ dt.setDate(dt.getDate()-1); return dt.getFullYear()+'-'+pad(dt.getMonth()+1)+'-'+pad(dt.getDate()); }
+      }
+      return dISO;
+    };
+    // Un seul balayage des annulations, regroupé par JOURNÉE FISCALE :
+    //  • lignes du rapport caisse (à photographier, hors webuser) → pour lister chaque annulation ;
+    //  • jours où le rapport EXISTE (webuser inclus) → pour ne PAS retomber sur la Synthèse CA ces jours-là ;
+    //  • décompte des déclarations managers (declAnnul) → une annulation déclarée fait tomber la ligne « à déclarer ».
     const annulLignes = {};
     const joursRapport = new Set();
+    const declAnnul = {};
     try {
       let off=0; const PG=1000;
       for(let g=0; g<200; g++){
-        const {data,error} = await SB.from('annulations').select('restaurant,date,montant,manager,photographiable,source').eq('source','pdf_caisse').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO).order('date',{ascending:true}).range(off,off+PG-1);
+        const {data,error} = await SB.from('annulations').select('restaurant,date,heure,montant,manager,photographiable,source').gte('date',SUIVI_DATE_DEBUT).lte('date',finISOp1).order('date',{ascending:true}).range(off,off+PG-1);
         if(error) break; const rows=data||[];
-        rows.forEach(x=>{ let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; const k=rt+'|'+(x.date||'').slice(0,10); joursRapport.add(k); if(x.photographiable===false) return; (annulLignes[k]=annulLignes[k]||[]).push({montant:Math.abs(x.montant||0), nom:x.manager||''}); });
+        rows.forEach(x=>{ let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; const k=rt+'|'+_fiscalD((x.date||'').slice(0,10), x.heure);
+          if(x.source==='pdf_caisse'){ joursRapport.add(k); if(x.photographiable===false) return; (annulLignes[k]=annulLignes[k]||[]).push({montant:Math.abs(x.montant||0), nom:x.manager||''}); }
+          else { declAnnul[k]=(declAnnul[k]||0)+1; } });
         if(rows.length<PG) break; off+=PG;
       }
     } catch(e){ console.warn('annulLignes', e); }
@@ -4486,17 +4505,21 @@ async function checkFichiersManquants(){
     const mgrOuv = await sbMapRD('journees', 'restaurant,date,manager_ouverture', SUIVI_DATE_DEBUT, finISO, x=>x.manager_ouverture||'');
     const mgrFer = await sbMapRD('journees', 'restaurant,date,manager_fermeture', SUIVI_DATE_DEBUT, finISO, x=>x.manager_fermeture||'');
     // Justifications d'erreur caisse SAISIES (hors import « Déclaration de caisse »)
-    const declErrCais = await sbCountRD('erreurs_caisse', SUIVI_DATE_DEBUT, finISO, {cols:'restaurant,date,source', filter:x=>x.source!=='declaration_caisse'});
-    // Écarts caisse IMPORTÉS (Déclaration de caisse) par jour : une ligne par session > seuil, avec le NOM du caissier
+    // Erreurs caisse — même balayage unique, regroupé par JOURNÉE FISCALE :
+    //  • écarts importés (Déclaration de caisse) > seuil → une ligne par session, avec le NOM du caissier ;
+    //  • décompte des justifications SAISIES (declErrCais, hors import) → une justif fait tomber la ligne.
     const ecartLignes = {};        // key -> [{montant, nom, manager, sens}]
     const joursDeclCaisse = new Set();
+    const declErrCais = {};
     try {
       let off=0; const PG=1000;
       for(let g=0; g<200; g++){
-        const {data,error} = await SB.from('erreurs_caisse').select('restaurant,date,montant,sens,equipier,manager,source').eq('source','declaration_caisse').gte('date',SUIVI_DATE_DEBUT).lte('date',finISO).order('date',{ascending:true}).range(off,off+PG-1);
+        const {data,error} = await SB.from('erreurs_caisse').select('restaurant,date,heure,montant,sens,equipier,manager,source').gte('date',SUIVI_DATE_DEBUT).lte('date',finISOp1).order('date',{ascending:true}).range(off,off+PG-1);
         if(error) break; const rows=data||[];
-        rows.forEach(x=>{ let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; const k=rt+'|'+(x.date||'').slice(0,10); joursDeclCaisse.add(k);
-          if(Math.abs(x.montant||0) >= SEUIL_EC){ (ecartLignes[k]=ecartLignes[k]||[]).push({montant:Math.abs(x.montant||0), nom:x.equipier||'', manager:x.manager||'', sens:x.sens||'manquant'}); } });
+        rows.forEach(x=>{ let rt=x.restaurant; if(rt==='ALL'||rt==='Administration')rt='BK526'; const k=rt+'|'+_fiscalD((x.date||'').slice(0,10), x.heure);
+          if(x.source==='declaration_caisse'){ joursDeclCaisse.add(k);
+            if(Math.abs(x.montant||0) >= SEUIL_EC){ (ecartLignes[k]=ecartLignes[k]||[]).push({montant:Math.abs(x.montant||0), nom:x.equipier||'', manager:x.manager||'', sens:x.sens||'manquant'}); } }
+          else { declErrCais[k]=(declErrCais[k]||0)+1; } });
         if(rows.length<PG) break; off+=PG;
       }
     } catch(e){ console.warn('ecartLignes', e); }
