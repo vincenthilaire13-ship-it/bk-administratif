@@ -5084,7 +5084,7 @@ function renderJournee(d) {
   const drM = d.drive_voitures&&canalHT(d,'drive') ? (canalHT(d,'drive')/d.drive_voitures).toFixed(2) : '—';
   const lvM = livNb&&canalHT(d,'livraison') ? (canalHT(d,'livraison')/livNb).toFixed(2) : '—';
   const als = [];
-  if(ecN1!==null) { if(ecN1<SEUILS.n1_rouge) als.push({t:'bad',m:`CA en forte baisse vs N-1 : ${ecN1.toFixed(1)}% — Journée critique`}); else if(ecN1<SEUILS.n1_warn) als.push({t:'warn',m:`CA en baisse vs N-1 : ${ecN1.toFixed(1)}%`}); else als.push({t:'ok',m:`CA vs N-1 : +${ecN1.toFixed(1)}% — Bonne journée`}); }
+  if(ecN1!==null) { if(ecN1<SEUILS.n1_rouge) als.push({t:'bad',m:`CA en forte baisse vs N-1 : ${ecN1.toFixed(1)}% — Journée critique`}); else if(ecN1<SEUILS.n1_warn) als.push({t:'warn',m:`CA en baisse vs N-1 : ${ecN1.toFixed(1)}%`}); else als.push({t:'ok',m:`CA vs N-1 : ${ecN1>0?'+':''}${ecN1.toFixed(1)}%${ecN1>=0?' — Bonne journée':' — dans la tolérance'}`}); } // le « + » n'était pas conditionnel → affichait « +-5.0% — Bonne journée » à la limite du seuil
   if(d.corrections_pct>=SEUILS.corrections_rouge) als.push({t:'bad',m:`Corrections très élevées : ${d.corrections_pct}% (rouge ≥${SEUILS.corrections_rouge}%)`});
   else if(d.corrections_pct>=SEUILS.corrections_max) als.push({t:'warn',m:`Corrections au-dessus du seuil : ${d.corrections_pct}% (max ${SEUILS.corrections_max}%)`});
   else if(d.corrections_pct) als.push({t:'ok',m:`Corrections dans la norme : ${d.corrections_pct}%`});
@@ -5311,16 +5311,51 @@ function loadHistorique() {
   const yrN1 = String(parseInt(yr)-1);
   const moisN1 = yrN1+'-'+mm;
   const srcN1 = yrN1==='2025' ? DATA25 : DATA;
-  const fdN1 = srcN1.filter(d=>d.date.startsWith(moisN1));
-  const n1Map = {}; // date N-1 indexée par jour du mois (MM-DD)
-  fdN1.forEach(d=>{ n1Map[d.date.slice(5)] = d; });
+  // ── N-1 = MÊME JOUR DE SEMAINE (aligné sur la vue « Ma journée ») ──────────
+  // AVANT : on comparait au même QUANTIÈME (16/08/2026 → 16/08/2025). Or il y a
+  // 365 jours entre les deux, donc le calendrier est décalé d'un jour : un
+  // DIMANCHE 2026 était comparé à un SAMEDI 2025. Exemple réel BK526 le
+  // 16/08/2026 (18 307,36 €) : l'Historique affichait +17,2 % (vs samedi
+  // 16/08/2025 = 15 618,84 €) alors que « Ma journée » affichait −5,0 %
+  // (vs dimanche 17/08/2025 = 19 266,85 €). En restauration le jour de semaine
+  // pèse ~18 % du CA : la comparaison au quantième n'avait aucun sens.
+  // MAINTENANT : −364 jours (= 52 semaines pile → même jour de semaine), avec
+  // repli sur le même jour de semaine le plus proche à ±10 jours. Logique
+  // STRICTEMENT identique à findN1() → les deux écrans affichent le même écart.
+  // Le référent peut tomber sur le mois voisin (ex. 31/08/2026 → 01/09/2025) :
+  // on indexe donc TOUTE l'année N-1, et pas seulement le mois.
+  const srcN1An = srcN1.filter(d=> (d.date||'').startsWith(yrN1));
+  const _n1ByDate = {}; srcN1An.forEach(x=>{ if(x && x.date) _n1ByDate[x.date] = x; });
+  const _isoOf = ms => new Date(ms).toISOString().slice(0,10);
+  const _dowOf = ms => new Date(ms).getUTCDay();
+  const refN1 = (dateISO) => {
+    const base = new Date(dateISO+'T12:00:00Z');   // midi UTC : jamais de bascule de jour
+    if(isNaN(base)) return null;
+    const cibleMs = base.getTime() - 364*86400000; // 52 semaines pile
+    const hit = _n1ByDate[_isoOf(cibleMs)];
+    if(hit) return hit;
+    const js = _dowOf(cibleMs); let best=null, bestDiff=Infinity;
+    for(let off=-10; off<=10; off++){
+      const ms = cibleMs + off*86400000;
+      if(_dowOf(ms)!==js) continue;
+      const h = _n1ByDate[_isoOf(ms)];
+      if(h && Math.abs(off)<bestDiff){ best=h; bestDiff=Math.abs(off); }
+    }
+    return best;
+  };
+  // n1Map : indexé par le MM-DD de la journée 2026 (et NON plus par le quantième 2025)
+  const n1Map = {};
+  fd.forEach(d=>{ const r = refN1(d.date); if(r) n1Map[d.date.slice(5)] = r; });
+  // Référents réellement appariés → base de tous les totaux / moyennes N-1
+  const fdN1 = fd.map(d=>refN1(d.date)).filter(Boolean);
   const fmap={ca:'_caht',tickets:'tickets_nb',drive:'drive_voitures',corrections:'corrections_montant',remises:'remises_pct',livraisons:'_lvht'};
   const flabels={ca:'CA HT',tickets:'Tickets',drive:'Drive voitures',corrections:'Corrections €',remises:'Remises %',livraisons:'Livraison CA HT'};
   const clrs={ca:'#f5a623',tickets:'#60a5fa',drive:'#60a5fa',corrections:'#f87171',remises:'#fbbf24',livraisons:'#3ecf8e'};
   const TC=(typeof TCv==='function'?TCv():'#7d818c'), GC=(typeof GCv==='function'?GCv():'rgba(255,255,255,.06)');
   // Champs HT calculés pour le graphe/tableau historique
   fd.forEach(d=>{ d._caht = caHT(d); d._lvht = canalHT(d,'livraison'); });
-  fdN1.forEach(d=>{ d._caht = caHT_n1(d); d._lvht = canalHT(d,'livraison'); });
+  // Sur TOUTE l'année N-1 (le référent peut sortir du mois affiché — cf. refN1)
+  srcN1An.forEach(d=>{ d._caht = caHT(d); d._lvht = canalHT(d,'livraison'); });
   // ── Jours du mois : on inclut aussi les jours SANS données pour les marquer
   // « manquants » (uniquement sur la période réellement suivie, à partir de
   // SUIVI_DATE_DEBUT). Pour les mois antérieurs / 2025, comportement inchangé. ──
@@ -5350,7 +5385,7 @@ function loadHistorique() {
   const nMetricCols = (colCA?3:0)+(colDrive?3:0)+(colLv?3:0)+(colCorr?2:0)+(colRem?2:0)+(colAnnul?2:0)+(colCO?2:0)+(colEmp?2:0);
   // Totaux pour le résumé
   const totCA = fd.reduce((a,b)=>a+caHT(b),0);
-  const totCA_n1 = fdN1.reduce((a,b)=>a+caHT_n1(b),0);
+  const totCA_n1 = fdN1.reduce((a,b)=>a+caHT(b),0);
   const totDr = fd.reduce((a,b)=>a+(b.drive_voitures||0),0);
   const totDr_n1 = fdN1.reduce((a,b)=>a+(b.drive_voitures||0),0);
   const totLv = fd.reduce((a,b)=>a+canalHT(b,'livraison'),0);
@@ -5409,7 +5444,7 @@ function loadHistorique() {
   <div class="table-card">
     <div class="table-header">
       <span class="table-title">Journées ${moisLabel}</span>
-      <span style="font-size:10px;color:var(--muted)">Comparaison avec ${moisN1Label} sur chaque ligne</span>
+      <span style="font-size:10px;color:var(--muted)">Comparaison ${moisN1Label} sur chaque ligne — <strong>même jour de semaine</strong> (−364 j), identique à « Ma journée »</span>
     </div>
     <div class="table-wrap"><table>
       <thead>
@@ -5450,11 +5485,11 @@ function loadHistorique() {
           }
           const jourKey = d.date.slice(5); // MM-DD
           const n1 = n1Map[jourKey];
-          const ecCA2 = caHT_n1(n1||{}) ? ((caHT(d)-caHT_n1(n1))/caHT_n1(n1)*100) : null;
+          const ecCA2 = (n1 && caHT(n1)) ? ((caHT(d)-caHT(n1))/caHT(n1)*100) : null;
           const ecDr = n1?.drive_voitures ? ((d.drive_voitures-n1.drive_voitures)/n1.drive_voitures*100) : null;
           const ecLv = (n1&&canalHT(n1,'livraison')) ? ((canalHT(d,'livraison')-canalHT(n1,'livraison'))/canalHT(n1,'livraison')*100) : null;
           const dCa = caHT(d);
-          const n1Ca = n1?caHT_n1(n1):null;
+          const n1Ca = n1?caHT(n1):null;
           const dDr = d.drive_voitures;
           const n1Dr = n1?.drive_voitures;
           const dLv = canalHT(d,'livraison');
@@ -5518,7 +5553,7 @@ function loadHistorique() {
   killChart('hist');
   const labels26 = joursMois.map(dt=>dt.slice(8));
   const vals26 = joursMois.map(dt=>{ const d=fdByDate[dt]; return d?(d[fmap[filtre]]||0):null; }); // null = jour manquant → trou dans les barres
-  const vals25 = joursMois.map(dt=>{ const n1=n1Map[dt.slice(5)]; return n1?(n1[fmap[filtre]]||0):null; });
+  const vals25 = joursMois.map(dt=>{ const n1=refN1(dt); return n1?(n1[fmap[filtre]]||0):null; }); // même jour de semaine
   CH.hist = new Chart(document.getElementById('chart-hist'),{
     type:'bar',
     data:{labels:labels26,datasets:[
